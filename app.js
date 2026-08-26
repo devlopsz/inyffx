@@ -1,1531 +1,1768 @@
-/*
- * InyffX — initial release demo v1.0
- * Static product prototype: no API keys, external accounts or backend required.
- */
-
-(() => {
+(function () {
   "use strict";
 
-  const STORAGE_KEY = "inyffx-demo-v1";
-  const ROUTES = ["home", "roleplay", "postgame", "canon", "characters", "universe"];
-
-  const DEFAULT_STATE = {
-    version: 1,
-    theme: "dark",
-    settings: {
-      soundtrackVisible: true,
-      soundtrackPlaying: false,
-    },
-    career: {
-      name: "Caio Alexandre",
-      age: 20,
-      nationality: "Brasil",
-      position: "MEI",
-      shirt: 17,
-      dominantFoot: "Direito",
-      club: "Chelsea",
-      formerClub: "Flamengo",
-      season: "2026/27",
-      game: "EA FC",
-      archetype: "Criador decisivo",
-      personality: "Ambicioso, leal e competitivo",
-      origin: "Criado no Rio de Janeiro, transformou a pressão da base em combustível para chegar à Europa.",
-      objective: "Conquistar a Champions League e se tornar referência da Seleção Brasileira.",
-      depth: "cinematic",
-      modules: ["vida", "midia", "relacoes", "financas", "sorte"],
-    },
-    stats: {
-      appearances: 17,
-      goals: 12,
-      assists: 9,
-      rating: 8.1,
-      reputation: 74,
-      energy: 82,
-      canonFacts: 148,
-      rpEvents: 93,
-      characters: 21,
-      secrets: 7,
-    },
-    nextMatch: {
-      opponent: "Napoli",
-      competition: "UEFA Champions League",
-      date: "29 AGO",
-      time: "20:45",
-      venue: "Stadio Diego Armando Maradona",
-      leg: "Fase de liga · Rodada 1",
-    },
-    missions: [
-      { id: "m1", title: "Revisar o plano para Napoli", detail: "Converse com o treinador antes da viagem", xp: 120, done: false },
-      { id: "m2", title: "Responder Rafael", detail: "Há uma atualização sobre seu novo contrato", xp: 80, done: false },
-      { id: "m3", title: "Sessão de recuperação", detail: "Centro médico · 17h30", xp: 60, done: true },
-      { id: "m4", title: "Noite livre", detail: "Escolha como Caio vai usar o tempo", xp: 40, done: false },
-    ],
-    inbox: [
-      { id: "i1", initials: "LD", color: "#337ea0", name: "Leo Duarte", preview: "O grupo marcou jantar depois do treino...", time: "agora", unread: true },
-      { id: "i2", initials: "RN", color: "#8a6440", name: "Rafael Nunes", preview: "Londres quer uma resposta até sexta.", time: "12 min", unread: true },
-      { id: "i3", initials: "MS", color: "#82527c", name: "Maya Silva", preview: "Posso publicar sua fala sobre a torcida?", time: "1 h", unread: true },
-      { id: "i4", initials: "VH", color: "#53645a", name: "Viktor Hale", preview: "Sala de vídeo. Amanhã, 8h.", time: "3 h", unread: false },
-    ],
-    chat: [
-      {
-        id: "c1",
-        type: "narration",
-        text: "O centro de treinamento já está quase vazio. A chuva risca os vidros da sala de vídeo, e o ruído distante dos jardineiros ocupa o silêncio. Viktor Hale fecha o notebook quando Caio entra.",
-      },
-      {
-        id: "c2",
-        type: "npc",
-        speaker: "Viktor Hale",
-        role: "Treinador",
-        initials: "VH",
-        color: "#53645a",
-        time: "22:14",
-        text: "Fecha a porta, Caio. Quero falar de Nápoles — e não apenas do que vai acontecer com a bola.",
-      },
-      {
-        id: "c3",
-        type: "user",
-        speaker: "Você · Caio",
-        initials: "CA",
-        color: "#337ea0",
-        time: "22:15",
-        text: "Claro, professor. Aconteceu alguma coisa?",
-      },
-      {
-        id: "c4",
-        type: "npc",
-        speaker: "Viktor Hale",
-        role: "Treinador",
-        initials: "VH",
-        color: "#53645a",
-        time: "22:15",
-        text: "O estádio vai tentar te engolir. Depois do que você fez contra o Liverpool, todos vão esperar que resolva sozinho. Quero saber se está preparado para jogar com essa expectativa — sem deixar que ela jogue por você.",
-      },
-    ],
-    timeline: [
-      {
-        id: "e1",
-        day: "26",
-        month: "ago",
-        season: "Temporada 2026/27",
-        kind: "rp",
-        category: "Relações",
-        title: "Conversa reservada com Viktor Hale",
-        description: "O treinador chamou Caio após o treino para falar sobre pressão, liderança e a viagem a Nápoles.",
-        people: ["VH", "CA"],
-      },
-      {
-        id: "e2",
-        day: "24",
-        month: "ago",
-        season: "Temporada 2026/27",
-        kind: "game",
-        category: "Partida",
-        title: "Chelsea 3 × 2 Liverpool",
-        description: "Caio marcou duas vezes, incluindo o gol da vitória aos 90 minutos. Nota registrada: 9,2.",
-        people: ["CA"],
-      },
-      {
-        id: "e3",
-        day: "23",
-        month: "ago",
-        season: "Temporada 2026/27",
-        kind: "secret",
-        category: "Segredo",
-        title: "Rafael recebeu uma sondagem confidencial",
-        description: "Somente Caio e seu empresário sabem que um clube espanhol pediu condições para uma futura negociação.",
-        people: ["RN", "CA"],
-      },
-      {
-        id: "e4",
-        day: "18",
-        month: "ago",
-        season: "Temporada 2026/27",
-        kind: "rp",
-        category: "Vida pessoal",
-        title: "Jantar no apartamento de Leo",
-        description: "Uma conversa honesta transformou a parceria de campo em amizade fora dele.",
-        people: ["LD", "CA"],
-      },
-      {
-        id: "e5",
-        day: "12",
-        month: "ago",
-        season: "Temporada 2026/27",
-        kind: "possible",
-        category: "Possibilidade",
-        title: "Convite para campanha internacional",
-        description: "A equipe de Rafael avalia a proposta. Nada foi aceito e o evento ainda não é cânone.",
-        people: ["RN"],
-      },
-      {
-        id: "e6",
-        day: "06",
-        month: "jun",
-        season: "Temporada 2025/26",
-        kind: "game",
-        category: "Carreira",
-        title: "Assinatura com o Chelsea",
-        description: "Transferência concluída após a temporada de estreia no Flamengo. Contrato de cinco anos.",
-        people: ["CA", "RN"],
-      },
-    ],
-    characters: [
-      {
-        id: "leo",
-        name: "Leo Duarte",
-        role: "Companheiro de equipe · Ponta",
-        relation: "Melhor amigo",
-        trust: 88,
-        respect: 84,
-        tension: 8,
-        initials: "LD",
-        color: "#337ea0",
-        traits: "Espontâneo, protetor e irônico. Usa humor para aliviar a pressão.",
-        reason: "A amizade cresceu depois que Leo protegeu Caio durante uma crise no vestiário.",
-        lastEvent: "Convidou Caio para um jantar com o grupo antes da viagem.",
-        knows: ["Sondagem espanhola", "Discussão no vestiário"],
-        secret: "Não sabe que Caio ainda considera ouvir a proposta.",
-      },
-      {
-        id: "viktor",
-        name: "Viktor Hale",
-        role: "Treinador principal",
-        relation: "Mentor exigente",
-        trust: 76,
-        respect: 91,
-        tension: 31,
-        initials: "VH",
-        color: "#53645a",
-        traits: "Metódico, reservado e obcecado por responsabilidade coletiva.",
-        reason: "Confia no talento de Caio, mas testa sua maturidade nos momentos de maior exposição.",
-        lastEvent: "Chamou Caio para uma conversa privada sobre o jogo em Nápoles.",
-        knows: ["Cláusulas do contrato", "Pressão da diretoria"],
-        secret: "Não conhece a sondagem espanhola recebida por Rafael.",
-      },
-      {
-        id: "rafael",
-        name: "Rafael Nunes",
-        role: "Empresário",
-        relation: "Aliado estratégico",
-        trust: 82,
-        respect: 72,
-        tension: 23,
-        initials: "RN",
-        color: "#8a6440",
-        traits: "Persuasivo, calculista e genuinamente leal quando não há câmeras.",
-        reason: "Conduziu a ida para Londres, mas sua pressa por grandes acordos gera atrito.",
-        lastEvent: "Pediu uma resposta sobre a renovação comercial até sexta-feira.",
-        knows: ["Sondagem espanhola", "Patrimônio", "Plano de carreira"],
-        secret: "Ainda não contou que a proposta publicitária exige exclusividade.",
-      },
-      {
-        id: "maya",
-        name: "Maya Silva",
-        role: "Jornalista · Touchline",
-        relation: "Respeito cauteloso",
-        trust: 59,
-        respect: 78,
-        tension: 42,
-        initials: "MS",
-        color: "#82527c",
-        traits: "Perspicaz, direta e paciente. Percebe contradições rapidamente.",
-        reason: "Caio foi honesto numa entrevista difícil, mas ela não abre mão de perguntas incômodas.",
-        lastEvent: "Pediu autorização para publicar uma fala sobre a torcida.",
-        knows: ["Incômodo com a imprensa", "Amizade com Leo"],
-        secret: "Não sabe nada sobre a sondagem ou a negociação comercial.",
-      },
-      {
-        id: "dante",
-        name: "Dante Moretti",
-        role: "Rival · Napoli",
-        relation: "Rivalidade pública",
-        trust: 14,
-        respect: 67,
-        tension: 86,
-        initials: "DM",
-        color: "#5a65a0",
-        traits: "Provocador, carismático e muito consciente da própria imagem.",
-        reason: "A rivalidade começou após uma provocação em jogo de seleções e cresceu nas redes.",
-        lastEvent: "Curtiu um post dizendo que Caio desaparece fora de casa.",
-        knows: ["Declarações públicas", "Números da temporada"],
-        secret: "Só conhece a persona pública de Caio.",
-      },
-      {
-        id: "ana",
-        name: "Ana Alexandre",
-        role: "Irmã mais velha",
-        relation: "Porto seguro",
-        trust: 96,
-        respect: 89,
-        tension: 5,
-        initials: "AA",
-        color: "#8b5a61",
-        traits: "Prática, afetuosa e imune à fama do irmão.",
-        reason: "Foi quem acompanhou Caio nos primeiros testes e ainda é sua voz de realidade.",
-        lastEvent: "Ligou para saber se ele está dormindo bem antes da Champions.",
-        knows: ["História completa", "Sondagem espanhola", "Medos pessoais"],
-        secret: "É uma das poucas pessoas que conhece a dimensão real da pressão.",
-      },
-    ],
-    lastStoryPack: null,
-    chanceEvents: [],
-  };
-
-  const ui = {
-    route: getRouteFromHash(),
-    canonFilter: "all",
-    canonSearch: "",
-    universeTab: "social",
-    selectedCharacter: "viktor",
-    goalEntries: [
-      { minute: 31, detail: "Corte da direita para o centro e finalização rasteira no canto." },
-      { minute: 90, detail: "Rebote na entrada da área e chute de primeira para virar o jogo." },
-    ],
-    postgameDraft: {
-      competition: "Premier League",
-      homeClub: "Chelsea",
-      awayClub: "Liverpool",
-      homeScore: 3,
-      awayScore: 2,
-      goals: 2,
-      assists: 0,
-      rating: 9.2,
-      minutes: 90,
-      cards: "Nenhum",
-      injury: "Não",
-      notes: "Gol da vitória aos 90 minutos. A torcida cantou o nome de Caio após o apito final.",
-    },
+  var STORAGE_KEY = "inyffx-interface-v2";
+  var SESSION_KEY = "inyffx-active-career-v2";
+  var SPOTIFY_TOKEN_KEY = "inyffx-spotify-token-v1";
+  var SPOTIFY_VERIFIER_KEY = "inyffx-spotify-verifier-v1";
+  var SPOTIFY_STATE_KEY = "inyffx-spotify-state-v1";
+  var ROUTES = ["kick-off", "fyx-news", "relationships", "seasons", "player-career", "off-the-pitch"];
+  var TOOL_TITLES = { match: "MODELO DE PARTIDA", wheel: "ROLETA", dice: "ROLAGEM DE DADOS" };
+  var WHEEL_COLORS = ["#37484f", "#52636c", "#365c69", "#604e70", "#68704e", "#4b5d72", "#6a4f4f", "#38615c", "#5b536d", "#4f6261", "#5f6542", "#485078"];
+  var PUBLIC_CONFIG = window.INYFFX_CONFIG || {};
+  var state = loadState();
+  var ui = {
+    authTab: "login",
+    createStep: 1,
+    route: "kick-off",
+    newsFilter: "all",
+    careerTab: "pay",
     dieSides: 20,
-    roll: null,
-    rollEvent: null,
-    typing: false,
-    wizardStep: 1,
-    draftCareer: null,
+    lastDice: null,
+    wheelResult: "",
+    wheelRotation: 0,
+    settingsDraft: null,
+    settingsSaved: false,
+    spotifyTimer: null,
+    sending: false
   };
+  var el = {};
 
-  let state = loadState();
-  const main = document.querySelector("#mainContent");
-  const modalRoot = document.querySelector("#modalRoot");
-  const toastRegion = document.querySelector("#toastRegion");
-
-  function clone(value) {
-    return JSON.parse(JSON.stringify(value));
+  function blankState() {
+    return {
+      version: 2,
+      settings: {
+        apiBaseUrl: String(PUBLIC_CONFIG.apiBaseUrl || ""),
+        spotifyClientId: String(PUBLIC_CONFIG.spotifyClientId || ""),
+        backgroundData: "",
+        overlay: 58,
+        blur: 0
+      },
+      careers: []
+    };
   }
 
   function loadState() {
+    var fallback = blankState();
     try {
-      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
-      if (!saved || saved.version !== DEFAULT_STATE.version) return clone(DEFAULT_STATE);
-      return {
-        ...clone(DEFAULT_STATE),
-        ...saved,
-        settings: { ...DEFAULT_STATE.settings, ...(saved.settings || {}) },
-        career: { ...DEFAULT_STATE.career, ...(saved.career || {}) },
-        stats: { ...DEFAULT_STATE.stats, ...(saved.stats || {}) },
-      };
-    } catch {
-      return clone(DEFAULT_STATE);
+      var parsed = JSON.parse(localStorage.getItem(STORAGE_KEY));
+      if (!parsed || parsed.version !== 2 || !Array.isArray(parsed.careers)) return fallback;
+      parsed.settings = Object.assign({}, fallback.settings, parsed.settings || {});
+      parsed.careers = parsed.careers.map(normalizeCareer);
+      return parsed;
+    } catch (error) {
+      return fallback;
     }
+  }
+
+  function normalizeCareer(career) {
+    var safe = career && typeof career === "object" ? career : {};
+    safe.id = safe.id || uid("career");
+    safe.name = safe.name || "Carreira";
+    safe.auth = safe.auth || { email: "", passHash: "" };
+    safe.profile = safe.profile || {};
+    safe.messages = Array.isArray(safe.messages) ? safe.messages : [];
+    safe.canonEvents = Array.isArray(safe.canonEvents) ? safe.canonEvents : [];
+    safe.news = Array.isArray(safe.news) ? safe.news : [];
+    safe.characters = Array.isArray(safe.characters) ? safe.characters : [];
+    safe.seasons = Array.isArray(safe.seasons) ? safe.seasons : [];
+    safe.finance = Object.assign({ initialized: false, currency: "BRL", balance: 0, transactions: [], pockets: [] }, safe.finance || {});
+    safe.finance.transactions = Array.isArray(safe.finance.transactions) ? safe.finance.transactions : [];
+    safe.finance.pockets = Array.isArray(safe.finance.pockets) ? safe.finance.pockets : [];
+    safe.hall = Object.assign({ trophies: [], records: [], awards: [] }, safe.hall || {});
+    safe.hall.trophies = Array.isArray(safe.hall.trophies) ? safe.hall.trophies : [];
+    safe.hall.records = Array.isArray(safe.hall.records) ? safe.hall.records : [];
+    safe.hall.awards = Array.isArray(safe.hall.awards) ? safe.hall.awards : [];
+    safe.calendar = Array.isArray(safe.calendar) ? safe.calendar : [];
+    safe.offPitch = Object.assign({ currentCity: "", currentResidence: "", houses: [] }, safe.offPitch || {});
+    safe.offPitch.houses = Array.isArray(safe.offPitch.houses) ? safe.offPitch.houses : [];
+    safe.tools = Object.assign({ wheelEntries: ["", ""], diceHistory: [] }, safe.tools || {});
+    safe.tools.wheelEntries = Array.isArray(safe.tools.wheelEntries) && safe.tools.wheelEntries.length ? safe.tools.wheelEntries.slice(0, 12) : ["", ""];
+    while (safe.tools.wheelEntries.length < 2) safe.tools.wheelEntries.push("");
+    safe.tools.diceHistory = Array.isArray(safe.tools.diceHistory) ? safe.tools.diceHistory.slice(0, 16) : [];
+    safe.sceneNumber = Number(safe.sceneNumber || 1);
+    return safe;
   }
 
   function saveState() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  }
-
-  function getRouteFromHash() {
-    const candidate = window.location.hash.replace(/^#\/?/, "").split("?")[0];
-    return ROUTES.includes(candidate) ? candidate : "home";
-  }
-
-  function icon(name, className = "") {
-    return `<svg${className ? ` class="${className}"` : ""} aria-hidden="true"><use href="#i-${name}"></use></svg>`;
-  }
-
-  function escapeHTML(value) {
-    return String(value ?? "")
-      .replaceAll("&", "&amp;")
-      .replaceAll("<", "&lt;")
-      .replaceAll(">", "&gt;")
-      .replaceAll('"', "&quot;")
-      .replaceAll("'", "&#039;");
-  }
-
-  function initials(name) {
-    return String(name || "IX")
-      .trim()
-      .split(/\s+/)
-      .slice(0, 2)
-      .map((part) => part[0])
-      .join("")
-      .toUpperCase();
-  }
-
-  function avatar(data, size = "") {
-    return `<span class="avatar ${size}" style="background:linear-gradient(145deg,${escapeHTML(data.color || "#337ea0")},#172521)">${escapeHTML(data.initials || initials(data.name))}</span>`;
-  }
-
-  function tagFor(kind) {
-    const tags = {
-      game: ["game", "Fato do jogo"],
-      rp: ["rp", "Fato do RP"],
-      possible: ["possible", "Possibilidade"],
-      secret: ["secret", "Segredo"],
-    };
-    const [className, label] = tags[kind] || tags.rp;
-    return `<span class="tag tag-${className}">${label}</span>`;
-  }
-
-  function formatNumber(value) {
-    return new Intl.NumberFormat("pt-BR").format(Number(value || 0));
-  }
-
-  function formatMoney(value) {
-    return new Intl.NumberFormat("pt-BR", {
-      style: "currency",
-      currency: "GBP",
-      maximumFractionDigits: 0,
-    }).format(value);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      return true;
+    } catch (error) {
+      toast("Não foi possível salvar. A imagem de fundo pode ser grande demais para este navegador.", "error");
+      return false;
+    }
   }
 
   function uid(prefix) {
-    return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    var random = window.crypto && crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
+    return String(prefix || "id") + "-" + random;
   }
 
-  function updateChrome() {
-    document.documentElement.dataset.theme = state.theme;
-    document.querySelector("meta[name='theme-color']").content = state.theme === "dark" ? "#07100f" : "#f2f5ef";
-    document.querySelector("#careerSwitcherText").textContent = `${state.career.name} · ${state.career.club}`;
-    document.querySelectorAll(".avatar-caio").forEach((el) => {
-      el.textContent = initials(state.career.name);
+  function activeCareer() {
+    var activeId = sessionStorage.getItem(SESSION_KEY);
+    return state.careers.find(function (career) { return career.id === activeId; }) || null;
+  }
+
+  function cacheElements() {
+    [
+      "authGate", "appShell", "loginForm", "loginCareer", "loginPasscode", "loginHint", "loginError",
+      "createForm", "createError", "prevStep", "nextStep", "createCareer", "hubSidebar", "mobileMenu",
+      "mobileSettings", "mobileNavScrim", "openSettings", "openProfile", "careerSeason", "careerPlayerName",
+      "careerClub", "appMain", "chatMessages", "chatEmpty", "chatForm", "chatInput", "sendMessage",
+      "sceneLabel", "newScene", "aiStatusChip", "toolDrawer", "toolTitle", "closeTools", "matchTemplateForm",
+      "copyMatchTemplate", "insertMatchTemplate", "wheel", "wheelResult", "wheelEntries", "addWheelEntry",
+      "spinWheel", "useWheelResult", "dicePicker", "diceResult", "rollDice", "useDiceResult", "diceHistory",
+      "newsFilters", "newsContent", "relationshipSearch", "relationshipCount", "relationshipsContent",
+      "seasonSelect", "seasonsContent", "careerContent", "copyOffPitchTemplate", "insertOffPitchTemplate",
+      "offPitchTemplate", "residenceContent", "spotifyNow", "spotifyDisc", "spotifyStatus", "spotifyTrack",
+      "spotifyArtist", "settingsModal", "settingsForm", "backgroundUpload", "overlayRange", "overlayOutput",
+      "blurRange", "blurOutput", "resetBackground", "apiBaseUrl", "backendStatusDot", "backendStatusText",
+      "spotifyClientId", "spotifyRedirectUri", "copyRedirectUri", "disconnectSpotify", "connectSpotify",
+      "saveSettings", "profileModal", "profileContent", "closeProfile", "closeProfileFooter", "logoutCareer",
+      "customBackground", "toastRegion"
+    ].forEach(function (id) { el[id] = document.getElementById(id); });
+  }
+
+  function bindEvents() {
+    document.querySelectorAll("[data-auth-tab]").forEach(function (button) {
+      button.addEventListener("click", function () { setAuthTab(button.dataset.authTab); });
     });
-    document.querySelectorAll("[data-route]").forEach((button) => {
-      button.classList.toggle("active", button.dataset.route === ui.route);
+    document.querySelectorAll("[data-switch-auth]").forEach(function (button) {
+      button.addEventListener("click", function () { setAuthTab(button.dataset.switchAuth); });
     });
-    const soundtrack = document.querySelector("#soundtrack");
-    soundtrack.classList.toggle("closed", !state.settings.soundtrackVisible);
-    soundtrack.classList.toggle("playing", state.settings.soundtrackPlaying);
-    const soundButton = soundtrack.querySelector(".soundtrack-play");
-    soundButton.setAttribute("aria-label", state.settings.soundtrackPlaying ? "Pausar trilha" : "Reproduzir trilha");
+    el.prevStep.addEventListener("click", function () { setCreateStep(ui.createStep - 1); });
+    el.nextStep.addEventListener("click", function () { if (validateCurrentStep()) setCreateStep(ui.createStep + 1); });
+    el.createForm.addEventListener("submit", createCareerFromForm);
+    el.loginForm.addEventListener("submit", loginToCareer);
+    document.querySelectorAll("[data-route]").forEach(function (button) {
+      button.addEventListener("click", function () { navigate(button.dataset.route); });
+    });
+    document.querySelectorAll("[data-route-link]").forEach(function (link) {
+      link.addEventListener("click", function (event) {
+        event.preventDefault();
+        navigate(link.dataset.routeLink);
+      });
+    });
+    window.addEventListener("hashchange", routeFromHash);
+    el.mobileMenu.addEventListener("click", toggleMobileNav);
+    el.mobileNavScrim.addEventListener("click", closeMobileNav);
+    el.openSettings.addEventListener("click", openSettings);
+    el.mobileSettings.addEventListener("click", openSettings);
+    el.openProfile.addEventListener("click", openProfile);
+    el.closeProfile.addEventListener("click", closeProfile);
+    el.closeProfileFooter.addEventListener("click", closeProfile);
+    el.logoutCareer.addEventListener("click", logout);
+    el.chatForm.addEventListener("submit", sendChatMessage);
+    el.chatInput.addEventListener("keydown", function (event) {
+      if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+        event.preventDefault();
+        el.chatForm.requestSubmit();
+      }
+    });
+    el.chatInput.addEventListener("input", autosizeComposer);
+    el.newScene.addEventListener("click", startNewScene);
+    document.querySelectorAll("[data-open-tool]").forEach(function (button) {
+      button.addEventListener("click", function () { openTool(button.dataset.openTool); });
+    });
+    el.closeTools.addEventListener("click", closeTools);
+    document.querySelectorAll("[data-tool-tab]").forEach(function (button) {
+      button.addEventListener("click", function () { selectTool(button.dataset.toolTab); });
+    });
+    el.copyMatchTemplate.addEventListener("click", function () {
+      copyText(buildMatchTemplate()).then(function () { toast("Modelo de partida copiado."); });
+    });
+    el.insertMatchTemplate.addEventListener("click", function () {
+      insertIntoChat(buildMatchTemplate());
+      closeTools();
+      toast("Modelo inserido no KICK OFF.");
+    });
+    el.addWheelEntry.addEventListener("click", addWheelEntry);
+    el.wheelEntries.addEventListener("input", updateWheelEntry);
+    el.wheelEntries.addEventListener("click", removeWheelEntry);
+    el.spinWheel.addEventListener("click", spinWheel);
+    el.useWheelResult.addEventListener("click", useWheelResult);
+    el.dicePicker.addEventListener("click", selectDie);
+    el.rollDice.addEventListener("click", rollDice);
+    el.useDiceResult.addEventListener("click", useDiceResult);
+    el.newsFilters.addEventListener("click", changeNewsFilter);
+    el.relationshipSearch.addEventListener("input", renderRelationships);
+    el.seasonSelect.addEventListener("change", renderSeasons);
+    document.querySelectorAll("[data-career-tab]").forEach(function (button) {
+      button.addEventListener("click", function () {
+        ui.careerTab = button.dataset.careerTab;
+        document.querySelectorAll("[data-career-tab]").forEach(function (item) { item.classList.toggle("is-active", item === button); });
+        renderCareerPage();
+      });
+    });
+    el.copyOffPitchTemplate.addEventListener("click", function () {
+      copyText(el.offPitchTemplate.textContent).then(function () { toast("Modelo OFF THE PITCH copiado."); });
+    });
+    el.insertOffPitchTemplate.addEventListener("click", function () {
+      insertIntoChat(el.offPitchTemplate.textContent);
+      navigate("kick-off");
+      toast("Relatório inserido no KICK OFF.");
+    });
+    el.settingsModal.addEventListener("close", function () {
+      document.body.classList.remove("is-modal-open");
+      if (!ui.settingsSaved) applyVisualSettings(state.settings);
+      ui.settingsDraft = null;
+    });
+    el.profileModal.addEventListener("close", function () { document.body.classList.remove("is-modal-open"); });
+    el.overlayRange.addEventListener("input", previewSettings);
+    el.blurRange.addEventListener("input", previewSettings);
+    el.backgroundUpload.addEventListener("change", importBackground);
+    el.resetBackground.addEventListener("click", resetBackgroundDraft);
+    el.saveSettings.addEventListener("click", saveSettings);
+    el.copyRedirectUri.addEventListener("click", function () {
+      copyText(getSpotifyRedirectUri()).then(function () { toast("Redirect URI copiada."); });
+    });
+    el.connectSpotify.addEventListener("click", beginSpotifyConnectFromSettings);
+    el.disconnectSpotify.addEventListener("click", function () { disconnectSpotify(true); });
+    el.spotifyNow.addEventListener("click", spotifySidebarAction);
+  }
+
+  function setAuthTab(name) {
+    ui.authTab = name === "create" ? "create" : "login";
+    document.querySelectorAll("[data-auth-tab]").forEach(function (button) {
+      var active = button.dataset.authTab === ui.authTab;
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-selected", String(active));
+    });
+    document.querySelectorAll("[data-auth-panel]").forEach(function (panel) {
+      panel.classList.toggle("is-active", panel.dataset.authPanel === ui.authTab);
+    });
+    el.loginError.textContent = "";
+    el.createError.textContent = "";
+  }
+
+  function setCreateStep(step) {
+    ui.createStep = Math.max(1, Math.min(4, step));
+    document.querySelectorAll("[data-form-step]").forEach(function (panel) {
+      panel.classList.toggle("is-active", Number(panel.dataset.formStep) === ui.createStep);
+    });
+    document.querySelectorAll("[data-progress]").forEach(function (segment) {
+      segment.classList.toggle("is-active", Number(segment.dataset.progress) <= ui.createStep);
+    });
+    el.prevStep.hidden = ui.createStep === 1;
+    el.nextStep.hidden = ui.createStep === 4;
+    el.createCareer.hidden = ui.createStep !== 4;
+    el.createError.textContent = "";
+    var card = document.querySelector(".auth-card");
+    if (card) card.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function validateCurrentStep() {
+    var current = document.querySelector('[data-form-step="' + ui.createStep + '"]');
+    if (!current) return true;
+    var inputs = Array.prototype.slice.call(current.querySelectorAll("input, select, textarea"));
+    for (var i = 0; i < inputs.length; i += 1) {
+      if (!inputs[i].checkValidity()) {
+        inputs[i].reportValidity();
+        return false;
+      }
+    }
+    return true;
+  }
+
+  async function createCareerFromForm(event) {
+    event.preventDefault();
+    if (ui.createStep !== 4) {
+      if (validateCurrentStep()) setCreateStep(ui.createStep + 1);
+      return;
+    }
+    if (!validateCurrentStep() || !el.createForm.checkValidity()) {
+      el.createForm.reportValidity();
+      return;
+    }
+    var data = new FormData(el.createForm);
+    var email = clean(data.get("email")).toLowerCase();
+    var passcode = String(data.get("passcode") || "");
+    if (state.careers.some(function (career) { return clean(career.auth && career.auth.email).toLowerCase() === email; })) {
+      el.createError.textContent = "Já existe uma carreira local com este e-mail.";
+      return;
+    }
+    el.createCareer.disabled = true;
+    el.createCareer.textContent = "CRIANDO...";
+    try {
+      var profile = {
+        playerName: clean(data.get("playerName")),
+        birthDate: clean(data.get("birthDate")),
+        nationality: clean(data.get("nationality")),
+        birthCity: clean(data.get("birthCity")),
+        pronouns: clean(data.get("pronouns")),
+        height: clean(data.get("height")),
+        weight: clean(data.get("weight")),
+        gameTitle: clean(data.get("gameTitle")),
+        platform: clean(data.get("platform")),
+        currentClub: clean(data.get("currentClub")),
+        league: clean(data.get("league")),
+        season: clean(data.get("season")),
+        shirtNumber: clean(data.get("shirtNumber")),
+        position: clean(data.get("position")),
+        secondaryPosition: clean(data.get("secondaryPosition")),
+        dominantFoot: clean(data.get("dominantFoot")),
+        playStyle: clean(data.get("playStyle")),
+        formerClubs: clean(data.get("formerClubs")),
+        personality: clean(data.get("personality")),
+        backstory: clean(data.get("backstory")),
+        careerGoals: clean(data.get("careerGoals")),
+        storyTone: clean(data.get("storyTone")),
+        depth: clean(data.get("depth")),
+        modules: data.getAll("modules").map(clean),
+        agentName: clean(data.get("agentName")),
+        coachName: clean(data.get("coachName")),
+        importantPeople: clean(data.get("importantPeople"))
+      };
+      var hasInitialBalance = String(data.get("initialBalance") || "") !== "";
+      var career = normalizeCareer({
+        id: uid("career"),
+        name: clean(data.get("careerName")),
+        auth: { email: email, passHash: await hashText(passcode) },
+        profile: profile,
+        messages: [],
+        canonEvents: [],
+        news: [],
+        characters: createInitialCharacters(profile),
+        seasons: [],
+        finance: {
+          initialized: hasInitialBalance,
+          currency: clean(data.get("currency")) || "BRL",
+          balance: numberOrZero(data.get("initialBalance")),
+          transactions: [],
+          pockets: []
+        },
+        hall: { trophies: [], records: [], awards: [] },
+        calendar: [],
+        offPitch: {
+          currentCity: clean(data.get("currentCity")),
+          currentResidence: clean(data.get("currentResidence")),
+          houses: []
+        },
+        tools: { wheelEntries: ["", ""], diceHistory: [] },
+        sceneNumber: 1,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      });
+      state.careers.push(career);
+      if (!saveState()) throw new Error("storage");
+      sessionStorage.setItem(SESSION_KEY, career.id);
+      el.createForm.reset();
+      setCreateStep(1);
+      populateLoginCareers();
+      startApp();
+      toast("Carreira criada. O universo começou vazio.");
+    } catch (error) {
+      el.createError.textContent = "Não foi possível criar a carreira neste navegador.";
+    } finally {
+      el.createCareer.disabled = false;
+      el.createCareer.innerHTML = "CRIAR E ENTRAR <span>→</span>";
+    }
+  }
+
+  function createInitialCharacters(profile) {
+    var characters = [];
+    function add(name, role) {
+      var cleaned = clean(name);
+      if (!cleaned) return;
+      if (characters.some(function (character) { return character.name.toLocaleLowerCase("pt-BR") === cleaned.toLocaleLowerCase("pt-BR"); })) return;
+      characters.push({
+        id: uid("character"),
+        name: cleaned,
+        role: role,
+        relationship: "Não avaliada",
+        relationshipLevel: null,
+        summary: "Registrado no cânone inicial como " + role.toLocaleLowerCase("pt-BR") + ".",
+        knownFacts: [],
+        secretsKnown: [],
+        lastUpdated: new Date().toISOString()
+      });
+    }
+    add(profile.agentName, "Empresário(a)");
+    add(profile.coachName, "Treinador(a)");
+    splitCommaList(profile.importantPeople).forEach(function (name) { add(name, "Pessoa importante"); });
+    return characters;
+  }
+
+  async function loginToCareer(event) {
+    event.preventDefault();
+    el.loginError.textContent = "";
+    var career = state.careers.find(function (item) { return item.id === el.loginCareer.value; });
+    if (!career) {
+      el.loginError.textContent = "Selecione uma carreira salva.";
+      return;
+    }
+    var candidate = await hashText(el.loginPasscode.value);
+    if (candidate !== career.auth.passHash) {
+      el.loginError.textContent = "Código de acesso incorreto.";
+      return;
+    }
+    sessionStorage.setItem(SESSION_KEY, career.id);
+    el.loginPasscode.value = "";
+    startApp();
+  }
+
+  function populateLoginCareers() {
+    if (!state.careers.length) {
+      el.loginCareer.innerHTML = '<option value="">Nenhuma carreira local</option>';
+      el.loginCareer.disabled = true;
+      el.loginPasscode.disabled = true;
+      el.loginHint.textContent = "Nenhuma carreira foi criada neste navegador.";
+      return;
+    }
+    el.loginCareer.disabled = false;
+    el.loginPasscode.disabled = false;
+    el.loginHint.textContent = "As carreiras salvas neste navegador aparecem aqui.";
+    el.loginCareer.innerHTML = '<option value="">Selecionar carreira</option>' + state.careers.map(function (career) {
+      return '<option value="' + escapeHTML(career.id) + '">' + escapeHTML(career.name) + " · " + escapeHTML(career.profile.playerName || "Jogador") + "</option>";
+    }).join("");
+  }
+
+  function showAuth() {
+    el.appShell.hidden = true;
+    el.authGate.hidden = false;
+    populateLoginCareers();
+    setAuthTab(state.careers.length ? "login" : "create");
+  }
+
+  function startApp() {
+    var career = activeCareer();
+    if (!career) {
+      showAuth();
+      return;
+    }
+    el.authGate.hidden = true;
+    el.appShell.hidden = false;
+    renderAll();
+    routeFromHash();
+    startSpotifyPolling();
+  }
+
+  function logout() {
+    sessionStorage.removeItem(SESSION_KEY);
+    closeProfile();
+    closeTools();
+    stopSpotifyPolling();
+    showAuth();
+    window.location.hash = "";
+    toast("Você saiu da carreira.");
   }
 
   function navigate(route) {
-    if (!ROUTES.includes(route)) route = "home";
-    closeMenus();
-    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
-    if (getRouteFromHash() === route) {
-      ui.route = route;
-      render();
-    } else {
-      window.location.hash = `#/${route}`;
+    var target = ROUTES.indexOf(route) >= 0 ? route : "kick-off";
+    if (window.location.hash.slice(1) !== target) window.location.hash = target;
+    else activateRoute(target);
+  }
+
+  function routeFromHash() {
+    var requested = window.location.hash.replace(/^#/, "");
+    activateRoute(ROUTES.indexOf(requested) >= 0 ? requested : "kick-off");
+  }
+
+  function activateRoute(route) {
+    ui.route = route;
+    document.querySelectorAll("[data-page]").forEach(function (page) { page.classList.toggle("is-active", page.dataset.page === route); });
+    document.querySelectorAll("[data-route]").forEach(function (button) { button.classList.toggle("is-active", button.dataset.route === route); });
+    closeMobileNav();
+    if (route !== "kick-off") closeTools();
+    renderRoute(route);
+    window.scrollTo({ top: 0, behavior: "instant" });
+  }
+
+  function renderRoute(route) {
+    if (!activeCareer()) return;
+    if (route === "kick-off") renderChat();
+    if (route === "fyx-news") renderNews();
+    if (route === "relationships") renderRelationships();
+    if (route === "seasons") renderSeasons();
+    if (route === "player-career") renderCareerPage();
+    if (route === "off-the-pitch") renderResidence();
+  }
+
+  function toggleMobileNav() {
+    var opening = !document.body.classList.contains("is-nav-open");
+    document.body.classList.toggle("is-nav-open", opening);
+    el.mobileNavScrim.hidden = !opening;
+  }
+
+  function closeMobileNav() {
+    document.body.classList.remove("is-nav-open");
+    el.mobileNavScrim.hidden = true;
+  }
+
+  function renderAll() {
+    var career = activeCareer();
+    if (!career) return;
+    el.careerPlayerName.textContent = career.profile.playerName || "JOGADOR";
+    el.careerSeason.textContent = career.profile.season ? "TEMPORADA " + career.profile.season : "CARREIRA ATIVA";
+    el.careerClub.textContent = career.profile.currentClub || "Clube ainda não definido";
+    el.sceneLabel.textContent = career.sceneNumber > 1 ? "Cena " + career.sceneNumber : "Roleplay livre";
+    renderChat();
+    renderNews();
+    renderRelationships();
+    populateSeasonSelect();
+    renderSeasons();
+    renderCareerPage();
+    renderResidence();
+    renderWheelEntries();
+    renderDiceHistory();
+    renderProfile();
+    updateBackendStatus();
+    applyVisualSettings(state.settings);
+  }
+
+  function renderChat() {
+    var career = activeCareer();
+    if (!career) return;
+    if (!career.messages.length) {
+      el.chatMessages.innerHTML = '<div class="empty-state empty-state--chat" id="chatEmpty"><span class="empty-state__index">00</span><h2>Seu universo começa na primeira mensagem.</h2><p>Você controla somente o seu personagem. A IA interpreta o mundo e os NPCs sem decidir o que você fala, sente ou faz.</p></div>';
+      return;
     }
-  }
-
-  function render() {
-    ui.route = getRouteFromHash();
-    const renderers = {
-      home: renderHome,
-      roleplay: renderRoleplay,
-      postgame: renderPostgame,
-      canon: renderCanon,
-      characters: renderCharacters,
-      universe: renderUniverse,
-    };
-    main.innerHTML = renderers[ui.route]();
-    document.title = `${routeLabel(ui.route)} · InyffX`;
-    updateChrome();
-    requestAnimationFrame(() => {
-      if (ui.route === "roleplay") scrollChat();
-    });
-  }
-
-  function routeLabel(route) {
-    return {
-      home: "Início",
-      roleplay: "Roleplay",
-      postgame: "Pós-jogo",
-      canon: "Cânone",
-      characters: "Personagens",
-      universe: "Universo",
-    }[route];
-  }
-
-  function showToast(title, message = "", type = "check") {
-    const node = document.createElement("div");
-    node.className = "toast";
-    node.innerHTML = `
-      <span class="toast-icon">${icon(type)}</span>
-      <span><strong>${escapeHTML(title)}</strong>${message ? `<span>${escapeHTML(message)}</span>` : ""}</span>
-      <button class="icon-button" type="button" data-action="dismiss-toast" aria-label="Fechar">${icon("close")}</button>
-    `;
-    toastRegion.append(node);
-    window.setTimeout(() => node.remove(), 4300);
-  }
-
-  function closeMenus() {
-    document.querySelectorAll(".menu-popover").forEach((menu) => menu.remove());
-  }
-
-  function closeModal() {
-    modalRoot.innerHTML = "";
-  }
-
-  function renderHome() {
-    const c = state.career;
-    const s = state.stats;
-    const completed = state.missions.filter((mission) => mission.done).length;
-    return `
-      <div class="page home-page">
-        <section class="home-hero">
-          <div class="hero-copy">
-            <span class="eyebrow">Temporada ${escapeHTML(c.season)}</span>
-            <h1>Boa noite, ${escapeHTML(c.name.split(" ")[0])}.<br><em>Seu mundo continua.</em></h1>
-            <p>Há 3 acontecimentos pendentes desde sua última cena. A imprensa ainda repercute o jogo contra o Liverpool, e Viktor quer falar antes da viagem.</p>
-            <div class="hero-actions">
-              <button class="button button-primary" type="button" data-route="roleplay">Continuar roleplay ${icon("arrow")}</button>
-              <button class="button button-ghost" type="button" data-route="postgame">Registrar partida</button>
-            </div>
-          </div>
-          <div class="match-visual">
-            <div class="pitch-orbit" aria-hidden="true"></div>
-            <div class="next-match-card">
-              <div class="next-match-top"><span>Próximo jogo</span><span class="live-badge"><i></i>${escapeHTML(state.nextMatch.date)}</span></div>
-              <div class="teams">
-                <div class="team"><span class="team-badge">C</span><strong>${escapeHTML(c.club)}</strong></div>
-                <span class="match-vs">VS</span>
-                <div class="team"><span class="team-badge">N</span><strong>${escapeHTML(state.nextMatch.opponent)}</strong></div>
-              </div>
-              <div class="match-time"><strong>${escapeHTML(state.nextMatch.time)} · ${escapeHTML(state.nextMatch.competition)}</strong><span>${escapeHTML(state.nextMatch.venue)}</span></div>
-            </div>
-          </div>
-        </section>
-
-        <section class="metrics-grid" aria-label="Resumo da temporada">
-          ${metricCard("Participações", s.appearances, "+3 este mês", 68)}
-          ${metricCard("Gols", s.goals, "vice-artilheiro", 76)}
-          ${metricCard("Assistências", s.assists, "+2 este mês", 59)}
-          ${metricCard("Nota média", Number(s.rating).toFixed(1), "↑ 0,3", 81)}
-        </section>
-
-        <section class="dashboard-grid">
-          <article class="card dashboard-card">
-            <div class="card-header">
-              <div><h2 class="card-title">Objetivos de hoje</h2><p class="card-subtitle">${completed} de ${state.missions.length} concluídos · ${state.missions.reduce((sum, item) => sum + (item.done ? item.xp : 0), 0)} XP</p></div>
-              <button class="text-link" type="button" data-action="generate-mission">Gerar objetivo ${icon("spark")}</button>
-            </div>
-            <div class="mission-list">
-              ${state.missions.map((mission) => `
-                <div class="mission ${mission.done ? "done" : ""}">
-                  <button class="mission-check" type="button" data-mission-id="${mission.id}" aria-label="${mission.done ? "Reabrir" : "Concluir"} objetivo">${icon("check")}</button>
-                  <div class="mission-copy"><strong>${escapeHTML(mission.title)}</strong><span>${escapeHTML(mission.detail)}</span></div>
-                  <span class="mission-xp">+${mission.xp} XP</span>
-                </div>
-              `).join("")}
-            </div>
-          </article>
-
-          <article class="card dashboard-card">
-            <div class="card-header">
-              <div><h2 class="card-title">Mensagens</h2><p class="card-subtitle">3 conversas aguardam você</p></div>
-              <button class="text-link" type="button" data-route="roleplay">Ver todas ${icon("arrow")}</button>
-            </div>
-            <div class="inbox-list">
-              ${state.inbox.map((item) => `
-                <button class="inbox-item ${item.unread ? "inbox-unread" : ""}" type="button" data-action="open-inbox" data-name="${escapeHTML(item.name)}">
-                  ${avatar(item, "avatar-sm")}
-                  <span class="inbox-copy"><strong>${escapeHTML(item.name)}</strong><span>${escapeHTML(item.preview)}</span></span>
-                  <time>${escapeHTML(item.time)}</time>
-                </button>
-              `).join("")}
-            </div>
-          </article>
-
-          <article class="card dashboard-card">
-            <div class="card-header">
-              <div><h2 class="card-title">Últimos no cânone</h2><p class="card-subtitle">Memória objetiva da carreira</p></div>
-              <button class="text-link" type="button" data-route="canon">Linha do tempo ${icon("arrow")}</button>
-            </div>
-            <div class="timeline-compact">
-              ${state.timeline.slice(0, 4).map((event) => `
-                <div class="timeline-mini-item">
-                  <div class="timeline-date"><strong>${escapeHTML(event.day)}</strong><span>${escapeHTML(event.month)}</span></div>
-                  <div class="timeline-mini-copy"><strong>${escapeHTML(event.title)}</strong><p>${escapeHTML(event.category)} · ${event.kind === "game" ? "fato importado" : "memória atualizada"}</p></div>
-                </div>
-              `).join("")}
-            </div>
-          </article>
-        </section>
-      </div>
-    `;
-  }
-
-  function metricCard(label, value, trend, percent) {
-    return `
-      <article class="card metric-card">
-        <small>${escapeHTML(label)}</small>
-        <div class="metric-value"><strong>${escapeHTML(value)}</strong><span>${escapeHTML(trend)}</span></div>
-        <div class="metric-bar"><i style="width:${percent}%"></i></div>
-      </article>
-    `;
-  }
-
-  function renderRoleplay() {
-    const coach = state.characters.find((character) => character.id === "viktor") || state.characters[0];
-    const messages = state.chat.map(renderChatMessage).join("");
-    return `
-      <div class="page roleplay-page">
-        <section class="roleplay-layout">
-          <div class="scene-panel">
-            <header class="scene-header">
-              <div class="scene-title-wrap">
-                <span class="scene-icon">${icon("message")}</span>
-                <span><strong>Sala de vídeo · Cobham</strong><span>26 de agosto · 22:15 · Chuva fraca</span></span>
-              </div>
-              <div class="scene-controls">
-                <span class="control-pill live"><i></i>Ao vivo</span>
-                <button class="control-pill" type="button" data-action="save-scene">Salvar marco</button>
-                <button class="icon-button" type="button" data-action="scene-options" aria-label="Opções da cena">${icon("more")}</button>
-              </div>
-            </header>
-            <div class="agency-banner">${icon("lock")}<span><strong>Agência do jogador protegida:</strong> a IA controla o mundo; somente você controla ${escapeHTML(state.career.name.split(" ")[0])}.</span></div>
-            <div class="chat-scroll" id="chatScroll">
-              <div class="scene-marker">Cena 41 · Antes de Nápoles</div>
-              ${messages}
-              ${ui.typing ? renderTyping(coach) : ""}
-            </div>
-            <div class="composer-wrap">
-              <div class="quick-prompts">
-                <button class="quick-prompt" type="button" data-prompt="Perguntar o que ele espera de mim">Perguntar o que ele espera</button>
-                <button class="quick-prompt" type="button" data-prompt="Dizer que estou pronto para a pressão">Dizer que estou pronto</button>
-                <button class="quick-prompt" type="button" data-prompt="Mudar o assunto para a escalação">Falar da escalação</button>
-              </div>
-              <form class="composer" id="roleplayForm">
-                <button class="icon-button" type="button" data-action="attach-image" aria-label="Anexar screenshot">${icon("image")}</button>
-                <textarea id="rpInput" name="message" rows="1" maxlength="1200" placeholder="O que ${escapeHTML(state.career.name.split(" ")[0])} diz ou faz?"></textarea>
-                <button class="icon-button send-button" type="submit" aria-label="Enviar resposta">${icon("send")}</button>
-              </form>
-              <p class="composer-note">Enter envia · Shift + Enter quebra a linha · suas ações viram cânone apenas quando confirmadas na cena</p>
-            </div>
-          </div>
-
-          <aside class="context-panel" aria-label="Contexto recuperado pela memória">
-            <div class="context-heading"><strong>Contexto recuperado</strong><span class="memory-health"><i></i>Memória íntegra</span></div>
-            <article class="context-card">
-              <div class="context-card-label"><span>Personagem em cena</span>${icon("users")}</div>
-              <div class="context-person">${avatar(coach, "avatar-sm")}<span><strong>${escapeHTML(coach.name)}</strong><span>${escapeHTML(coach.relation)}</span></span></div>
-              <div class="relation-meter"><i style="width:${coach.trust}%"></i></div>
-              <div class="relation-caption"><span>Confiança ${coach.trust}</span><span>Respeito ${coach.respect}</span></div>
-            </article>
-            <article class="context-card">
-              <div class="context-card-label"><span>Últimos fatos relevantes</span>${icon("timeline")}</div>
-              <div class="memory-fact">Dois gols contra o Liverpool; vitória aos 90'.</div>
-              <div class="memory-fact">Viktor cobrou responsabilidade coletiva há 12 dias.</div>
-              <div class="memory-fact">Próximo jogo fora de casa contra o Napoli.</div>
-            </article>
-            <article class="context-card">
-              <div class="context-card-label"><span>Conhecimento permitido</span>${icon("eye")}</div>
-              <div class="secret-row">${icon("lock")}<span>Viktor conhece a pressão da diretoria e as cláusulas do contrato.</span></div>
-              <div class="secret-row" style="margin-top:9px">${icon("lock")}<span>Ele <strong>não sabe</strong> sobre a sondagem espanhola.</span></div>
-            </article>
-            <article class="context-card">
-              <div class="context-card-label"><span>Intenção da cena</span>${icon("spark")}</div>
-              <div class="memory-fact">Testar maturidade antes de um ambiente hostil.</div>
-              <div class="memory-fact">Definir se Caio assume uma função de liderança.</div>
-            </article>
-          </aside>
-        </section>
-      </div>
-    `;
-  }
-
-  function renderChatMessage(message) {
-    if (message.type === "narration") {
-      return `<p class="narration">${escapeHTML(message.text)}</p>`;
-    }
-    const data = { name: message.speaker, initials: message.initials, color: message.color };
-    return `
-      <div class="chat-message ${message.type === "user" ? "user" : "npc"}">
-        ${avatar(data, "avatar-sm")}
-        <div class="message-body">
-          <div class="message-meta"><strong>${escapeHTML(message.speaker)}</strong>${message.role ? `<span>${escapeHTML(message.role)}</span>` : ""}<span>${escapeHTML(message.time || "agora")}</span></div>
-          <div class="message-bubble">${escapeHTML(message.text).replaceAll("\n", "<br>")}</div>
-        </div>
-      </div>
-    `;
-  }
-
-  function renderTyping(character) {
-    return `
-      <div class="chat-message npc" id="typingMessage">
-        ${avatar(character, "avatar-sm")}
-        <div class="message-body">
-          <div class="message-meta"><strong>${escapeHTML(character.name)}</strong><span>digitando</span></div>
-          <div class="message-bubble typing-bubble"><i></i><i></i><i></i></div>
-        </div>
-      </div>
-    `;
-  }
-
-  function scrollChat() {
-    const scroller = document.querySelector("#chatScroll");
-    if (scroller) scroller.scrollTop = scroller.scrollHeight;
-  }
-
-  function renderPostgame() {
-    const d = ui.postgameDraft;
-    const storyPack = state.lastStoryPack;
-    return `
-      <div class="page postgame-page">
-        <header class="page-header">
-          <div><span class="page-kicker">Entrada oficial</span><h1>O apito tocou.<br>Agora começa o mundo.</h1><p>Registre somente o que aconteceu no seu jogo. O InyffX constrói a repercussão sem alterar nenhum fato.</p></div>
-          <div class="page-header-actions"><button class="button button-ghost" type="button" data-action="load-match-example">Usar exemplo</button></div>
-        </header>
-        <section class="postgame-layout">
-          <form class="card form-card" id="postgameForm">
-            <div class="fact-rule">
-              <span class="fact-rule-icon">${icon("lock")}</span>
-              <div><strong>Camada factual bloqueada</strong><p>Placar, gols, cartões e lesões vêm do seu save. A narrativa pode interpretar o impacto — nunca reescrever o jogo.</p></div>
-            </div>
-
-            <div class="field-section">
-              <div class="section-label"><strong>Partida</strong><span>Dados obrigatórios</span></div>
-              <div class="form-grid">
-                <div class="form-field full"><label for="competition">Competição</label><select class="select" id="competition" data-pg-field="competition"><option ${selected(d.competition, "Premier League")}>Premier League</option><option ${selected(d.competition, "UEFA Champions League")}>UEFA Champions League</option><option ${selected(d.competition, "FA Cup")}>FA Cup</option><option ${selected(d.competition, "Amistoso")}>Amistoso</option></select></div>
-              </div>
-              <div class="score-entry" style="margin-top:13px">
-                <div class="form-field"><label for="homeClub">Mandante</label><input class="input" id="homeClub" data-pg-field="homeClub" value="${escapeHTML(d.homeClub)}"></div>
-                <div class="form-field"><label for="homeScore">Gols</label><input class="input score-input" id="homeScore" data-pg-field="homeScore" inputmode="numeric" type="number" min="0" max="20" value="${escapeHTML(d.homeScore)}"></div>
-                <div class="score-divider">×</div>
-                <div class="form-field"><label for="awayScore">Gols</label><input class="input score-input" id="awayScore" data-pg-field="awayScore" inputmode="numeric" type="number" min="0" max="20" value="${escapeHTML(d.awayScore)}"></div>
-                <div class="form-field"><label for="awayClub">Visitante</label><input class="input" id="awayClub" data-pg-field="awayClub" value="${escapeHTML(d.awayClub)}"></div>
-              </div>
-            </div>
-
-            <div class="field-section">
-              <div class="section-label"><strong>Desempenho de ${escapeHTML(state.career.name.split(" ")[0])}</strong><span>Fatos do jogo</span></div>
-              <div class="form-grid cols-4">
-                ${numberField("Gols", "goals", d.goals, "")}
-                ${numberField("Assistências", "assists", d.assists, "")}
-                ${numberField("Nota", "rating", d.rating, "/10", 0, 10, "0.1")}
-                ${numberField("Minutos", "minutes", d.minutes, "min", 0, 130)}
-              </div>
-              <div class="form-grid" style="margin-top:13px">
-                <div class="form-field"><label for="cards">Cartões</label><select class="select" id="cards" data-pg-field="cards"><option ${selected(d.cards, "Nenhum")}>Nenhum</option><option ${selected(d.cards, "Amarelo")}>Amarelo</option><option ${selected(d.cards, "Vermelho")}>Vermelho</option></select></div>
-                <div class="form-field"><label for="injury">Lesão</label><select class="select" id="injury" data-pg-field="injury"><option ${selected(d.injury, "Não")}>Não</option><option ${selected(d.injury, "Leve")}>Leve</option><option ${selected(d.injury, "Moderada")}>Moderada</option><option ${selected(d.injury, "Grave")}>Grave</option></select></div>
-              </div>
-            </div>
-
-            <div class="field-section">
-              <div class="section-label"><strong>Como os gols aconteceram</strong><button class="text-link" type="button" data-action="add-goal">${icon("plus")} Adicionar gol</button></div>
-              <div id="goalEntries">
-                ${ui.goalEntries.map((goal, index) => `
-                  <div class="goal-entry">
-                    <input class="input score-input" aria-label="Minuto do gol ${index + 1}" data-goal-index="${index}" data-goal-field="minute" type="number" min="1" max="130" value="${escapeHTML(goal.minute)}">
-                    <input class="input" aria-label="Descrição do gol ${index + 1}" data-goal-index="${index}" data-goal-field="detail" value="${escapeHTML(goal.detail)}">
-                    <button class="icon-button" type="button" data-action="remove-goal" data-goal-index="${index}" aria-label="Remover gol">${icon("close")}</button>
-                  </div>
-                `).join("")}
-              </div>
-            </div>
-
-            <div class="field-section">
-              <div class="section-label"><strong>Acontecimentos importantes</strong><span>Opcional</span></div>
-              <textarea class="textarea" id="notes" data-pg-field="notes" placeholder="Clima, torcida, falha, provocação, defesa decisiva...">${escapeHTML(d.notes)}</textarea>
-            </div>
-
-            <div class="form-actions">
-              <button class="button button-ghost" type="button" data-action="clear-match">Limpar</button>
-              <button class="button button-primary" type="submit">Gerar repercussão ${icon("spark")}</button>
-            </div>
-          </form>
-
-          <aside class="card output-card" id="storyOutput">
-            ${storyPack ? renderStoryPack(storyPack) : renderStoryEmpty()}
-          </aside>
-        </section>
-      </div>
-    `;
-  }
-
-  function selected(current, expected) {
-    return current === expected ? "selected" : "";
-  }
-
-  function numberField(label, field, value, suffix, min = 0, max = 99, step = "1") {
-    return `
-      <div class="form-field stat-entry">
-        <label for="${field}">${label}</label>
-        <input class="input" id="${field}" data-pg-field="${field}" type="number" inputmode="decimal" min="${min}" max="${max}" step="${step}" value="${escapeHTML(value)}">
-        ${suffix ? `<span>${suffix}</span>` : ""}
-      </div>
-    `;
-  }
-
-  function renderStoryEmpty() {
-    return `
-      <div class="output-empty">
-        <span class="output-orb">${icon("spark")}</span>
-        <h3>O mundo está esperando os fatos</h3>
-        <p>Preencha a partida para gerar manchetes, torcida, coletiva, mensagens e consequências sem contradizer seu save.</p>
-      </div>
-    `;
-  }
-
-  function renderStoryPack(pack) {
-    return `
-      <div class="story-pack">
-        <div class="story-cover">
-          <span class="tag">Crown Football · Agora</span>
-          <h3>${escapeHTML(pack.headline)}</h3>
-        </div>
-        <section class="story-section">
-          <strong>${icon("lock")} Fatos preservados</strong>
-          <div class="reaction-card"><p>${escapeHTML(pack.factLine)}</p></div>
-        </section>
-        <section class="story-section">
-          <strong>${icon("message")} Repercussão</strong>
-          ${pack.reactions.map((reaction) => `
-            <div class="reaction-card"><div class="reaction-author"><strong>${escapeHTML(reaction.author)}</strong><span>${escapeHTML(reaction.type)}</span></div><p>${escapeHTML(reaction.text)}</p></div>
-          `).join("")}
-        </section>
-        <section class="story-section">
-          <strong>${icon("mic")} Primeira pergunta da coletiva</strong>
-          <div class="reaction-card"><p>“${escapeHTML(pack.pressQuestion)}”</p></div>
-        </section>
-        <div class="canon-actions">
-          <button class="button" type="button" data-action="start-press-conference">Viver coletiva</button>
-          <button class="button button-primary" type="button" data-action="save-match-canon" ${pack.saved ? "disabled" : ""}>${pack.saved ? "Salvo no cânone" : "Confirmar cânone"}</button>
-        </div>
-      </div>
-    `;
-  }
-
-  function renderCanon() {
-    const filters = [
-      ["all", "Tudo"], ["game", "Jogo"], ["rp", "Roleplay"], ["secret", "Segredos"], ["possible", "Possibilidades"],
-    ];
-    const query = ui.canonSearch.trim().toLowerCase();
-    const filtered = state.timeline.filter((event) => {
-      const matchesKind = ui.canonFilter === "all" || event.kind === ui.canonFilter;
-      const matchesQuery = !query || `${event.title} ${event.description} ${event.category}`.toLowerCase().includes(query);
-      return matchesKind && matchesQuery;
-    });
-    let lastSeason = "";
-    const stream = filtered.map((event) => {
-      const divider = event.season !== lastSeason ? `<div class="season-divider">${escapeHTML(event.season)}</div>` : "";
-      lastSeason = event.season;
-      return `${divider}${renderCanonEvent(event)}`;
+    el.chatMessages.innerHTML = career.messages.map(function (message) {
+      var role = message.role === "assistant" ? "assistant" : "user";
+      var author = role === "assistant" ? "INYFFX" : (career.profile.playerName || "VOCÊ");
+      var label = role === "assistant" ? "NARRADOR" : "JOGADOR";
+      return [
+        '<article class="chat-message chat-message--', role, '">',
+        '<div class="chat-message__meta"><strong>', escapeHTML(author), '</strong><span>', escapeHTML(label), ' · ', escapeHTML(formatTime(message.createdAt)), '</span></div>',
+        '<div class="chat-message__body">', escapeHTML(message.content), '</div>',
+        "</article>"
+      ].join("");
     }).join("");
-
-    return `
-      <div class="page canon-page">
-        <header class="page-header">
-          <div><span class="page-kicker">Memória objetiva</span><h1>Cânone da carreira</h1><p>A verdade persistente do seu universo: fatos, relações, segredos e possibilidades claramente separados.</p></div>
-          <div class="page-header-actions"><button class="button button-ghost" type="button" data-action="export-save">${icon("download")} Exportar</button><button class="button button-primary" type="button" data-action="add-canon">${icon("plus")} Novo fato</button></div>
-        </header>
-
-        <section class="canon-summary">
-          <article class="card canon-summary-card"><span>Fatos objetivos</span><strong>${formatNumber(state.stats.canonFacts)}</strong><small>vindos do jogo e do usuário</small></article>
-          <article class="card canon-summary-card"><span>Eventos de RP</span><strong>${formatNumber(state.stats.rpEvents)}</strong><small>confirmados em cena</small></article>
-          <article class="card canon-summary-card"><span>Personagens</span><strong>${formatNumber(state.stats.characters)}</strong><small>com memória própria</small></article>
-          <article class="card canon-summary-card"><span>Segredos ativos</span><strong>${formatNumber(state.stats.secrets)}</strong><small>acesso limitado por personagem</small></article>
-        </section>
-
-        <div class="toolbar">
-          <div class="segmented" aria-label="Filtrar cânone">${filters.map(([value, label]) => `<button class="segment ${ui.canonFilter === value ? "active" : ""}" type="button" data-canon-filter="${value}">${label}</button>`).join("")}</div>
-          <label class="search-field">${icon("search")}<input class="input" id="canonSearch" value="${escapeHTML(ui.canonSearch)}" placeholder="Buscar no cânone"></label>
-        </div>
-
-        <section class="canon-layout">
-          <div class="card canon-stream">
-            ${stream || `<div class="empty-state">${icon("search")}<strong>Nenhum acontecimento encontrado</strong><p>Tente outro filtro ou uma busca diferente.</p></div>`}
-          </div>
-          <aside class="card memory-map">
-            <div class="card-header"><div><h2 class="card-title">Mapa de memória</h2><p class="card-subtitle">O que a IA recupera por contexto</p></div><span class="memory-health"><i></i>Saudável</span></div>
-            <div class="memory-map-visual">
-              <svg viewBox="0 0 280 240" preserveAspectRatio="none" aria-hidden="true"><line x1="140" y1="120" x2="55" y2="49"></line><line x1="140" y1="120" x2="225" y2="54"></line><line x1="140" y1="120" x2="55" y2="191"></line><line x1="140" y1="120" x2="222" y2="193"></line></svg>
-              <span class="memory-node center">${escapeHTML(state.career.name.split(" ")[0])}</span><span class="memory-node n1">Partidas</span><span class="memory-node n2">Relações</span><span class="memory-node n3">Locais</span><span class="memory-node n4">Segredos</span>
-            </div>
-            <div class="integrity-row"><span>Contradições detectadas</span><strong>0</strong></div>
-            <div class="integrity-row"><span>Eventos sem fonte</span><strong>2</strong></div>
-            <div class="integrity-row"><span>Última atualização</span><strong>agora</strong></div>
-            <button class="button" style="width:100%;margin-top:14px" type="button" data-action="inspect-memory">Inspecionar memória</button>
-          </aside>
-        </section>
-      </div>
-    `;
+    requestAnimationFrame(function () { el.chatMessages.scrollTop = el.chatMessages.scrollHeight; });
   }
 
-  function renderCanonEvent(event) {
-    return `
-      <article class="canon-event" data-kind="${event.kind}">
-        <div class="event-date"><strong>${escapeHTML(event.day)}</strong><span>${escapeHTML(event.month)}</span></div>
-        <div class="event-card">
-          <div class="event-top">${tagFor(event.kind)}<button class="text-link" type="button" data-action="event-options">•••</button></div>
-          <h3>${escapeHTML(event.title)}</h3><p>${escapeHTML(event.description)}</p>
-          <div class="event-people">${event.people.map((person) => avatar({ initials: person, color: person === "CA" ? "#337ea0" : "#53645a" })).join("")}<span>${escapeHTML(event.category)}</span></div>
-        </div>
-      </article>
-    `;
-  }
-
-  function renderCharacters() {
-    const selectedCharacter = state.characters.find((character) => character.id === ui.selectedCharacter) || state.characters[0];
-    return `
-      <div class="page characters-page">
-        <header class="page-header">
-          <div><span class="page-kicker">Pessoas, não barras</span><h1>Personagens</h1><p>Cada pessoa carrega personalidade, razões, lembranças e limites próprios de conhecimento.</p></div>
-          <div class="page-header-actions"><button class="button button-ghost" type="button" data-action="knowledge-matrix">${icon("eye")} Quem sabe o quê</button><button class="button button-primary" type="button" data-action="add-character">${icon("plus")} Novo personagem</button></div>
-        </header>
-        <div class="toolbar">
-          <div class="segmented"><button class="segment active" type="button">Todos</button><button class="segment" type="button">Clube</button><button class="segment" type="button">Família</button><button class="segment" type="button">Mídia</button><button class="segment" type="button">Rivais</button></div>
-          <label class="search-field">${icon("search")}<input class="input" placeholder="Buscar personagem"></label>
-        </div>
-        <section class="character-layout">
-          <div class="character-grid">
-            ${state.characters.map((character) => renderCharacterCard(character, character.id === selectedCharacter.id)).join("")}
-          </div>
-          ${renderDossier(selectedCharacter)}
-        </section>
-      </div>
-    `;
-  }
-
-  function renderCharacterCard(character, selectedCharacter) {
-    return `
-      <button class="card character-card ${selectedCharacter ? "selected" : ""}" type="button" data-character-id="${character.id}">
-        <span class="character-head">${avatar(character, "avatar-lg")}<span><strong>${escapeHTML(character.name)}</strong><span>${escapeHTML(character.role)}</span></span></span>
-        <span class="relationship-type"><span>${escapeHTML(character.relation)}</span><strong>${character.trust}/100</strong></span>
-        <span class="relation-meter"><i style="width:${character.trust}%"></i></span>
-        <span class="relationship-reason">${escapeHTML(character.reason)}</span>
-      </button>
-    `;
-  }
-
-  function renderDossier(character) {
-    return `
-      <aside class="card character-dossier">
-        <div class="dossier-cover">${avatar(character)}</div>
-        <div class="dossier-body">
-          <h2>${escapeHTML(character.name)}</h2><p class="dossier-role">${escapeHTML(character.role)} · ${escapeHTML(character.relation)}</p>
-          <div class="dossier-stats"><div class="dossier-stat"><strong>${character.trust}</strong><span>Confiança</span></div><div class="dossier-stat"><strong>${character.respect}</strong><span>Respeito</span></div><div class="dossier-stat"><strong>${character.tension}</strong><span>Tensão</span></div></div>
-          <section class="dossier-section"><strong>Como essa pessoa age</strong><p>${escapeHTML(character.traits)}</p></section>
-          <section class="dossier-section"><strong>Último acontecimento</strong><p>${escapeHTML(character.lastEvent)}</p></section>
-          <section class="dossier-section"><strong>O que sabe</strong><div>${character.knows.map((fact) => `<span class="knowledge-chip">${icon("eye")}${escapeHTML(fact)}</span>`).join("")}</div></section>
-          <section class="dossier-section"><strong>Limite de conhecimento</strong><p>${escapeHTML(character.secret)}</p></section>
-          <div class="inline-actions"><button class="button button-primary" type="button" data-action="start-character-scene" data-character-id="${character.id}">Iniciar cena</button><button class="button" type="button" data-action="edit-character">Editar ficha</button></div>
-        </div>
-      </aside>
-    `;
-  }
-
-  function renderUniverse() {
-    const tabs = [
-      ["social", "message", "Social"],
-      ["news", "spark", "Notícias"],
-      ["calendar", "calendar", "Calendário"],
-      ["finances", "wallet", "Finanças"],
-      ["hall", "trophy", "Hall da carreira"],
-    ];
-    return `
-      <div class="page universe-page">
-        <header class="page-header">
-          <div><span class="page-kicker">O mundo ao redor</span><h1>Seu universo</h1><p>Mídia, torcida, rotina, patrimônio e acaso — tudo conectado ao mesmo cânone.</p></div>
-          <div class="page-header-actions"><button class="button button-primary" type="button" data-action="roll-die">${icon("dice")} Rolar evento</button></div>
-        </header>
-        <nav class="universe-tabs" aria-label="Áreas do universo">
-          ${tabs.map(([value, iconName, label]) => `<button class="universe-tab ${ui.universeTab === value ? "active" : ""}" type="button" data-universe-tab="${value}">${icon(iconName)}${label}</button>`).join("")}
-        </nav>
-        <section class="universe-layout">
-          <div>${renderUniverseContent()}</div>
-          ${renderChanceCard()}
-        </section>
-      </div>
-    `;
-  }
-
-  function renderUniverseContent() {
-    const renderers = {
-      social: renderSocial,
-      news: renderNews,
-      calendar: renderCalendar,
-      finances: renderFinances,
-      hall: renderHall,
+  async function sendChatMessage(event) {
+    event.preventDefault();
+    if (ui.sending) return;
+    var career = activeCareer();
+    var content = clean(el.chatInput.value);
+    if (!career || !content) return;
+    var userMessage = {
+      id: uid("message"),
+      role: "user",
+      content: content,
+      scene: career.sceneNumber,
+      createdAt: new Date().toISOString()
     };
-    return renderers[ui.universeTab]();
+    career.messages.push(userMessage);
+    career.updatedAt = userMessage.createdAt;
+    var matchAdded = registerMatchFromMessage(career, userMessage);
+    saveState();
+    el.chatInput.value = "";
+    autosizeComposer();
+    renderAll();
+    if (matchAdded) toast("Partida registrada em SEASONS e repercussão factual criada em FYX NEWS.");
+    var apiBaseUrl = clean(state.settings.apiBaseUrl);
+    if (!apiBaseUrl) {
+      toast("Mensagem salva localmente. Conecte o backend para receber a resposta da IA.");
+      return;
+    }
+    ui.sending = true;
+    el.sendMessage.disabled = true;
+    setAiStatus("IA PENSANDO", true);
+    appendPendingMessage();
+    try {
+      var response = await fetch(joinUrl(apiBaseUrl, "/v1/roleplay/message"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          schemaVersion: "1.0",
+          careerId: career.id,
+          message: { id: userMessage.id, content: userMessage.content, scene: userMessage.scene, createdAt: userMessage.createdAt },
+          context: buildBackendContext(career)
+        })
+      });
+      if (!response.ok) throw new Error("HTTP " + response.status);
+      var payload = await response.json();
+      removePendingMessage();
+      var reply = clean(payload.reply || (payload.message && payload.message.content));
+      if (reply) {
+        career.messages.push({
+          id: (payload.message && payload.message.id) || uid("message"),
+          role: "assistant",
+          content: reply,
+          scene: career.sceneNumber,
+          createdAt: (payload.message && payload.message.createdAt) || new Date().toISOString()
+        });
+      }
+      applyMemoryUpdates(career, payload.memoryUpdates || payload.updates || payload.memory || {});
+      career.updatedAt = new Date().toISOString();
+      saveState();
+      renderAll();
+      setAiStatus("IA CONECTADA", true);
+    } catch (error) {
+      removePendingMessage();
+      setAiStatus("FALHA NA CONEXÃO", false);
+      toast("A mensagem foi salva, mas o backend não respondeu. Verifique a URL e o CORS.", "error");
+    } finally {
+      ui.sending = false;
+      el.sendMessage.disabled = false;
+    }
   }
 
-  function renderSocial() {
-    const posts = [
-      { initials: "CF", color: "#2f6b54", name: "Crown Football", handle: "@crownfootball", text: `${state.career.name.split(" ")[0]} decidiu aos 90'. Duas finalizações, dois gols e Stamford Bridge em êxtase. Noite de protagonista.`, likes: "18,4 mil", replies: "1,2 mil", verified: true },
-      { initials: "DM", color: "#5a65a0", name: "Dante Moretti", handle: "@dantemoretti", text: "Em casa todo mundo parece gigante. Quero ver quando o estádio inteiro estiver contra você. 🇮🇹", likes: "42,1 mil", replies: "4,8 mil", verified: true },
-      { initials: "BL", color: "#1748c7", name: "Blue London BR", handle: "@bluelondonbr", text: "Ele aponta para o escudo depois do gol e vocês querem que a gente tenha calma? O homem ENTENDEU o clube.", likes: "9,7 mil", replies: "682", verified: false },
-      { initials: "MS", color: "#82527c", name: "Maya Silva", handle: "@mayasilva", text: "Além dos gols: a resposta mais interessante da coletiva foi sobre responsabilidade. Há uma mudança clara no discurso de Caio.", likes: "3,1 mil", replies: "214", verified: true },
-    ];
-    return `<article class="card feed-card"><div class="card-header"><div><h2 class="card-title">Em alta na sua bolha</h2><p class="card-subtitle">Feed fictício gerado a partir do cânone</p></div><span class="status-chip"><i></i>Ao vivo</span></div>${posts.map((post) => `<div class="feed-item">${avatar(post, "avatar-sm")}<div class="feed-copy"><div class="feed-meta"><strong>${escapeHTML(post.name)}</strong>${post.verified ? `<span class="verified">●</span>` : ""}<span>${escapeHTML(post.handle)} · 12 min</span></div><p>${escapeHTML(post.text)}</p><div class="feed-actions"><span>♡ ${post.likes}</span><span>◯ ${post.replies}</span><span>↗ compartilhar</span></div></div></div>`).join("")}</article>`;
+  function appendPendingMessage() {
+    var article = document.createElement("article");
+    article.className = "chat-message chat-message--assistant is-pending";
+    article.id = "pendingMessage";
+    article.innerHTML = '<div class="chat-message__meta"><strong>INYFFX</strong><span>NARRADOR</span></div><div class="chat-message__body">Construindo a próxima parte da cena</div>';
+    el.chatMessages.appendChild(article);
+    el.chatMessages.scrollTop = el.chatMessages.scrollHeight;
+  }
+
+  function removePendingMessage() {
+    var pending = document.getElementById("pendingMessage");
+    if (pending) pending.remove();
+  }
+
+  function buildBackendContext(career) {
+    return {
+      profile: career.profile,
+      scene: career.sceneNumber,
+      recentMessages: career.messages.slice(-12).map(function (message) {
+        return { role: message.role, content: message.content, createdAt: message.createdAt };
+      }),
+      retrievalRequest: {
+        includeRelevantCharacters: true,
+        includeRecentCanon: true,
+        includeCurrentSeason: true,
+        includeSecretsByKnowledgeScope: true
+      }
+    };
+  }
+
+  function applyMemoryUpdates(career, updates) {
+    if (!updates || typeof updates !== "object") return;
+    upsertMany(career.news, updates.news);
+    upsertMany(career.characters, updates.characters);
+    upsertMany(career.canonEvents, updates.canonEvents);
+    upsertMany(career.calendar, updates.calendar);
+    if (Array.isArray(updates.seasons)) {
+      updates.seasons.forEach(function (incoming) {
+        if (!incoming || !incoming.label) return;
+        var season = career.seasons.find(function (item) { return item.label === incoming.label; });
+        if (!season) career.seasons.push(Object.assign({ id: uid("season"), matches: [] }, incoming));
+        else {
+          upsertMany(season.matches, Array.isArray(incoming.matches) ? incoming.matches : []);
+          Object.keys(incoming).forEach(function (key) { if (key !== "matches") season[key] = incoming[key]; });
+        }
+      });
+    }
+    if (updates.finance && typeof updates.finance === "object") {
+      if (Number.isFinite(Number(updates.finance.balance))) {
+        career.finance.balance = Number(updates.finance.balance);
+        career.finance.initialized = true;
+      }
+      if (updates.finance.currency) career.finance.currency = clean(updates.finance.currency);
+      upsertMany(career.finance.transactions, updates.finance.transactions);
+      upsertMany(career.finance.pockets, updates.finance.pockets);
+    }
+    if (updates.hall && typeof updates.hall === "object") {
+      upsertMany(career.hall.trophies, updates.hall.trophies);
+      upsertMany(career.hall.records, updates.hall.records);
+      upsertMany(career.hall.awards, updates.hall.awards);
+    }
+    if (updates.offPitch && typeof updates.offPitch === "object") {
+      if (typeof updates.offPitch.currentCity === "string") career.offPitch.currentCity = clean(updates.offPitch.currentCity);
+      if (typeof updates.offPitch.currentResidence === "string") career.offPitch.currentResidence = clean(updates.offPitch.currentResidence);
+      upsertMany(career.offPitch.houses, updates.offPitch.houses);
+    }
+  }
+
+  function upsertMany(target, incoming) {
+    if (!Array.isArray(target) || !Array.isArray(incoming)) return;
+    incoming.forEach(function (item) {
+      if (!item || typeof item !== "object") return;
+      var normalized = Object.assign({}, item);
+      normalized.id = normalized.id || uid("memory");
+      var index = target.findIndex(function (existing) { return existing.id === normalized.id; });
+      if (index >= 0) target[index] = Object.assign({}, target[index], normalized);
+      else target.push(normalized);
+    });
+  }
+
+  function startNewScene() {
+    var career = activeCareer();
+    if (!career) return;
+    career.sceneNumber += 1;
+    career.updatedAt = new Date().toISOString();
+    el.sceneLabel.textContent = "Cena " + career.sceneNumber;
+    saveState();
+    toast("Cena " + career.sceneNumber + " iniciada. O cânone anterior foi preservado.");
+    el.chatInput.focus();
+  }
+
+  function autosizeComposer() {
+    el.chatInput.style.height = "auto";
+    el.chatInput.style.height = Math.min(el.chatInput.scrollHeight, 190) + "px";
+  }
+
+  function openTool(tool) {
+    selectTool(tool);
+    el.toolDrawer.classList.add("is-open");
+    el.toolDrawer.setAttribute("aria-hidden", "false");
+    document.querySelector(".kick-layout").classList.add("has-tools");
+  }
+
+  function closeTools() {
+    el.toolDrawer.classList.remove("is-open");
+    el.toolDrawer.setAttribute("aria-hidden", "true");
+    var layout = document.querySelector(".kick-layout");
+    if (layout) layout.classList.remove("has-tools");
+  }
+
+  function selectTool(tool) {
+    var target = TOOL_TITLES[tool] ? tool : "match";
+    el.toolTitle.textContent = TOOL_TITLES[target];
+    document.querySelectorAll("[data-tool-tab]").forEach(function (button) { button.classList.toggle("is-active", button.dataset.toolTab === target); });
+    document.querySelectorAll("[data-tool-panel]").forEach(function (panel) { panel.classList.toggle("is-active", panel.dataset.toolPanel === target); });
+    if (target === "wheel") renderWheelEntries();
+    if (target === "dice") renderDiceHistory();
+  }
+
+  function buildMatchTemplate() {
+    var data = new FormData(el.matchTemplateForm);
+    function value(name) {
+      var result = clean(data.get(name));
+      return result || "Não informado";
+    }
+    return [
+      "[PARTIDA OFICIAL]",
+      "Data: " + value("date"),
+      "Temporada: " + value("season"),
+      "Competição: " + value("competition"),
+      "Mandante: " + value("homeTeam"),
+      "Gols do mandante: " + value("homeScore"),
+      "Visitante: " + value("awayTeam"),
+      "Gols do visitante: " + value("awayScore"),
+      "Minutos jogados: " + value("minutes"),
+      "Nota: " + value("rating"),
+      "Gols do meu jogador: " + value("goals"),
+      "Assistências: " + value("assists"),
+      "Cartões: " + value("cards"),
+      "Lesão: " + value("injury"),
+      "Como os gols aconteceram:",
+      value("goalDetails"),
+      "Acontecimentos importantes:",
+      value("highlights"),
+      "[/PARTIDA OFICIAL]"
+    ].join("\n");
+  }
+
+  function registerMatchFromMessage(career, message) {
+    var fields = parseTaggedBlock(message.content, "PARTIDA OFICIAL");
+    if (!fields) return false;
+    var homeTeam = validField(fieldValue(fields, "mandante"));
+    var awayTeam = validField(fieldValue(fields, "visitante"));
+    var homeScore = parseStrictNumber(fieldValue(fields, "gols do mandante"));
+    var awayScore = parseStrictNumber(fieldValue(fields, "gols do visitante"));
+    if (!homeTeam || !awayTeam || homeScore === null || awayScore === null) {
+      toast("O modelo foi enviado, mas mandante, visitante e placar precisam estar preenchidos para atualizar SEASONS.", "error");
+      return false;
+    }
+    var existing = career.seasons.some(function (season) {
+      return (season.matches || []).some(function (match) { return match.sourceMessageId === message.id; });
+    });
+    if (existing) return false;
+    var seasonLabel = validField(fieldValue(fields, "temporada")) || career.profile.season || "Sem temporada definida";
+    var season = career.seasons.find(function (item) { return item.label === seasonLabel; });
+    if (!season) {
+      season = { id: uid("season"), label: seasonLabel, matches: [] };
+      career.seasons.unshift(season);
+    }
+    var match = {
+      id: uid("match"),
+      sourceMessageId: message.id,
+      date: validField(fieldValue(fields, "data")),
+      season: seasonLabel,
+      competition: validField(fieldValue(fields, "competicao")),
+      homeTeam: homeTeam,
+      awayTeam: awayTeam,
+      homeScore: homeScore,
+      awayScore: awayScore,
+      minutes: numberOrZero(fieldValue(fields, "minutos jogados")),
+      rating: numberOrZero(fieldValue(fields, "nota")),
+      goals: numberOrZero(fieldValue(fields, "gols do meu jogador")),
+      assists: numberOrZero(fieldValue(fields, "assistencias")),
+      cards: validField(fieldValue(fields, "cartoes")),
+      injury: validField(fieldValue(fields, "lesao")),
+      goalDetails: validField(fieldValue(fields, "como os gols aconteceram")),
+      highlights: validField(fieldValue(fields, "acontecimentos importantes")),
+      createdAt: message.createdAt
+    };
+    season.matches.unshift(match);
+    career.news.unshift(createFactualMatchNews(career, match));
+    career.canonEvents.push({
+      id: uid("canon"),
+      type: "match",
+      title: homeTeam + " " + homeScore + " x " + awayScore + " " + awayTeam,
+      occurredAt: match.date || message.createdAt,
+      sourceMessageId: message.id,
+      certainty: "fact"
+    });
+    return true;
+  }
+
+  function createFactualMatchNews(career, match) {
+    var details = [];
+    if (match.goals) details.push(plural(match.goals, "gol", "gols") + " de " + (career.profile.playerName || "seu jogador"));
+    if (match.assists) details.push(plural(match.assists, "assistência", "assistências"));
+    if (match.rating) details.push("nota " + formatDecimal(match.rating));
+    var summary = details.length ? "O registro enviado ao KICK OFF confirma " + naturalList(details) + "." : "O placar foi registrado pelo jogador no KICK OFF e passou a integrar o cânone da carreira.";
+    if (match.highlights) summary += " Destaque informado: " + match.highlights;
+    return {
+      id: uid("news"),
+      type: "headline",
+      title: match.homeTeam + " " + match.homeScore + " x " + match.awayScore + " " + match.awayTeam,
+      summary: summary,
+      source: "KICK OFF · RELATO DO JOGADOR",
+      occurredAt: match.date || match.createdAt,
+      createdAt: new Date().toISOString(),
+      sourceMatchId: match.id
+    };
+  }
+
+  function escapeRegExpText(value) {
+    var specials = "\\^$.*+?()[]{}|";
+    return String(value).split("").map(function (character) {
+      return specials.indexOf(character) >= 0 ? "\\" + character : character;
+    }).join("");
+  }
+
+  function parseTaggedBlock(text, tag) {
+    var escapedTag = escapeRegExpText(tag);
+    var match = String(text).match(new RegExp("\\[" + escapedTag + "\\]([\\s\\S]*?)\\[\\/" + escapedTag + "\\]", "i"));
+    if (!match) return null;
+    var fields = {};
+    var currentKey = "";
+    match[1].split(/\r?\n/).forEach(function (line) {
+      var keyMatch = line.match(/^([^:]+):\s*(.*)$/);
+      if (keyMatch) {
+        currentKey = normalizeKey(keyMatch[1]);
+        fields[currentKey] = clean(keyMatch[2]);
+      } else if (currentKey && clean(line)) {
+        fields[currentKey] = clean((fields[currentKey] ? fields[currentKey] + "\n" : "") + line);
+      }
+    });
+    return fields;
+  }
+
+  function fieldValue(fields, key) {
+    return clean(fields[normalizeKey(key)] || "");
+  }
+
+  function validField(value) {
+    var cleaned = clean(value);
+    return /^nao informado$/i.test(normalizeKey(cleaned)) ? "" : cleaned;
   }
 
   function renderNews() {
-    return `<div class="news-grid"><article class="news-card"><span class="news-source">Crown Football</span><h3>O minuto 90 que mudou o tom da temporada em Londres</h3><time>Há 18 minutos · 6 min de leitura</time></article><article class="news-card"><span class="news-source">Touchline</span><h3>Hale prepara função especial para ${escapeHTML(state.career.name.split(" ")[0])} em Nápoles</h3><time>Há 42 minutos · Análise</time></article><article class="news-card wide"><span class="news-source">The Terrace</span><h3>Da base no Rio à noite europeia: por que a torcida já canta seu nome</h3><time>Hoje · Perfil</time></article></div>`;
-  }
-
-  function renderCalendar() {
-    const days = [
-      ["qua", "26", [["Recuperação", "16:00", ""], ["Cena com Viktor", "22:00", "personal"]]],
-      ["qui", "27", [["Treino tático", "09:30", ""], ["Jantar do grupo", "20:00", "personal"]]],
-      ["sex", "28", [["Viagem a Nápoles", "13:10", ""], ["Coletiva", "18:30", "personal"]]],
-      ["sáb", "29", [["Napoli × Chelsea", "20:45", "match"]]],
-      ["dom", "30", [["Retorno a Londres", "11:20", ""]]],
-      ["seg", "31", [["Dia livre", "—", "personal"]]],
-      ["ter", "01", [["Treino", "10:00", ""]]],
-    ];
-    return `<article class="card calendar-card"><div class="card-header"><div><h2 class="card-title">Semana da carreira</h2><p class="card-subtitle">26 de agosto — 1 de setembro</p></div><button class="button button-sm" type="button" data-action="calendar-add">${icon("plus")} Compromisso</button></div><div class="calendar-week">${days.map((day, index) => `<div class="calendar-day ${index === 0 ? "today" : ""}"><span>${day[0]}</span><strong>${day[1]}</strong>${day[2].map((event) => `<div class="calendar-event ${event[2]}">${event[0]}<br><small>${event[1]}</small></div>`).join("")}</div>`).join("")}</div></article>`;
-  }
-
-  function renderFinances() {
-    const transactions = [
-      ["Salário semanal", "Chelsea · 25 ago", 92000, true],
-      ["Aluguel · Londres", "Residência · 24 ago", -8400, false],
-      ["Equipe pessoal", "Fisioterapia e imagem", -3200, false],
-      ["Bônus de vitória", "Chelsea × Liverpool", 18000, true],
-    ];
-    return `<article class="card finance-card"><div class="card-header"><div><h2 class="card-title">Patrimônio</h2><p class="card-subtitle">Visão opcional de finanças da carreira</p></div><span class="tag tag-rp">Modo detalhado</span></div><div class="finance-overview"><div class="finance-kpi"><span>Patrimônio estimado</span><strong>${formatMoney(2860000)}</strong><small>+6,4% nesta temporada</small></div><div class="finance-kpi"><span>Receita mensal</span><strong>${formatMoney(386000)}</strong><small>contratos ativos</small></div><div class="finance-kpi"><span>Disponível</span><strong>${formatMoney(428000)}</strong><small>liquidez</small></div></div><div>${transactions.map(([label,date,value,incoming]) => `<div class="transaction-row"><span class="transaction-icon">${icon(incoming ? "download" : "wallet")}</span><span class="transaction-copy"><strong>${label}</strong><span>${date}</span></span><span class="transaction-value ${incoming ? "in" : ""}">${incoming ? "+" : ""}${formatMoney(value)}</span></div>`).join("")}</div></article>`;
-  }
-
-  function renderHall() {
-    const trophies = [
-      ["trophy", "Copa do Brasil", "Flamengo · 2025", false],
-      ["spark", "Revelação do Ano", "Brasil · 2025", false],
-      ["trophy", "Supercopa Inglesa", "Chelsea · 2026", false],
-      ["lock", "UEFA Champions League", "Objetivo de carreira", true],
-      ["lock", "Bola de Ouro", "Objetivo de carreira", true],
-      ["lock", "Copa do Mundo", "Objetivo de carreira", true],
-    ];
-    return `<article class="card hall-card"><div class="card-header"><div><h2 class="card-title">Hall da carreira</h2><p class="card-subtitle">Conquistas, recordes e sonhos</p></div><span class="status-chip">3 conquistas</span></div><div class="trophy-grid">${trophies.map(([iconName,title,subtitle,locked]) => `<div class="trophy-card ${locked ? "locked" : ""}"><span class="trophy-icon">${icon(iconName)}</span><strong>${title}</strong><span>${subtitle}</span></div>`).join("")}</div></article>`;
-  }
-
-  function renderChanceCard() {
-    const sides = ui.dieSides;
-    return `
-      <aside class="card chance-card">
-        <div class="card-header"><div><h2 class="card-title">Acaso narrativo</h2><p class="card-subtitle">Resultado interpretado, nunca imposto</p></div><div class="segmented"><button class="segment ${sides === 6 ? "active" : ""}" type="button" data-die-sides="6">D6</button><button class="segment ${sides === 20 ? "active" : ""}" type="button" data-die-sides="20">D20</button></div></div>
-        <div class="chance-visual"><span class="dice-result" id="diceResult">${ui.roll || sides}</span></div>
-        <div class="chance-copy"><strong>${ui.rollEvent ? escapeHTML(ui.rollEvent.title) : "Acontecimento da semana"}</strong><p>${ui.rollEvent ? escapeHTML(ui.rollEvent.description) : `Role um D${sides}. O número define a intensidade; você ainda decide se o acontecimento entra na história.`}</p></div>
-        <div class="chance-actions"><button class="button button-primary" type="button" data-action="roll-die">${icon("dice")} Rolar D${sides}</button><button class="button" type="button" data-action="canonize-roll" ${ui.rollEvent ? "" : "disabled"}>Canonizar</button></div>
-      </aside>
-    `;
-  }
-
-  function renderCareerMenu() {
-    closeMenus();
-    const menu = document.createElement("div");
-    menu.className = "menu-popover career-menu";
-    menu.innerHTML = `<div class="menu-label">Carreira ativa</div><button class="menu-item active" type="button"><span class="club-glyph">${escapeHTML(state.career.club[0] || "I")}</span><span class="menu-item-copy"><strong>${escapeHTML(state.career.name)}</strong><span>${escapeHTML(state.career.club)} · ${escapeHTML(state.career.season)}</span></span>${icon("check")}</button><div class="menu-separator"></div><button class="menu-item" type="button" data-action="new-career">${icon("plus")}<span class="menu-item-copy"><strong>Criar nova carreira</strong><span>Começar outro universo</span></span></button><button class="menu-item" type="button" data-action="export-save">${icon("download")}<span class="menu-item-copy"><strong>Exportar save</strong><span>Arquivo JSON local</span></span></button>`;
-    document.body.append(menu);
-  }
-
-  function renderNotifications() {
-    closeMenus();
-    const menu = document.createElement("div");
-    menu.className = "menu-popover notifications-menu";
-    menu.innerHTML = `<div class="menu-label">Atualizações do universo</div><button class="menu-item" type="button" data-route="roleplay"><span class="toast-icon">${icon("message")}</span><span class="menu-item-copy"><strong>Viktor aguarda uma resposta</strong><span>A cena ao vivo está pausada.</span></span></button><button class="menu-item" type="button" data-route="universe"><span class="toast-icon">${icon("spark")}</span><span class="menu-item-copy"><strong>Seu nome está em alta</strong><span>18,4 mil reações após o jogo.</span></span></button><button class="menu-item" type="button" data-route="canon"><span class="toast-icon">${icon("timeline")}</span><span class="menu-item-copy"><strong>2 fatos pedem revisão</strong><span>Eventos sem fonte confirmada.</span></span></button>`;
-    document.body.append(menu);
-  }
-
-  function renderProfileMenu() {
-    closeMenus();
-    const menu = document.createElement("div");
-    menu.className = "menu-popover profile-menu";
-    menu.innerHTML = `<div class="menu-label">Demo local</div><button class="menu-item" type="button" data-action="new-career">${icon("users")}<span class="menu-item-copy"><strong>Editar protagonista</strong><span>${escapeHTML(state.career.name)}</span></span></button><button class="menu-item" type="button" data-action="toggle-soundtrack-visibility">${icon("play")}<span class="menu-item-copy"><strong>${state.settings.soundtrackVisible ? "Ocultar" : "Mostrar"} player</strong><span>Trilha da carreira</span></span></button><button class="menu-item" type="button" data-action="export-save">${icon("download")}<span class="menu-item-copy"><strong>Exportar save</strong><span>Backup do cânone em JSON</span></span></button><div class="menu-separator"></div><button class="menu-item" type="button" data-action="confirm-reset">${icon("timeline")}<span class="menu-item-copy"><strong>Restaurar demonstração</strong><span>Apaga alterações locais</span></span></button>`;
-    document.body.append(menu);
-  }
-
-  function openSearch() {
-    closeMenus();
-    modalRoot.innerHTML = `<div class="modal-backdrop" data-action="close-modal"><div class="modal command-modal" role="dialog" aria-modal="true" aria-label="Busca rápida"><label class="command-search">${icon("search")}<input id="commandSearch" autocomplete="off" placeholder="Busque uma área, pessoa ou ação..."><small>ESC</small></label><div class="command-results" id="commandResults">${commandResults("")}</div></div></div>`;
-    requestAnimationFrame(() => document.querySelector("#commandSearch")?.focus());
-  }
-
-  function commandResults(query) {
-    const commands = [
-      ["home", "home", "Ir para o início", "Painel geral da carreira"],
-      ["roleplay", "message", "Continuar roleplay", "Retomar a cena com Viktor"],
-      ["postgame", "whistle", "Registrar partida", "Transformar um jogo em repercussão"],
-      ["canon", "timeline", "Abrir cânone", "Consultar fatos e acontecimentos"],
-      ["characters", "users", "Ver personagens", "Relações e conhecimento"],
-      ["universe", "orbit", "Explorar universo", "Mídia, calendário e finanças"],
-    ];
-    const normalized = query.trim().toLowerCase();
-    const filtered = commands.filter((item) => !normalized || `${item[2]} ${item[3]}`.toLowerCase().includes(normalized));
-    return filtered.map(([route, iconName, title, subtitle]) => `<button class="command-result" type="button" data-route="${route}"><span class="command-result-icon">${icon(iconName)}</span><span><strong>${title}</strong><span>${subtitle}</span></span></button>`).join("") || `<div class="empty-state"><strong>Nada encontrado</strong><p>Tente buscar por roleplay, cânone ou partida.</p></div>`;
-  }
-
-  function openCareerWizard(editExisting = false) {
-    closeMenus();
-    ui.wizardStep = 1;
-    ui.draftCareer = editExisting ? clone(state.career) : {
-      name: "",
-      age: 18,
-      nationality: "Brasil",
-      position: "ATA",
-      shirt: 9,
-      dominantFoot: "Direito",
-      club: "",
-      formerClub: "",
-      season: "2026/27",
-      game: "EA FC",
-      archetype: "",
-      personality: "",
-      origin: "",
-      objective: "",
-      depth: "realistic",
-      modules: ["midia", "relacoes", "sorte"],
-    };
-    renderCareerWizard();
-  }
-
-  function renderCareerWizard() {
-    const d = ui.draftCareer;
-    const step = ui.wizardStep;
-    const titles = ["Quem é o protagonista?", "De onde ele vem?", "Como este universo funciona?", "Pronto para o primeiro capítulo?"];
-    const descriptions = ["A base objetiva da carreira. Você poderá aprofundar tudo depois.", "Personalidade e passado ajudam a IA a interpretar o mundo sem decidir pelo personagem.", "Escolha o tom e os sistemas que terão espaço na narrativa.", "Revise o essencial. O banco de dados guarda os fatos; a IA dá vida a eles."];
-    modalRoot.innerHTML = `
-      <div class="modal-backdrop" data-action="close-modal">
-        <form class="modal modal-lg" id="careerWizard" role="dialog" aria-modal="true" aria-labelledby="wizardTitle">
-          <header class="modal-header"><div><h2 id="wizardTitle">Criar carreira</h2><p>Etapa ${step} de 4 · seu personagem, suas decisões</p></div><button class="icon-button" type="button" data-action="close-modal" aria-label="Fechar">${icon("close")}</button></header>
-          <div class="modal-body">
-            <div class="wizard-progress">${[1,2,3,4].map((item) => `<i class="${item <= step ? "done" : ""}"></i>`).join("")}</div>
-            <h3 class="wizard-title">${titles[step - 1]}</h3><p class="wizard-description">${descriptions[step - 1]}</p>
-            ${renderWizardStep(step, d)}
-          </div>
-          <footer class="modal-footer"><button class="button button-ghost" type="button" data-action="wizard-back" ${step === 1 ? "disabled" : ""}>Voltar</button><button class="button button-primary" type="submit">${step === 4 ? "Criar universo" : `Continuar ${icon("arrow")}`}</button></footer>
-        </form>
-      </div>
-    `;
-    requestAnimationFrame(() => document.querySelector("#careerWizard input:not([type=radio]):not([type=checkbox])")?.focus());
-  }
-
-  function renderWizardStep(step, d) {
-    if (step === 1) {
-      return `<div class="form-grid"><div class="form-field full"><label for="wc-name">Nome completo</label><input class="input" id="wc-name" data-career-field="name" required value="${escapeHTML(d.name)}" placeholder="Nome do seu jogador"></div><div class="form-field"><label for="wc-age">Idade</label><input class="input" id="wc-age" data-career-field="age" type="number" min="15" max="45" value="${escapeHTML(d.age)}"></div><div class="form-field"><label for="wc-nationality">Nacionalidade</label><input class="input" id="wc-nationality" data-career-field="nationality" value="${escapeHTML(d.nationality)}"></div><div class="form-field"><label for="wc-position">Posição</label><select class="select" id="wc-position" data-career-field="position">${["GOL","ZAG","LD","LE","VOL","MC","MEI","PE","PD","SA","ATA"].map((value) => `<option ${selected(d.position,value)}>${value}</option>`).join("")}</select></div><div class="form-field"><label for="wc-shirt">Número da camisa</label><input class="input" id="wc-shirt" data-career-field="shirt" type="number" min="1" max="99" value="${escapeHTML(d.shirt)}"></div><div class="form-field"><label for="wc-foot">Pé dominante</label><select class="select" id="wc-foot" data-career-field="dominantFoot"><option ${selected(d.dominantFoot,"Direito")}>Direito</option><option ${selected(d.dominantFoot,"Esquerdo")}>Esquerdo</option><option ${selected(d.dominantFoot,"Ambidestro")}>Ambidestro</option></select></div><div class="form-field"><label for="wc-club">Clube atual</label><input class="input" id="wc-club" data-career-field="club" required value="${escapeHTML(d.club)}" placeholder="Seu clube no save"></div><div class="form-field"><label for="wc-season">Temporada</label><input class="input" id="wc-season" data-career-field="season" value="${escapeHTML(d.season)}"></div></div>`;
-    }
-    if (step === 2) {
-      return `<div class="form-grid"><div class="form-field"><label for="wc-game">Jogo de origem</label><select class="select" id="wc-game" data-career-field="game"><option ${selected(d.game,"EA FC")}>EA FC</option><option ${selected(d.game,"eFootball / PES")}>eFootball / PES</option><option ${selected(d.game,"Football Manager")}>Football Manager</option><option ${selected(d.game,"Outro")}>Outro</option></select></div><div class="form-field"><label for="wc-former">Clube anterior</label><input class="input" id="wc-former" data-career-field="formerClub" value="${escapeHTML(d.formerClub)}" placeholder="Opcional"></div><div class="form-field full"><label for="wc-archetype">Estilo de jogo</label><input class="input" id="wc-archetype" data-career-field="archetype" value="${escapeHTML(d.archetype)}" placeholder="Ex.: ponta veloz, camisa 10 criativo, zagueiro construtor"></div><div class="form-field full"><label for="wc-personality">Personalidade</label><textarea class="textarea" id="wc-personality" data-career-field="personality" placeholder="Como seu personagem costuma agir?">${escapeHTML(d.personality)}</textarea></div><div class="form-field full"><label for="wc-origin">História de infância</label><textarea class="textarea" id="wc-origin" data-career-field="origin" placeholder="Onde cresceu, quem o apoiou, o que marcou sua formação...">${escapeHTML(d.origin)}</textarea></div><div class="form-field full"><label for="wc-objective">Grande objetivo de carreira</label><input class="input" id="wc-objective" data-career-field="objective" value="${escapeHTML(d.objective)}" placeholder="O sonho que move essa história"></div></div>`;
-    }
-    if (step === 3) {
-      const modules = [["vida","Vida pessoal"],["midia","Mídia e torcida"],["relacoes","Relações"],["romance","Romance"],["financas","Finanças"],["sorte","Roletas e dados"]];
-      return `<div class="depth-options"><label class="depth-option"><input type="radio" name="depth" value="realistic" data-career-field="depth" ${d.depth === "realistic" ? "checked" : ""}><span><b>Realista</b><strong>Pé no chão</strong><small>Consequências plausíveis, ritmo gradual e pouco melodrama.</small></span></label><label class="depth-option"><input type="radio" name="depth" value="cinematic" data-career-field="depth" ${d.depth === "cinematic" ? "checked" : ""}><span><b>Cinematográfico</b><strong>Grandes momentos</strong><small>Mais tensão, viradas e cenas memoráveis sem quebrar o cânone.</small></span></label><label class="depth-option"><input type="radio" name="depth" value="custom" data-career-field="depth" ${d.depth === "custom" ? "checked" : ""}><span><b>Personalizado</b><strong>Seu equilíbrio</strong><small>Você calibra cada área conforme a história avança.</small></span></label></div><div class="section-label" style="margin-top:24px"><strong>Módulos ativos</strong><span>Altere quando quiser</span></div><div class="module-grid">${modules.map(([value,label]) => `<label class="module-toggle"><input type="checkbox" data-career-module="${value}" ${d.modules.includes(value) ? "checked" : ""}><span>${label}</span></label>`).join("")}</div>`;
-    }
-    return `<div class="review-card"><div class="review-hero">${avatar({ name: d.name, initials: initials(d.name), color: "#337ea0" }, "avatar-lg")}<div><strong>${escapeHTML(d.name || "Seu jogador")}</strong><span>${escapeHTML(d.club || "Clube não informado")} · ${escapeHTML(d.season)}</span></div></div><div class="review-grid"><div><small>Posição</small><strong>${escapeHTML(d.position)}</strong></div><div><small>Camisa</small><strong>#${escapeHTML(d.shirt)}</strong></div><div><small>Nacionalidade</small><strong>${escapeHTML(d.nationality)}</strong></div><div><small>Pé</small><strong>${escapeHTML(d.dominantFoot)}</strong></div><div><small>Tom</small><strong>${escapeHTML(d.depth)}</strong></div><div><small>Módulos</small><strong>${d.modules.length} ativos</strong></div></div></div><div class="fact-rule" style="margin:16px 0 0"><span class="fact-rule-icon">${icon("lock")}</span><div><strong>Princípio InyffX</strong><p>O banco de dados será a memória objetiva. A IA será narradora e intérprete — nunca dona dos fatos nem do seu personagem.</p></div></div>`;
-  }
-
-  function addCanonModal() {
-    modalRoot.innerHTML = `<div class="modal-backdrop" data-action="close-modal"><form class="modal modal-sm" id="addCanonForm" role="dialog" aria-modal="true"><header class="modal-header"><div><h2>Novo fato</h2><p>Adicione algo que já aconteceu no seu universo.</p></div><button class="icon-button" type="button" data-action="close-modal">${icon("close")}</button></header><div class="modal-body"><div class="form-field"><label for="factTitle">Título</label><input class="input" id="factTitle" name="title" required placeholder="O que aconteceu?"></div><div class="form-field" style="margin-top:13px"><label for="factDescription">Contexto</label><textarea class="textarea" id="factDescription" name="description" placeholder="Detalhes importantes para a memória"></textarea></div><div class="form-field" style="margin-top:13px"><label for="factKind">Natureza</label><select class="select" id="factKind" name="kind"><option value="game">Fato do jogo</option><option value="rp">Fato do roleplay</option><option value="secret">Segredo</option><option value="possible">Possibilidade</option></select></div></div><footer class="modal-footer"><button class="button button-ghost" type="button" data-action="close-modal">Cancelar</button><button class="button button-primary" type="submit">Salvar no cânone</button></footer></form></div>`;
-    requestAnimationFrame(() => document.querySelector("#factTitle")?.focus());
-  }
-
-  function confirmResetModal() {
-    closeMenus();
-    modalRoot.innerHTML = `<div class="modal-backdrop" data-action="close-modal"><div class="modal modal-sm" role="alertdialog" aria-modal="true"><header class="modal-header"><div><h2>Restaurar demonstração?</h2><p>Suas alterações locais serão apagadas.</p></div><button class="icon-button" type="button" data-action="close-modal">${icon("close")}</button></header><div class="modal-body"><p style="margin:0;color:var(--muted);font-size:11px;line-height:1.65">Exporte o save antes se quiser guardar sua carreira. Esta ação só afeta os dados deste navegador.</p></div><footer class="modal-footer"><button class="button" type="button" data-action="close-modal">Cancelar</button><button class="button button-danger" type="button" data-action="reset-demo">Restaurar demo</button></footer></div></div>`;
-  }
-
-  function exportSave() {
-    const payload = JSON.stringify({ exportedAt: new Date().toISOString(), app: "InyffX", ...state }, null, 2);
-    const blob = new Blob([payload], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    const slug = state.career.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-    link.href = url;
-    link.download = `inyffx-${slug || "carreira"}.json`;
-    link.click();
-    URL.revokeObjectURL(url);
-    showToast("Save exportado", "Seu cânone foi baixado em JSON.", "download");
-  }
-
-  function sendRoleplayMessage(text) {
-    const clean = text.trim();
-    if (!clean || ui.typing) return;
-    state.chat.push({ id: uid("chat"), type: "user", speaker: `Você · ${state.career.name.split(" ")[0]}`, initials: initials(state.career.name), color: "#337ea0", time: "agora", text: clean });
-    saveState();
-    ui.typing = true;
-    render();
-    window.setTimeout(() => {
-      state.chat.push({ id: uid("chat"), type: "npc", speaker: "Viktor Hale", role: "Treinador", initials: "VH", color: "#53645a", time: "agora", text: scriptedCoachReply(clean) });
-      ui.typing = false;
-      saveState();
-      if (ui.route === "roleplay") render();
-    }, 900);
-  }
-
-  function scriptedCoachReply(text) {
-    const normalized = text.toLowerCase();
-    if (/pronto|pressão|confio|pode contar/.test(normalized)) return "Eu queria ouvir isso, mas palavras são a parte fácil. Em Nápoles, se o jogo ficar caótico, quero que você peça a bola e faça o time respirar. Você aceita essa responsabilidade?";
-    if (/escalação|posição|função|jogar/.test(normalized)) return "Você começa por dentro, com liberdade para atacar o espaço quando Leo abrir o campo. Mas há uma condição: quando perdermos a bola, sua primeira corrida é para trás. Alguma dúvida sobre a função?";
-    if (/aconteceu|problema|diretoria|algo/.test(normalized)) return "Nada que mude o plano. A diretoria só está atenta ao barulho ao seu redor. Eu me importo com o que acontece aqui dentro — e preciso saber se posso confiar em você quando o jogo sair do roteiro.";
-    if (/não|cansado|preciso|difícil/.test(normalized)) return "Prefiro essa honestidade a uma resposta ensaiada. Então me diga o que você precisa de mim e do grupo antes de entrarmos naquele estádio.";
-    return "Viktor observa por alguns segundos, sem interromper. Então apoia os antebraços na mesa. “Certo. Quero que vá além da resposta segura: o que você realmente pretende fazer quando a pressão chegar?”";
-  }
-
-  function generateStoryPack() {
-    const d = ui.postgameDraft;
-    if (!d.homeClub.trim() || !d.awayClub.trim()) {
-      showToast("Faltam os clubes", "Informe mandante e visitante para continuar.", "whistle");
+    var career = activeCareer();
+    if (!career) return;
+    var items = career.news.filter(function (item) { return ui.newsFilter === "all" || item.type === ui.newsFilter; });
+    if (!items.length) {
+      el.newsContent.innerHTML = emptyMarkup(
+        "02",
+        ui.newsFilter === "all" ? "Nenhuma notícia publicada." : "Nenhum conteúdo nesta categoria.",
+        "Manchetes, comentários, redes sociais, fofocas e análises aparecerão somente quando forem gerados a partir do cânone do KICK OFF."
+      );
       return;
     }
-    const homeScore = Number(d.homeScore) || 0;
-    const awayScore = Number(d.awayScore) || 0;
-    const playerClubIsHome = d.homeClub.toLowerCase() === state.career.club.toLowerCase();
-    const playerScore = playerClubIsHome ? homeScore : awayScore;
-    const opponentScore = playerClubIsHome ? awayScore : homeScore;
-    const won = playerScore > opponentScore;
-    const drew = playerScore === opponentScore;
-    const firstName = state.career.name.split(" ")[0];
-    const goalText = Number(d.goals) === 1 ? "um gol" : `${Number(d.goals) || 0} gols`;
-    const resultWord = won ? "vitória" : drew ? "empate" : "derrota";
-    state.lastStoryPack = {
-      id: uid("pack"),
-      saved: false,
-      generatedAt: new Date().toISOString(),
-      headline: won ? `${firstName} decide no limite e transforma Londres em palco particular` : drew ? `${firstName} chama a responsabilidade em noite de tensão` : `Mesmo com ${goalText}, ${state.career.club} sai ferido de uma noite dramática`,
-      factLine: `${d.homeClub} ${homeScore} × ${awayScore} ${d.awayClub}. ${state.career.name}: ${goalText}, ${Number(d.assists) || 0} assistência(s), nota ${Number(d.rating).toFixed(1)} em ${Number(d.minutes) || 0} minutos.`,
-      reactions: [
-        { author: "Crown Football", type: "Manchete", text: `A atuação de ${firstName} virou o centro da ${resultWord}: personalidade, eficiência e um estádio inteiro respondendo a cada toque.` },
-        { author: "@BlueLondonBR", type: "Torcida", text: Number(d.goals) > 0 ? `Quando a bola queimou, ele pediu. Quando a chance apareceu, ele decidiu. É disso que estamos falando.` : `Nem toda grande atuação precisa de gol. Hoje ele organizou o time quando tudo ameaçava escapar.` },
-        { author: "Leo Duarte", type: "Mensagem privada", text: won ? "Irmão, ninguém vai dormir depois dessa. O grupo está te esperando." : "Cabeça em cima. O grupo sabe o que você entregou hoje." },
-      ],
-      pressQuestion: `${firstName}, depois de uma atuação tão individualmente marcante, você sente que o time já depende demais de você nos momentos decisivos?`,
-      match: clone(d),
-      goals: clone(ui.goalEntries),
-    };
-    saveState();
-    render();
-    requestAnimationFrame(() => document.querySelector("#storyOutput")?.scrollIntoView({ behavior: "smooth", block: "start" }));
-    showToast("Repercussão gerada", "Os fatos do jogo foram preservados.", "spark");
+    var lead = items[0];
+    var stream = items.slice(1);
+    el.newsContent.innerHTML = [
+      '<div class="news-layout"><article class="news-feature">',
+      '<span class="news-feature__type">', escapeHTML(newsTypeLabel(lead.type)), "</span>",
+      "<h2>", escapeHTML(lead.title || "Atualização da carreira"), "</h2>",
+      "<p>", escapeHTML(lead.summary || ""), "</p>",
+      "<footer><span>", escapeHTML(lead.source || "FYX NEWS"), "</span><span>", escapeHTML(formatDate(lead.occurredAt || lead.createdAt)), "</span></footer>",
+      '</article><div class="news-stream">', stream.map(renderNewsItem).join(""), "</div></div>"
+    ].join("");
   }
 
-  function saveMatchToCanon() {
-    const pack = state.lastStoryPack;
-    if (!pack || pack.saved) return;
-    const m = pack.match;
-    state.timeline.unshift({ id: uid("event"), day: "26", month: "ago", season: `Temporada ${state.career.season}`, kind: "game", category: "Partida", title: `${m.homeClub} ${m.homeScore} × ${m.awayScore} ${m.awayClub}`, description: `${state.career.name} registrou ${m.goals} gol(s), ${m.assists} assistência(s) e nota ${Number(m.rating).toFixed(1)}. ${m.notes || "Partida importada do save."}`, people: [initials(state.career.name)] });
-    state.stats.canonFacts += 1;
-    pack.saved = true;
-    saveState();
-    render();
-    showToast("Partida canonizada", "O resultado agora faz parte da memória objetiva.", "lock");
+  function renderNewsItem(item) {
+    return [
+      '<article class="news-item"><span class="news-item__type">', escapeHTML(newsTypeLabel(item.type)), "</span>",
+      "<h3>", escapeHTML(item.title || "Atualização"), "</h3>",
+      "<p>", escapeHTML(item.summary || ""), "</p>",
+      "<footer><span>", escapeHTML(item.source || "FYX NEWS"), "</span><span>", escapeHTML(formatDate(item.occurredAt || item.createdAt)), "</span></footer></article>"
+    ].join("");
   }
 
-  function startPressConference() {
-    const pack = state.lastStoryPack;
-    if (!pack) return;
-    state.chat.push({ id: uid("narration"), type: "narration", text: "A sala de imprensa está cheia. Flashes se acendem quando Caio se senta diante do painel. Maya Silva recebe o microfone para a primeira pergunta." });
-    state.chat.push({ id: uid("chat"), type: "npc", speaker: "Maya Silva", role: "Jornalista · Touchline", initials: "MS", color: "#82527c", time: "agora", text: pack.pressQuestion });
-    saveState();
-    navigate("roleplay");
+  function newsTypeLabel(type) {
+    return { headline: "MANCHETE", social: "REDE SOCIAL", analysis: "ANÁLISE", gossip: "FOFOCA", comment: "COMENTÁRIOS", fanclub: "FANCLUB" }[type] || "ATUALIZAÇÃO";
   }
 
-  function rollDie() {
-    const max = ui.dieSides;
-    const result = Math.floor(Math.random() * max) + 1;
-    const scaled = result / max;
-    const events = scaled <= .2
-      ? ["Contratempo inesperado", "Uma pequena lesão no treino muda a preparação da semana. A gravidade ainda deve ser definida por você."]
-      : scaled <= .45
-        ? ["Rumor ganha força", "Um jornalista publica uma informação incompleta sobre o futuro de Caio. Você decide se há verdade por trás dela."]
-        : scaled <= .75
-          ? ["Convite fora do roteiro", "Uma pessoa do passado está em Londres e pede um encontro antes da viagem."]
-          : ["Oportunidade rara", "O clube oferece a Caio um papel de liderança numa iniciativa que pode elevar sua influência no elenco."];
-    ui.roll = result;
-    ui.rollEvent = { title: events[0], description: events[1] };
-    render();
-    requestAnimationFrame(() => document.querySelector("#diceResult")?.classList.add("rolling"));
+  function changeNewsFilter(event) {
+    var button = event.target.closest("[data-news-filter]");
+    if (!button) return;
+    ui.newsFilter = button.dataset.newsFilter;
+    document.querySelectorAll("[data-news-filter]").forEach(function (item) { item.classList.toggle("is-active", item === button); });
+    renderNews();
   }
 
-  function canonizeRoll() {
-    if (!ui.rollEvent) return;
-    state.timeline.unshift({ id: uid("event"), day: "26", month: "ago", season: `Temporada ${state.career.season}`, kind: "possible", category: "Acontecimento aleatório", title: ui.rollEvent.title, description: `${ui.rollEvent.description} Resultado: D${ui.dieSides} = ${ui.roll}.`, people: [initials(state.career.name)] });
-    state.chanceEvents.unshift({ ...ui.rollEvent, roll: ui.roll, sides: ui.dieSides });
-    saveState();
-    showToast("Possibilidade registrada", "Ela ainda não é fato até acontecer em cena.", "dice");
-    ui.roll = null;
-    ui.rollEvent = null;
-    render();
-  }
-
-  function createCareer() {
-    const d = ui.draftCareer;
-    if (!d.name.trim() || !d.club.trim()) {
-      ui.wizardStep = 1;
-      renderCareerWizard();
-      showToast("Complete o essencial", "Nome e clube atual são obrigatórios.", "users");
+  function renderRelationships() {
+    var career = activeCareer();
+    if (!career) return;
+    var query = normalizeKey(el.relationshipSearch.value || "");
+    var characters = career.characters.filter(function (character) {
+      return !query || normalizeKey([character.name, character.role, character.relationship].join(" ")).indexOf(query) >= 0;
+    });
+    el.relationshipCount.textContent = career.characters.length + (career.characters.length === 1 ? " PERSONAGEM" : " PERSONAGENS");
+    if (!characters.length) {
+      el.relationshipsContent.innerHTML = emptyMarkup(
+        "03",
+        query ? "Nenhum personagem encontrado." : "Nenhum personagem registrado.",
+        query ? "Tente outro nome ou função." : "Cada pessoa citada e confirmada no roleplay terá uma ficha própria, fatos conhecidos, segredos e o motivo do estado atual da relação."
+      );
       return;
     }
-    const fresh = clone(DEFAULT_STATE);
-    fresh.theme = state.theme;
-    fresh.settings = clone(state.settings);
-    fresh.career = { ...fresh.career, ...clone(d) };
-    fresh.stats = { appearances: 0, goals: 0, assists: 0, rating: 0, reputation: 12, energy: 100, canonFacts: 1, rpEvents: 0, characters: fresh.characters.length, secrets: 0 };
-    fresh.nextMatch = { opponent: "A definir", competition: "Próximo compromisso", date: "—", time: "—", venue: "Calendário da carreira", leg: "Aguardando dados" };
-    fresh.chat = [{ id: uid("narration"), type: "narration", text: `Primeiro dia de ${d.name} no ${d.club}. O universo está pronto; nenhum passo foi dado ainda.` }];
-    fresh.timeline = [{ id: uid("event"), day: "26", month: "ago", season: `Temporada ${d.season}`, kind: "game", category: "Carreira", title: `Início da carreira no ${d.club}`, description: `${d.name}, ${d.age} anos, ${d.position}, camisa ${d.shirt}. Este é o ponto inicial informado pelo jogador.`, people: [initials(d.name)] }];
-    fresh.inbox = [];
-    fresh.missions = [
-      { id: "m1", title: "Apresentar-se ao elenco", detail: "Comece a primeira cena da carreira", xp: 100, done: false },
-      { id: "m2", title: "Registrar próxima partida", detail: "Adicione o calendário do seu save", xp: 80, done: false },
-      { id: "m3", title: "Completar a história", detail: "Adicione família, amigos e objetivos", xp: 60, done: false },
-    ];
-    state = fresh;
-    saveState();
-    closeModal();
-    navigate("home");
-    showToast("Universo criado", `${d.name} agora tem uma carreira própria no InyffX.`, "spark");
+    el.relationshipsContent.innerHTML = '<div class="relationship-grid">' + characters.map(function (character) {
+      var initials = clean(character.name).split(/\s+/).slice(0, 2).map(function (part) { return part.charAt(0); }).join("").toUpperCase();
+      var relationshipLabel = character.relationship || "Não avaliada";
+      var level = Number.isFinite(Number(character.relationshipLevel)) ? Math.round(Number(character.relationshipLevel)) + "/100" : "SEM NÍVEL";
+      var summary = character.summary || "A ficha será aprofundada conforme este personagem viver cenas no KICK OFF.";
+      return [
+        '<article class="relationship-card"><div class="relationship-card__top"><span class="relationship-avatar">', escapeHTML(initials || "?"), '</span><span class="relationship-level">', escapeHTML(level), "</span></div>",
+        "<h3>", escapeHTML(character.name || "Sem nome"), "</h3>",
+        "<span>", escapeHTML(character.role || "Personagem"), " · ", escapeHTML(relationshipLabel), "</span>",
+        "<p>", escapeHTML(summary), "</p></article>"
+      ].join("");
+    }).join("") + "</div>";
   }
 
-  function addRandomMission() {
-    const options = [
-      ["Ligar para alguém da família", "Uma conversa curta pode mudar o tom do dia", 50],
-      ["Treinar finalização", "Sessão extra depois do treino", 90],
-      ["Visitar um companheiro", "Fortaleça uma relação fora de campo", 70],
-      ["Rever o último jogo", "Analise três decisões importantes", 60],
-    ];
-    const [title, detail, xp] = options[Math.floor(Math.random() * options.length)];
-    state.missions.push({ id: uid("mission"), title, detail, xp, done: false });
-    saveState();
-    render();
-    showToast("Novo objetivo", title, "spark");
-  }
-
-  function addCanonFact(form) {
-    const data = new FormData(form);
-    const kind = data.get("kind");
-    state.timeline.unshift({ id: uid("event"), day: "26", month: "ago", season: `Temporada ${state.career.season}`, kind, category: kind === "game" ? "Futebol" : kind === "secret" ? "Segredo" : kind === "possible" ? "Possibilidade" : "Roleplay", title: data.get("title").trim(), description: data.get("description").trim() || "Fato adicionado manualmente pelo jogador.", people: [initials(state.career.name)] });
-    if (kind === "game") state.stats.canonFacts += 1;
-    if (kind === "rp") state.stats.rpEvents += 1;
-    if (kind === "secret") state.stats.secrets += 1;
-    saveState();
-    closeModal();
-    render();
-    showToast("Cânone atualizado", "O novo registro foi salvo localmente.", "timeline");
-  }
-
-  function handleClick(event) {
-    const routeButton = event.target.closest("[data-route]");
-    if (routeButton) {
-      event.preventDefault();
-      navigate(routeButton.dataset.route);
+  function populateSeasonSelect() {
+    var career = activeCareer();
+    if (!career) return;
+    if (!career.seasons.length) {
+      el.seasonSelect.innerHTML = '<option value="">Nenhuma</option>';
+      el.seasonSelect.disabled = true;
       return;
     }
+    var previous = el.seasonSelect.value;
+    el.seasonSelect.disabled = false;
+    el.seasonSelect.innerHTML = career.seasons.map(function (season) {
+      return '<option value="' + escapeHTML(season.id) + '">' + escapeHTML(season.label) + "</option>";
+    }).join("");
+    if (career.seasons.some(function (season) { return season.id === previous; })) el.seasonSelect.value = previous;
+  }
 
-    const missionButton = event.target.closest("[data-mission-id]");
-    if (missionButton) {
-      const mission = state.missions.find((item) => item.id === missionButton.dataset.missionId);
-      if (mission) {
-        mission.done = !mission.done;
-        saveState();
-        render();
-        showToast(mission.done ? "Objetivo concluído" : "Objetivo reaberto", mission.title, mission.done ? "check" : "timeline");
+  function renderSeasons() {
+    var career = activeCareer();
+    if (!career) return;
+    populateSeasonSelect();
+    var season = career.seasons.find(function (item) { return item.id === el.seasonSelect.value; }) || career.seasons[0];
+    if (!season || !Array.isArray(season.matches) || !season.matches.length) {
+      el.seasonsContent.innerHTML = emptyMarkup(
+        "04",
+        "Nenhuma partida registrada.",
+        "Use o modelo de partida no KICK OFF. Quando a mensagem for enviada, placar e números reais do seu save aparecerão aqui automaticamente."
+      );
+      return;
+    }
+    var stats = aggregateSeason(season.matches);
+    el.seasonsContent.innerHTML = [
+      '<div class="season-overview"><section class="season-stats"><span class="section-number">NÚMEROS DO JOGADOR</span><h2>', escapeHTML(season.label), '</h2><div class="stat-grid">',
+      statCell(stats.matches, "PARTIDAS"), statCell(stats.minutes, "MINUTOS"), statCell(stats.goals, "GOLS"),
+      statCell(stats.assists, "ASSISTÊNCIAS"), statCell(stats.averageRating ? formatDecimal(stats.averageRating) : "—", "NOTA MÉDIA"),
+      statCell(stats.goalContributions, "PARTICIPAÇÕES"), '</div></section><section class="match-list"><div class="match-list__heading">ÚLTIMAS PARTIDAS NARRADAS</div>',
+      season.matches.map(function (match) {
+        var details = [];
+        if (match.goals) details.push(match.goals + "G");
+        if (match.assists) details.push(match.assists + "A");
+        if (match.rating) details.push(formatDecimal(match.rating));
+        return [
+          '<article class="match-row"><span class="match-row__date">', escapeHTML(formatDate(match.date || match.createdAt)), '</span>',
+          '<div class="match-row__fixture"><span>', escapeHTML(match.homeTeam), '</span><strong class="match-row__score">', match.homeScore, " — ", match.awayScore, '</strong><span>', escapeHTML(match.awayTeam), '</span></div>',
+          '<span class="match-row__meta">', escapeHTML(details.join(" · ") || match.competition || "PARTIDA"), "</span></article>"
+        ].join("");
+      }).join(""), "</section></div>"
+    ].join("");
+  }
+
+  function aggregateSeason(matches) {
+    var totalRating = 0;
+    var ratedMatches = 0;
+    return matches.reduce(function (stats, match) {
+      stats.matches += 1;
+      stats.minutes += numberOrZero(match.minutes);
+      stats.goals += numberOrZero(match.goals);
+      stats.assists += numberOrZero(match.assists);
+      if (numberOrZero(match.rating) > 0) {
+        totalRating += numberOrZero(match.rating);
+        ratedMatches += 1;
       }
-      return;
-    }
-
-    const characterButton = event.target.closest("[data-character-id]");
-    if (characterButton && !characterButton.dataset.action) {
-      ui.selectedCharacter = characterButton.dataset.characterId;
-      render();
-      return;
-    }
-
-    const canonFilter = event.target.closest("[data-canon-filter]");
-    if (canonFilter) {
-      ui.canonFilter = canonFilter.dataset.canonFilter;
-      render();
-      return;
-    }
-
-    const universeTab = event.target.closest("[data-universe-tab]");
-    if (universeTab) {
-      ui.universeTab = universeTab.dataset.universeTab;
-      render();
-      return;
-    }
-
-    const dieButton = event.target.closest("[data-die-sides]");
-    if (dieButton) {
-      ui.dieSides = Number(dieButton.dataset.dieSides);
-      ui.roll = null;
-      ui.rollEvent = null;
-      render();
-      return;
-    }
-
-    const promptButton = event.target.closest("[data-prompt]");
-    if (promptButton) {
-      const input = document.querySelector("#rpInput");
-      if (input) {
-        input.value = promptButton.dataset.prompt;
-        input.focus();
-        input.dispatchEvent(new Event("input", { bubbles: true }));
-      }
-      return;
-    }
-
-    const actionTarget = event.target.closest("[data-action]");
-    if (!actionTarget) {
-      if (!event.target.closest(".menu-popover")) closeMenus();
-      return;
-    }
-    const action = actionTarget.dataset.action;
-    if (action === "close-modal" && event.target !== actionTarget && actionTarget.classList.contains("modal-backdrop")) return;
-
-    const actions = {
-      "toggle-theme": () => { state.theme = state.theme === "dark" ? "light" : "dark"; saveState(); updateChrome(); },
-      "open-career-menu": renderCareerMenu,
-      "open-notifications": renderNotifications,
-      "open-profile": renderProfileMenu,
-      "open-search": openSearch,
-      "close-modal": closeModal,
-      "dismiss-toast": () => actionTarget.closest(".toast")?.remove(),
-      "new-career": () => openCareerWizard(false),
-      "wizard-back": () => { ui.wizardStep = Math.max(1, ui.wizardStep - 1); renderCareerWizard(); },
-      "export-save": exportSave,
-      "confirm-reset": confirmResetModal,
-      "reset-demo": () => { state = clone(DEFAULT_STATE); saveState(); closeModal(); render(); showToast("Demonstração restaurada", "O exemplo de Caio voltou ao estado inicial.", "check"); },
-      "toggle-soundtrack": () => { state.settings.soundtrackPlaying = !state.settings.soundtrackPlaying; saveState(); updateChrome(); },
-      "close-soundtrack": () => { state.settings.soundtrackVisible = false; state.settings.soundtrackPlaying = false; saveState(); updateChrome(); showToast("Player ocultado", "Você pode reativá-lo no menu do perfil.", "play"); },
-      "toggle-soundtrack-visibility": () => { state.settings.soundtrackVisible = !state.settings.soundtrackVisible; closeMenus(); saveState(); updateChrome(); },
-      "connect-spotify": () => showToast("Integração demonstrativa", "O login do Spotify será conectado ao backend na versão de produção.", "play"),
-      "generate-mission": addRandomMission,
-      "open-inbox": () => { const name = actionTarget.dataset.name; showToast(`Mensagem de ${name}`, "Abra o Roleplay para responder dentro da história.", "message"); },
-      "save-scene": () => { state.stats.rpEvents += 1; saveState(); showToast("Marco da cena salvo", "A conversa foi registrada na memória do RP.", "timeline"); },
-      "scene-options": () => showToast("Cena ao vivo", "Você pode encerrar, resumir ou marcar esta cena no backend final.", "sliders"),
-      "attach-image": () => showToast("Upload de screenshots", "Nesta demo, a análise visual aparece como fluxo de produto; o envio real depende do backend.", "image"),
-      "add-goal": () => { ui.goalEntries.push({ minute: "", detail: "" }); render(); },
-      "remove-goal": () => { ui.goalEntries.splice(Number(actionTarget.dataset.goalIndex), 1); render(); },
-      "load-match-example": () => { ui.postgameDraft = clone({ competition: "Premier League", homeClub: "Chelsea", awayClub: "Liverpool", homeScore: 3, awayScore: 2, goals: 2, assists: 0, rating: 9.2, minutes: 90, cards: "Nenhum", injury: "Não", notes: "Gol da vitória aos 90 minutos. A torcida cantou o nome de Caio após o apito final." }); ui.goalEntries = clone(DEFAULT_STATE.lastStoryPack?.goals || [{ minute: 31, detail: "Corte da direita para o centro e finalização rasteira no canto." }, { minute: 90, detail: "Rebote na entrada da área e chute de primeira para virar o jogo." }]); render(); showToast("Exemplo carregado", "Chelsea 3 × 2 Liverpool.", "whistle"); },
-      "clear-match": () => { ui.postgameDraft = { competition: "Premier League", homeClub: state.career.club, awayClub: "", homeScore: 0, awayScore: 0, goals: 0, assists: 0, rating: 6, minutes: 90, cards: "Nenhum", injury: "Não", notes: "" }; ui.goalEntries = []; state.lastStoryPack = null; saveState(); render(); },
-      "save-match-canon": saveMatchToCanon,
-      "start-press-conference": startPressConference,
-      "add-canon": addCanonModal,
-      "event-options": () => showToast("Registro protegido", "Edição e fontes detalhadas entram no editor completo.", "lock"),
-      "inspect-memory": () => showToast("Integridade verificada", "Nenhuma contradição crítica foi encontrada nesta demo.", "check"),
-      "knowledge-matrix": () => showToast("Matriz de conhecimento", "A visualização completa será conectada ao banco de segredos.", "eye"),
-      "add-character": () => showToast("Novo personagem", "O editor completo de NPCs será uma próxima tela do produto.", "users"),
-      "edit-character": () => showToast("Ficha protegida", "A edição persistente será conectada ao backend de personagens.", "users"),
-      "start-character-scene": () => { const character = state.characters.find((item) => item.id === actionTarget.dataset.characterId); if (character) { state.chat.push({ id: uid("narration"), type: "narration", text: `Uma nova cena começa com ${character.name}. A memória recuperou a relação atual e os limites do que essa pessoa sabe.` }); state.chat.push({ id: uid("chat"), type: "npc", speaker: character.name, role: character.role, initials: character.initials, color: character.color, time: "agora", text: `Você queria falar comigo, ${state.career.name.split(" ")[0]}?` }); saveState(); navigate("roleplay"); } },
-      "roll-die": rollDie,
-      "canonize-roll": canonizeRoll,
-      "calendar-add": () => showToast("Novo compromisso", "O editor de calendário entra na próxima iteração.", "calendar"),
-    };
-    actions[action]?.();
+      stats.goalContributions = stats.goals + stats.assists;
+      stats.averageRating = ratedMatches ? totalRating / ratedMatches : 0;
+      return stats;
+    }, { matches: 0, minutes: 0, goals: 0, assists: 0, goalContributions: 0, averageRating: 0 });
   }
 
-  function handleInput(event) {
-    const target = event.target;
-    if (target.id === "rpInput") {
-      target.style.height = "auto";
-      target.style.height = `${Math.min(target.scrollHeight, 120)}px`;
+  function statCell(value, label) {
+    return '<div class="stat-cell"><strong>' + escapeHTML(String(value)) + '</strong><span>' + escapeHTML(label) + "</span></div>";
+  }
+
+  function renderCareerPage() {
+    var career = activeCareer();
+    if (!career) return;
+    if (ui.careerTab === "hall") renderHall(career);
+    else if (ui.careerTab === "calendar") renderCalendar(career);
+    else renderFinance(career);
+  }
+
+  function renderFinance(career) {
+    var finance = career.finance;
+    var hasData = finance.initialized || finance.transactions.length || finance.pockets.length;
+    if (!hasData) {
+      el.careerContent.innerHTML = emptyMarkup("05 / 01", "FYX Pay ainda não foi iniciado.", "Saldo, salário, gastos e caixinhas aparecerão quando forem informados no cânone ou atualizados pelo backend do KICK OFF.");
       return;
     }
-    if (target.id === "canonSearch") {
-      ui.canonSearch = target.value;
-      const cursor = target.selectionStart;
-      render();
-      requestAnimationFrame(() => {
-        const input = document.querySelector("#canonSearch");
-        if (input) { input.focus(); input.setSelectionRange(cursor, cursor); }
+    el.careerContent.innerHTML = [
+      '<div class="finance-layout"><section class="balance-panel"><span>SALDO DISPONÍVEL</span><strong>', escapeHTML(formatMoney(finance.balance, finance.currency)), '</strong><div class="pocket-list">',
+      finance.pockets.length ? finance.pockets.map(function (pocket) {
+        return '<div class="pocket-item"><span>' + escapeHTML(pocket.name || "Caixinha") + '</span><strong>' + escapeHTML(formatMoney(pocket.amount || 0, finance.currency)) + "</strong></div>";
+      }).join("") : '<div class="pocket-item"><span>Nenhuma caixinha registrada</span><strong>—</strong></div>',
+      '</div></section><section class="transaction-list">',
+      finance.transactions.length ? finance.transactions.map(function (transaction) {
+        return '<article class="transaction-item"><span>' + escapeHTML(formatDate(transaction.date || transaction.createdAt)) + '</span><div><strong>' + escapeHTML(transaction.description || "Movimentação") + '</strong><span>' + escapeHTML(transaction.category || "") + '</span></div><strong>' + escapeHTML(formatSignedMoney(transaction.amount || 0, finance.currency)) + "</strong></article>";
+      }).join("") : emptyMarkup("—", "Nenhuma movimentação.", "Gastos, ganhos e transferências confirmados pelo RP aparecerão nesta lista."),
+      "</section></div>"
+    ].join("");
+  }
+
+  function renderHall(career) {
+    var hall = career.hall;
+    var hasData = hall.trophies.length || hall.records.length || hall.awards.length;
+    if (!hasData) {
+      el.careerContent.innerHTML = emptyMarkup("05 / 02", "O Hall ainda está vazio.", "Troféus, recordes quebrados e premiações individuais só aparecem quando forem conquistados e confirmados no cânone.");
+      return;
+    }
+    var combined = hall.trophies.map(function (item) { return Object.assign({ group: "TROFÉU" }, item); })
+      .concat(hall.records.map(function (item) { return Object.assign({ group: "RECORDE" }, item); }))
+      .concat(hall.awards.map(function (item) { return Object.assign({ group: "PRÊMIO" }, item); }));
+    el.careerContent.innerHTML = [
+      '<div class="hall-layout"><section class="career-side-panel"><span>LEGADO REGISTRADO</span><h2>HALL DA CARREIRA</h2><div class="hall-counts">',
+      '<div><strong>', hall.trophies.length, '</strong><span>TROFÉUS</span></div><div><strong>', hall.records.length, '</strong><span>RECORDES</span></div><div><strong>', hall.awards.length, '</strong><span>PRÊMIOS</span></div></div></section><section class="record-list">',
+      combined.map(function (item) {
+        return '<article class="record-item"><span>' + escapeHTML(item.group + " · " + (item.season || item.date || "CARREIRA")) + '</span><strong>' + escapeHTML(item.title || item.name || "Conquista") + '</strong><span>' + escapeHTML(item.description || "") + "</span></article>";
+      }).join(""), "</section></div>"
+    ].join("");
+  }
+
+  function renderCalendar(career) {
+    if (!career.calendar.length) {
+      el.careerContent.innerHTML = emptyMarkup("05 / 03", "Nenhum compromisso marcado.", "Partidas, treinos, viagens, encontros e entrevistas confirmados durante o RP serão organizados aqui.");
+      return;
+    }
+    var sorted = career.calendar.slice().sort(function (a, b) { return String(a.start || a.date || "").localeCompare(String(b.start || b.date || "")); });
+    el.careerContent.innerHTML = '<div class="calendar-layout"><section class="career-side-panel"><span>AGENDA DO CÂNONE</span><h2>PRÓXIMOS COMPROMISSOS</h2><p>Somente eventos confirmados pelo roleplay.</p></section><section class="calendar-list">' + sorted.map(function (event) {
+      return '<article class="calendar-item"><span>' + escapeHTML(formatDate(event.start || event.date)) + '</span><div><strong>' + escapeHTML(event.title || "Compromisso") + '</strong><span>' + escapeHTML(event.location || event.type || "") + '</span></div><strong>' + escapeHTML(formatClock(event.start || event.time)) + "</strong></article>";
+    }).join("") + "</section></div>";
+  }
+
+  function renderResidence() {
+    var career = activeCareer();
+    if (!career) return;
+    var offPitch = career.offPitch;
+    var hasResidence = clean(offPitch.currentResidence) || clean(offPitch.currentCity);
+    var houses = offPitch.houses || [];
+    if (!hasResidence && !houses.length) {
+      el.residenceContent.innerHTML = '<span class="section-number">MORADIAS DO JOGADOR</span><h3>NENHUM LOCAL REGISTRADO</h3><div class="residence-box__place"><strong>—</strong><span>A residência atual e as casas aparecerão quando forem confirmadas no roleplay.</span></div>';
+      return;
+    }
+    el.residenceContent.innerHTML = [
+      '<span class="section-number">MORADIAS DO JOGADOR</span><h3>ONDE VIVE AGORA</h3>',
+      '<div class="residence-box__place"><strong>', escapeHTML(offPitch.currentResidence || "Moradia não detalhada"), '</strong><span>', escapeHTML(offPitch.currentCity || "Cidade não informada"), "</span></div>",
+      houses.map(function (house) {
+        return '<div class="residence-box__place"><strong>' + escapeHTML(house.name || house.type || "Imóvel") + '</strong><span>' + escapeHTML([house.city, house.status].filter(Boolean).join(" · ")) + "</span></div>";
+      }).join("")
+    ].join("");
+  }
+
+  function renderProfile() {
+    var career = activeCareer();
+    if (!career) return;
+    var profile = career.profile;
+    var rows = [
+      ["Carreira", career.name], ["Jogador", profile.playerName],
+      ["Nascimento", profile.birthDate ? formatDate(profile.birthDate) : ""], ["Nacionalidade", profile.nationality],
+      ["Cidade natal", profile.birthCity], ["Pronomes", profile.pronouns],
+      ["Altura", profile.height ? profile.height + " cm" : ""], ["Peso", profile.weight ? profile.weight + " kg" : ""],
+      ["Jogo", profile.gameTitle], ["Plataforma", profile.platform], ["Clube atual", profile.currentClub],
+      ["Liga", profile.league], ["Temporada", profile.season], ["Camisa", profile.shirtNumber],
+      ["Posição", [profile.position, profile.secondaryPosition].filter(Boolean).join(" / ")],
+      ["Pé dominante", profile.dominantFoot], ["Estilo de jogo", profile.playStyle],
+      ["Clubes anteriores", profile.formerClubs], ["Personalidade", profile.personality, true],
+      ["História", profile.backstory, true], ["Objetivos", profile.careerGoals, true],
+      ["Tom e profundidade", [profile.storyTone, profile.depth].filter(Boolean).join(" · ")],
+      ["Módulos", (profile.modules || []).join(", ")]
+    ].filter(function (row) { return clean(row[1]); });
+    el.profileContent.innerHTML = '<div class="profile-grid">' + rows.map(function (row) {
+      return '<div class="profile-item' + (row[2] ? " profile-item--wide" : "") + '"><span>' + escapeHTML(row[0]) + '</span><strong>' + escapeHTML(row[1]) + "</strong></div>";
+    }).join("") + "</div>";
+  }
+
+  function openProfile() {
+    renderProfile();
+    document.body.classList.add("is-modal-open");
+    el.profileModal.showModal();
+  }
+
+  function closeProfile() {
+    if (el.profileModal.open) el.profileModal.close();
+  }
+
+  function renderWheelEntries() {
+    var career = activeCareer();
+    if (!career) return;
+    el.wheelEntries.innerHTML = career.tools.wheelEntries.map(function (entry, index) {
+      return '<label class="wheel-entry" style="--entry-color:' + WHEEL_COLORS[index % WHEEL_COLORS.length] + '"><span></span><input type="text" maxlength="80" data-wheel-index="' + index + '" value="' + escapeHTML(entry) + '" placeholder="Possibilidade ' + (index + 1) + '" /><button type="button" data-remove-wheel="' + index + '" aria-label="Remover possibilidade">×</button></label>';
+    }).join("");
+    updateWheelVisual();
+  }
+
+  function updateWheelVisual() {
+    var career = activeCareer();
+    if (!career) return;
+    var count = Math.max(2, career.tools.wheelEntries.length);
+    var step = 100 / count;
+    var stops = [];
+    for (var i = 0; i < count; i += 1) stops.push(WHEEL_COLORS[i % WHEEL_COLORS.length] + " " + (i * step) + "% " + ((i + 1) * step) + "%");
+    el.wheel.style.background = "conic-gradient(" + stops.join(",") + ")";
+  }
+
+  function addWheelEntry() {
+    var career = activeCareer();
+    if (!career || career.tools.wheelEntries.length >= 12) {
+      toast("A roleta aceita até 12 possibilidades.", "error");
+      return;
+    }
+    career.tools.wheelEntries.push("");
+    saveState();
+    renderWheelEntries();
+    var inputs = el.wheelEntries.querySelectorAll("input");
+    if (inputs.length) inputs[inputs.length - 1].focus();
+  }
+
+  function updateWheelEntry(event) {
+    var input = event.target.closest("[data-wheel-index]");
+    var career = activeCareer();
+    if (!input || !career) return;
+    career.tools.wheelEntries[Number(input.dataset.wheelIndex)] = input.value;
+    saveState();
+  }
+
+  function removeWheelEntry(event) {
+    var button = event.target.closest("[data-remove-wheel]");
+    var career = activeCareer();
+    if (!button || !career) return;
+    if (career.tools.wheelEntries.length <= 2) {
+      toast("Mantenha pelo menos duas posições na roleta.", "error");
+      return;
+    }
+    career.tools.wheelEntries.splice(Number(button.dataset.removeWheel), 1);
+    saveState();
+    renderWheelEntries();
+  }
+
+  function spinWheel() {
+    var career = activeCareer();
+    if (!career) return;
+    var options = career.tools.wheelEntries.map(clean).filter(Boolean);
+    if (options.length < 2) {
+      toast("Preencha pelo menos duas possibilidades.", "error");
+      return;
+    }
+    el.spinWheel.disabled = true;
+    el.useWheelResult.disabled = true;
+    ui.wheelResult = "";
+    el.wheelResult.textContent = "…";
+    el.wheelResult.style.transform = "";
+    var selected = options[randomInt(options.length)];
+    ui.wheelRotation += 1440 + randomInt(720);
+    el.wheel.style.transform = "rotate(" + ui.wheelRotation + "deg)";
+    window.setTimeout(function () {
+      ui.wheelResult = selected;
+      el.wheelResult.textContent = selected;
+      el.wheelResult.style.transform = "rotate(" + (-ui.wheelRotation) + "deg)";
+      el.spinWheel.disabled = false;
+      el.useWheelResult.disabled = false;
+      toast("Resultado da roleta: " + selected);
+    }, 3850);
+  }
+
+  function useWheelResult() {
+    if (!ui.wheelResult) return;
+    insertIntoChat("[ROLETA]\nResultado sorteado: " + ui.wheelResult + "\nInterprete este resultado somente se eu confirmar que ele vale para a cena.");
+    closeTools();
+  }
+
+  function selectDie(event) {
+    var button = event.target.closest("[data-die]");
+    if (!button) return;
+    ui.dieSides = Number(button.dataset.die);
+    document.querySelectorAll("[data-die]").forEach(function (item) { item.classList.toggle("is-active", item === button); });
+    el.diceResult.querySelector("span").textContent = "D" + ui.dieSides;
+    el.diceResult.querySelector("strong").textContent = "—";
+    el.diceResult.querySelector("p").textContent = "Aguardando rolagem";
+    ui.lastDice = null;
+    el.useDiceResult.disabled = true;
+  }
+
+  function rollDice() {
+    var career = activeCareer();
+    if (!career) return;
+    var result = randomInt(ui.dieSides) + 1;
+    ui.lastDice = { sides: ui.dieSides, result: result, createdAt: new Date().toISOString() };
+    career.tools.diceHistory.unshift(ui.lastDice);
+    career.tools.diceHistory = career.tools.diceHistory.slice(0, 16);
+    el.diceResult.querySelector("strong").textContent = String(result);
+    el.diceResult.querySelector("p").textContent = diceInterpretation(result, ui.dieSides);
+    el.useDiceResult.disabled = false;
+    saveState();
+    renderDiceHistory();
+  }
+
+  function renderDiceHistory() {
+    var career = activeCareer();
+    if (!career) return;
+    el.diceHistory.innerHTML = career.tools.diceHistory.map(function (roll) { return "<span>D" + Number(roll.sides) + " · " + Number(roll.result) + "</span>"; }).join("");
+  }
+
+  function useDiceResult() {
+    if (!ui.lastDice) return;
+    insertIntoChat("[ROLAGEM DE DADO]\nDado: D" + ui.lastDice.sides + "\nResultado: " + ui.lastDice.result + "\nInterprete o resultado dentro da cena sem controlar meu personagem.");
+    closeTools();
+  }
+
+  function diceInterpretation(result, sides) {
+    var ratio = result / sides;
+    if (ratio === 1) return "Resultado máximo";
+    if (ratio <= 0.15) return "Resultado muito baixo";
+    if (ratio <= 0.4) return "Resultado baixo";
+    if (ratio < 0.7) return "Resultado intermediário";
+    return "Resultado alto";
+  }
+
+  function insertIntoChat(text) {
+    navigate("kick-off");
+    var existing = el.chatInput.value.trim();
+    el.chatInput.value = existing ? existing + "\n\n" + text : text;
+    autosizeComposer();
+    el.chatInput.focus();
+  }
+
+  function openSettings() {
+    ui.settingsDraft = Object.assign({}, state.settings);
+    ui.settingsSaved = false;
+    el.overlayRange.value = ui.settingsDraft.overlay;
+    el.blurRange.value = ui.settingsDraft.blur;
+    el.apiBaseUrl.value = ui.settingsDraft.apiBaseUrl || "";
+    el.spotifyClientId.value = ui.settingsDraft.spotifyClientId || "";
+    el.spotifyRedirectUri.value = getSpotifyRedirectUri();
+    updateRangeOutputs();
+    updateBackendStatus();
+    document.body.classList.add("is-modal-open");
+    el.settingsModal.showModal();
+  }
+
+  function previewSettings() {
+    if (!ui.settingsDraft) ui.settingsDraft = Object.assign({}, state.settings);
+    ui.settingsDraft.overlay = Number(el.overlayRange.value);
+    ui.settingsDraft.blur = Number(el.blurRange.value);
+    updateRangeOutputs();
+    applyVisualSettings(ui.settingsDraft);
+  }
+
+  function updateRangeOutputs() {
+    el.overlayOutput.value = el.overlayRange.value + "%";
+    el.blurOutput.value = el.blurRange.value + "px";
+  }
+
+  async function importBackground(event) {
+    var file = event.target.files && event.target.files[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast("Escolha um arquivo de imagem.", "error");
+      return;
+    }
+    try {
+      var dataUrl = await optimizeImage(file);
+      if (!ui.settingsDraft) ui.settingsDraft = Object.assign({}, state.settings);
+      ui.settingsDraft.backgroundData = dataUrl;
+      applyVisualSettings(ui.settingsDraft);
+      toast("Fundo carregado. Salve as configurações para manter.");
+    } catch (error) {
+      toast("Não foi possível processar essa imagem.", "error");
+    } finally {
+      event.target.value = "";
+    }
+  }
+
+  function resetBackgroundDraft() {
+    if (!ui.settingsDraft) ui.settingsDraft = Object.assign({}, state.settings);
+    ui.settingsDraft.backgroundData = "";
+    applyVisualSettings(ui.settingsDraft);
+    toast("Fundo padrão restaurado na prévia.");
+  }
+
+  function saveSettings() {
+    if (!ui.settingsDraft) ui.settingsDraft = Object.assign({}, state.settings);
+    ui.settingsDraft.overlay = Number(el.overlayRange.value);
+    ui.settingsDraft.blur = Number(el.blurRange.value);
+    ui.settingsDraft.apiBaseUrl = clean(el.apiBaseUrl.value).replace(/\/+$/, "");
+    ui.settingsDraft.spotifyClientId = clean(el.spotifyClientId.value);
+    state.settings = Object.assign({}, state.settings, ui.settingsDraft);
+    ui.settingsSaved = true;
+    saveState();
+    applyVisualSettings(state.settings);
+    updateBackendStatus();
+    el.settingsModal.close();
+    toast("Configurações salvas.");
+  }
+
+  function applyVisualSettings(settings) {
+    var safe = settings || {};
+    document.documentElement.style.setProperty("--backdrop-overlay", String((Number(safe.overlay || 58) / 100).toFixed(2)));
+    document.documentElement.style.setProperty("--backdrop-blur", Number(safe.blur || 0) + "px");
+    el.customBackground.style.backgroundImage = safe.backgroundData ? 'url("' + safe.backgroundData + '")' : "";
+  }
+
+  function updateBackendStatus() {
+    var configured = Boolean(clean((ui.settingsDraft && ui.settingsDraft.apiBaseUrl) || state.settings.apiBaseUrl));
+    el.backendStatusText.textContent = configured ? "Endpoint configurado · será validado ao enviar" : "Não conectado";
+    el.backendStatusText.parentElement.classList.toggle("is-connected", configured);
+    setAiStatus(configured ? "BACKEND CONFIGURADO" : "INTERFACE LOCAL", configured);
+  }
+
+  function setAiStatus(label, connected) {
+    el.aiStatusChip.querySelector("span").textContent = label;
+    el.aiStatusChip.classList.toggle("is-connected", Boolean(connected));
+  }
+
+  function optimizeImage(file) {
+    return new Promise(function (resolve, reject) {
+      var reader = new FileReader();
+      reader.onerror = reject;
+      reader.onload = function () {
+        var image = new Image();
+        image.onerror = reject;
+        image.onload = function () {
+          var ratio = Math.min(1, 1920 / image.naturalWidth, 1080 / image.naturalHeight);
+          var canvas = document.createElement("canvas");
+          canvas.width = Math.max(1, Math.round(image.naturalWidth * ratio));
+          canvas.height = Math.max(1, Math.round(image.naturalHeight * ratio));
+          var context = canvas.getContext("2d");
+          context.drawImage(image, 0, 0, canvas.width, canvas.height);
+          resolve(canvas.toDataURL("image/webp", 0.82));
+        };
+        image.src = reader.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function getSpotifyRedirectUri() {
+    if (window.location.protocol === "file:" || window.location.origin === "null") return "http://127.0.0.1:4173/";
+    return window.location.origin + window.location.pathname;
+  }
+
+  async function beginSpotifyConnectFromSettings() {
+    var clientId = clean(el.spotifyClientId.value);
+    if (!clientId) {
+      toast("Informe o Client ID público do Spotify.", "error");
+      el.spotifyClientId.focus();
+      return;
+    }
+    if (!ui.settingsDraft) ui.settingsDraft = Object.assign({}, state.settings);
+    ui.settingsDraft.spotifyClientId = clientId;
+    ui.settingsDraft.apiBaseUrl = clean(el.apiBaseUrl.value).replace(/\/+$/, "");
+    state.settings = Object.assign({}, state.settings, ui.settingsDraft);
+    saveState();
+    await beginSpotifyConnect();
+  }
+
+  async function beginSpotifyConnect() {
+    var clientId = clean(state.settings.spotifyClientId || PUBLIC_CONFIG.spotifyClientId);
+    if (!clientId) {
+      openSettings();
+      toast("Adicione o Spotify Client ID para conectar.", "error");
+      return;
+    }
+    if (window.location.protocol === "file:") {
+      toast("Abra o site por http://127.0.0.1:4173 ou pelo GitHub Pages para conectar o Spotify.", "error");
+      return;
+    }
+    var verifier = randomString(64);
+    var oauthState = randomString(32);
+    var challenge = await pkceChallenge(verifier);
+    sessionStorage.setItem(SPOTIFY_VERIFIER_KEY, verifier);
+    sessionStorage.setItem(SPOTIFY_STATE_KEY, oauthState);
+    var params = new URLSearchParams({
+      client_id: clientId,
+      response_type: "code",
+      redirect_uri: getSpotifyRedirectUri(),
+      state: oauthState,
+      scope: "user-read-currently-playing user-read-playback-state",
+      code_challenge_method: "S256",
+      code_challenge: challenge
+    });
+    window.location.assign("https://accounts.spotify.com/authorize?" + params.toString());
+  }
+
+  async function handleSpotifyCallback() {
+    var params = new URLSearchParams(window.location.search);
+    if (params.get("error")) {
+      toast("A conexão com o Spotify foi cancelada.", "error");
+      cleanOAuthQuery();
+      return;
+    }
+    var code = params.get("code");
+    if (!code) return;
+    var returnedState = params.get("state");
+    var expectedState = sessionStorage.getItem(SPOTIFY_STATE_KEY);
+    var verifier = sessionStorage.getItem(SPOTIFY_VERIFIER_KEY);
+    if (!returnedState || returnedState !== expectedState || !verifier) {
+      toast("A validação de segurança do Spotify falhou. Tente conectar novamente.", "error");
+      cleanOAuthQuery();
+      return;
+    }
+    try {
+      var response = await fetch("https://accounts.spotify.com/api/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          client_id: clean(state.settings.spotifyClientId || PUBLIC_CONFIG.spotifyClientId),
+          grant_type: "authorization_code",
+          code: code,
+          redirect_uri: getSpotifyRedirectUri(),
+          code_verifier: verifier
+        })
       });
-      return;
-    }
-    if (target.id === "commandSearch") {
-      const results = document.querySelector("#commandResults");
-      if (results) results.innerHTML = commandResults(target.value);
-      return;
-    }
-    if (target.dataset.pgField) {
-      const numeric = ["homeScore", "awayScore", "goals", "assists", "rating", "minutes"].includes(target.dataset.pgField);
-      ui.postgameDraft[target.dataset.pgField] = numeric ? Number(target.value) : target.value;
-      return;
-    }
-    if (target.dataset.goalField) {
-      const entry = ui.goalEntries[Number(target.dataset.goalIndex)];
-      if (entry) entry[target.dataset.goalField] = target.dataset.goalField === "minute" ? Number(target.value) : target.value;
-      return;
-    }
-    if (target.dataset.careerField) {
-      const field = target.dataset.careerField;
-      ui.draftCareer[field] = ["age", "shirt"].includes(field) ? Number(target.value) : target.value;
-      return;
-    }
-    if (target.dataset.careerModule) {
-      const moduleName = target.dataset.careerModule;
-      const set = new Set(ui.draftCareer.modules);
-      target.checked ? set.add(moduleName) : set.delete(moduleName);
-      ui.draftCareer.modules = [...set];
+      if (!response.ok) throw new Error("HTTP " + response.status);
+      var token = await response.json();
+      storeSpotifyToken(token);
+      toast("Spotify conectado.");
+      await fetchSpotifyNowPlaying();
+    } catch (error) {
+      toast("Não foi possível concluir a conexão com o Spotify.", "error");
+    } finally {
+      sessionStorage.removeItem(SPOTIFY_VERIFIER_KEY);
+      sessionStorage.removeItem(SPOTIFY_STATE_KEY);
+      cleanOAuthQuery();
     }
   }
 
-  function handleSubmit(event) {
-    if (event.target.id === "roleplayForm") {
-      event.preventDefault();
-      const input = event.target.elements.message;
-      sendRoleplayMessage(input.value);
-      input.value = "";
+  function cleanOAuthQuery() {
+    var cleanUrl = window.location.pathname + (window.location.hash || "");
+    window.history.replaceState({}, document.title, cleanUrl);
+  }
+
+  function storeSpotifyToken(token) {
+    var existing = readSpotifyToken() || {};
+    var normalized = {
+      access_token: token.access_token,
+      refresh_token: token.refresh_token || existing.refresh_token || "",
+      token_type: token.token_type || "Bearer",
+      expires_at: Date.now() + Number(token.expires_in || 3600) * 1000 - 30000
+    };
+    sessionStorage.setItem(SPOTIFY_TOKEN_KEY, JSON.stringify(normalized));
+  }
+
+  function readSpotifyToken() {
+    try {
+      return JSON.parse(sessionStorage.getItem(SPOTIFY_TOKEN_KEY)) || null;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  async function validSpotifyToken() {
+    var token = readSpotifyToken();
+    if (!token) return null;
+    if (token.expires_at > Date.now()) return token;
+    if (!token.refresh_token) return null;
+    try {
+      var response = await fetch("https://accounts.spotify.com/api/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          client_id: clean(state.settings.spotifyClientId || PUBLIC_CONFIG.spotifyClientId),
+          grant_type: "refresh_token",
+          refresh_token: token.refresh_token
+        })
+      });
+      if (!response.ok) throw new Error("refresh");
+      var refreshed = await response.json();
+      storeSpotifyToken(refreshed);
+      return readSpotifyToken();
+    } catch (error) {
+      disconnectSpotify(false);
+      return null;
+    }
+  }
+
+  async function fetchSpotifyNowPlaying() {
+    var token = await validSpotifyToken();
+    if (!token) {
+      renderSpotifyDisconnected();
       return;
     }
-    if (event.target.id === "postgameForm") {
-      event.preventDefault();
-      generateStoryPack();
-      return;
-    }
-    if (event.target.id === "careerWizard") {
-      event.preventDefault();
-      if (ui.wizardStep < 4) {
-        if (ui.wizardStep === 1 && (!ui.draftCareer.name.trim() || !ui.draftCareer.club.trim())) {
-          event.target.reportValidity();
-          return;
-        }
-        ui.wizardStep += 1;
-        renderCareerWizard();
-      } else {
-        createCareer();
+    try {
+      var response = await fetch("https://api.spotify.com/v1/me/player/currently-playing", { headers: { Authorization: "Bearer " + token.access_token } });
+      if (response.status === 204) {
+        renderSpotifyIdle();
+        return;
       }
-      return;
-    }
-    if (event.target.id === "addCanonForm") {
-      event.preventDefault();
-      addCanonFact(event.target);
-    }
-  }
-
-  function handleKeydown(event) {
-    if (event.key === "Escape") {
-      closeModal();
-      closeMenus();
-      return;
-    }
-    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
-      event.preventDefault();
-      openSearch();
-      return;
-    }
-    if (event.key === "/" && !["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName)) {
-      event.preventDefault();
-      openSearch();
-      return;
-    }
-    if (event.target.id === "rpInput" && event.key === "Enter" && !event.shiftKey) {
-      event.preventDefault();
-      event.target.form?.requestSubmit();
+      if (!response.ok) throw new Error("HTTP " + response.status);
+      renderSpotifyTrack(await response.json());
+    } catch (error) {
+      el.spotifyStatus.textContent = "SPOTIFY CONECTADO";
+      el.spotifyTrack.textContent = "SEM RESPOSTA";
+      el.spotifyArtist.textContent = "A reprodução não pôde ser consultada";
+      el.spotifyDisc.classList.remove("is-playing");
     }
   }
 
-  window.addEventListener("hashchange", render);
-  document.addEventListener("click", handleClick);
-  document.addEventListener("input", handleInput);
-  document.addEventListener("change", handleInput);
-  document.addEventListener("submit", handleSubmit);
-  document.addEventListener("keydown", handleKeydown);
+  function renderSpotifyTrack(payload) {
+    var item = payload && payload.item;
+    if (!item) {
+      renderSpotifyIdle();
+      return;
+    }
+    var artists = Array.isArray(item.artists) ? item.artists.map(function (artist) { return artist.name; }).join(", ") : "";
+    var imageUrl = item.album && item.album.images && item.album.images[0] && item.album.images[0].url;
+    el.spotifyStatus.textContent = payload.is_playing ? "TOCANDO AGORA" : "SPOTIFY PAUSADO";
+    el.spotifyTrack.textContent = item.name || "Faixa sem título";
+    el.spotifyArtist.textContent = artists || "Artista não informado";
+    el.spotifyDisc.classList.toggle("is-playing", Boolean(payload.is_playing));
+    if (imageUrl && /^https:\/\//i.test(imageUrl)) el.spotifyDisc.style.setProperty("--album-art", 'url("' + imageUrl.replace(/"/g, "%22") + '")');
+  }
 
-  if (!window.location.hash) window.history.replaceState(null, "", "#/home");
-  render();
+  function renderSpotifyIdle() {
+    el.spotifyStatus.textContent = "SPOTIFY CONECTADO";
+    el.spotifyTrack.textContent = "NADA TOCANDO";
+    el.spotifyArtist.textContent = "Inicie uma faixa no Spotify";
+    el.spotifyDisc.classList.remove("is-playing");
+    el.spotifyDisc.style.removeProperty("--album-art");
+  }
+
+  function renderSpotifyDisconnected() {
+    el.spotifyStatus.textContent = "SPOTIFY";
+    el.spotifyTrack.textContent = "CONECTAR";
+    el.spotifyArtist.textContent = "Veja aqui o que está tocando";
+    el.spotifyDisc.classList.remove("is-playing");
+    el.spotifyDisc.style.removeProperty("--album-art");
+  }
+
+  function disconnectSpotify(showMessage) {
+    sessionStorage.removeItem(SPOTIFY_TOKEN_KEY);
+    stopSpotifyPolling();
+    renderSpotifyDisconnected();
+    if (showMessage !== false) toast("Spotify desconectado deste navegador.");
+  }
+
+  async function spotifySidebarAction() {
+    if (readSpotifyToken()) {
+      await fetchSpotifyNowPlaying();
+      toast("Reprodução do Spotify atualizada.");
+      return;
+    }
+    if (clean(state.settings.spotifyClientId || PUBLIC_CONFIG.spotifyClientId)) await beginSpotifyConnect();
+    else {
+      openSettings();
+      toast("Informe o Client ID para conectar o Spotify.");
+    }
+  }
+
+  function startSpotifyPolling() {
+    stopSpotifyPolling();
+    if (!readSpotifyToken()) {
+      renderSpotifyDisconnected();
+      return;
+    }
+    fetchSpotifyNowPlaying();
+    ui.spotifyTimer = window.setInterval(fetchSpotifyNowPlaying, 30000);
+  }
+
+  function stopSpotifyPolling() {
+    if (ui.spotifyTimer) window.clearInterval(ui.spotifyTimer);
+    ui.spotifyTimer = null;
+  }
+
+  function randomString(length) {
+    var alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~";
+    var result = "";
+    var values = new Uint8Array(length);
+    crypto.getRandomValues(values);
+    for (var i = 0; i < length; i += 1) result += alphabet[values[i] % alphabet.length];
+    return result;
+  }
+
+  async function pkceChallenge(verifier) {
+    var data = new TextEncoder().encode(verifier);
+    var digest = await crypto.subtle.digest("SHA-256", data);
+    return base64Url(new Uint8Array(digest));
+  }
+
+  function base64Url(bytes) {
+    var binary = "";
+    bytes.forEach(function (byte) { binary += String.fromCharCode(byte); });
+    return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+
+  function randomInt(max) {
+    if (!Number.isFinite(max) || max <= 0) return 0;
+    if (window.crypto && crypto.getRandomValues) {
+      var ceiling = Math.floor(0x100000000 / max) * max;
+      var value = new Uint32Array(1);
+      do crypto.getRandomValues(value); while (value[0] >= ceiling);
+      return value[0] % max;
+    }
+    return Math.floor(Math.random() * max);
+  }
+
+  async function hashText(text) {
+    if (window.crypto && crypto.subtle) {
+      var encoded = new TextEncoder().encode(String(text));
+      var digest = await crypto.subtle.digest("SHA-256", encoded);
+      return Array.from(new Uint8Array(digest)).map(function (byte) { return byte.toString(16).padStart(2, "0"); }).join("");
+    }
+    return btoa(unescape(encodeURIComponent(String(text))));
+  }
+
+  function emptyMarkup(index, title, text) {
+    return '<div class="empty-state"><span class="empty-state__index">' + escapeHTML(index) + '</span><h2>' + escapeHTML(title) + '</h2><p>' + escapeHTML(text) + "</p></div>";
+  }
+
+  function toast(message, type) {
+    if (!el.toastRegion) return;
+    var item = document.createElement("div");
+    item.className = "toast" + (type === "error" ? " is-error" : "");
+    item.textContent = message;
+    el.toastRegion.appendChild(item);
+    window.setTimeout(function () {
+      item.style.opacity = "0";
+      item.style.transform = "translateY(7px)";
+      window.setTimeout(function () { item.remove(); }, 180);
+    }, 3800);
+  }
+
+  function copyText(text) {
+    if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text);
+    return new Promise(function (resolve, reject) {
+      var area = document.createElement("textarea");
+      area.value = text;
+      area.style.position = "fixed";
+      area.style.opacity = "0";
+      document.body.appendChild(area);
+      area.select();
+      try {
+        document.execCommand("copy");
+        resolve();
+      } catch (error) {
+        reject(error);
+      } finally {
+        area.remove();
+      }
+    });
+  }
+
+  function clean(value) {
+    return String(value == null ? "" : value).trim();
+  }
+
+  function escapeHTML(value) {
+    return String(value == null ? "" : value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
+  function normalizeKey(value) {
+    return clean(value).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR");
+  }
+
+  function splitCommaList(value) {
+    return clean(value).split(",").map(clean).filter(Boolean);
+  }
+
+  function numberOrZero(value) {
+    var number = Number(String(value == null ? "" : value).replace(",", "."));
+    return Number.isFinite(number) ? number : 0;
+  }
+
+  function parseStrictNumber(value) {
+    var valid = validField(value);
+    if (!valid) return null;
+    var number = Number(valid.replace(",", "."));
+    return Number.isFinite(number) ? number : null;
+  }
+
+  function plural(number, singular, pluralForm) {
+    return number + " " + (Number(number) === 1 ? singular : pluralForm);
+  }
+
+  function naturalList(items) {
+    if (items.length <= 1) return items[0] || "";
+    return items.slice(0, -1).join(", ") + " e " + items[items.length - 1];
+  }
+
+  function formatDecimal(number) {
+    return new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 }).format(Number(number));
+  }
+
+  function formatMoney(value, currency) {
+    try {
+      return new Intl.NumberFormat("pt-BR", { style: "currency", currency: currency || "BRL", maximumFractionDigits: 2 }).format(Number(value || 0));
+    } catch (error) {
+      return (currency || "BRL") + " " + formatDecimal(value || 0);
+    }
+  }
+
+  function formatSignedMoney(value, currency) {
+    var number = Number(value || 0);
+    return (number > 0 ? "+ " : number < 0 ? "− " : "") + formatMoney(Math.abs(number), currency);
+  }
+
+  function formatDate(value) {
+    if (!value) return "DATA NÃO INFORMADA";
+    var text = String(value);
+    var date = /^\d{4}-\d{2}-\d{2}$/.test(text) ? new Date(text + "T12:00:00") : new Date(text);
+    if (Number.isNaN(date.getTime())) return text;
+    return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short", year: "numeric" }).format(date).replace(".", "").toUpperCase();
+  }
+
+  function formatTime(value) {
+    var date = value ? new Date(value) : new Date();
+    if (Number.isNaN(date.getTime())) return "";
+    return new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" }).format(date);
+  }
+
+  function formatClock(value) {
+    if (!value) return "";
+    if (/^\d{1,2}:\d{2}$/.test(String(value))) return String(value);
+    var date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+    return new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" }).format(date);
+  }
+
+  function joinUrl(base, path) {
+    return clean(base).replace(/\/+$/, "") + "/" + clean(path).replace(/^\/+/, "");
+  }
+
+  async function init() {
+    cacheElements();
+    bindEvents();
+    applyVisualSettings(state.settings);
+    populateLoginCareers();
+    el.spotifyRedirectUri.value = getSpotifyRedirectUri();
+    await handleSpotifyCallback();
+    if (activeCareer()) startApp();
+    else showAuth();
+  }
+
+  init();
 })();

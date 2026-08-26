@@ -1,105 +1,86 @@
 # InyffX
 
-> Sua carreira. Seu universo.
+> O futebol acontece no jogo. A vida acontece aqui.
 
-Demo navegável de uma plataforma de roleplay para modos carreira de futebol. O videogame continua responsável pelo futebol; o InyffX dá continuidade ao mundo que existe ao redor das partidas.
+Interface web para transformar um modo carreira de jogador em um universo persistente de roleplay. O jogo de futebol determina partidas e estatísticas; o InyffX organiza o cânone e cria a camada narrativa ao redor delas.
 
-## Demo v1.0
+## Interface atual
 
-Esta primeira versão é uma experiência de produto inteiramente estática e compatível com GitHub Pages. Ela demonstra:
+Esta versão é um front-end estático compatível com GitHub Pages. Ela contém:
 
-- dashboard da carreira e próximo jogo;
-- criação de protagonista e configuração da profundidade narrativa;
-- chat de roleplay com proteção explícita da agência do jogador;
-- registro pós-jogo com placar, desempenho e descrição dos gols;
-- repercussão fictícia com manchete, torcida, mensagem e coletiva;
-- separação visual entre fato do jogo, fato do RP, segredo e possibilidade;
-- linha do tempo do cânone e mapa conceitual de memória;
-- fichas de NPCs com confiança, respeito, tensão, razões e conhecimento;
-- mídia fictícia, redes sociais, calendário, finanças e hall da carreira;
-- acontecimentos aleatórios com D6 e D20;
-- trilha de carreira demonstrativa e fluxo futuro de Spotify;
-- persistência local e exportação do save em JSON;
-- temas claro/escuro e layout responsivo para desktop e celular.
+- cadastro em quatro etapas e login de carreiras salvas no navegador;
+- estado inicial vazio: nenhum personagem, jogo, notícia, conquista ou compromisso é inventado;
+- hub minimalista com fundo personalizável e todas as fontes em Cruyff Sans;
+- `KICK OFF`: chat de RP, modelo de partida, roleta editável e dados D6, D8, D10, D12, D20 e D100;
+- `FYX NEWS`: manchetes, redes sociais, análises e fofocas em modo consulta;
+- `RELATIONSHIPS`: fichas de todos os personagens confirmados no cânone;
+- `SEASONS`: partidas narradas e estatísticas agregadas por temporada;
+- `PLAYER CAREER`: FYX Pay, Hall da carreira e calendário;
+- `OFF THE PITCH`: fluxo opcional para The Sims 4, modelo copiável e moradias;
+- atualização local de `SEASONS` e `FYX NEWS` quando um modelo de partida preenchido é enviado;
+- integração Spotify por Authorization Code com PKCE, pronta para receber um Client ID;
+- contrato de API para conectar a IA e o banco sem expor chaves privadas.
 
 ## Executar localmente
 
-Não há instalação, build ou dependências de produção.
-
-1. Abra `index.html` diretamente; ou
-2. sirva a pasta com qualquer servidor estático:
+Não há build nem dependências de produção. Sirva a pasta por HTTP para que recursos como OAuth e Clipboard funcionem corretamente:
 
 ```powershell
-python -m http.server 4173
+python -m http.server 4173 --bind 127.0.0.1
 ```
 
-Depois acesse `http://localhost:4173`.
+Abra `http://127.0.0.1:4173/`.
+
+Também é possível abrir `index.html` diretamente para conferir o layout, mas a conexão Spotify não funciona em uma URL `file://`.
 
 ## Publicar no GitHub Pages
 
-O workflow em `.github/workflows/pages.yml` publica a raiz do repositório sempre que houver push para `main`.
+O workflow em `.github/workflows/pages.yml` publica a raiz do repositório a cada push para `main`.
 
-1. Crie ou conecte um repositório GitHub.
+1. Conecte esta pasta a um repositório GitHub.
 2. Envie a branch `main`.
-3. Em **Settings → Pages → Build and deployment**, selecione **GitHub Actions**.
-4. Aguarde a execução de **Deploy InyffX to GitHub Pages**.
+3. Em **Settings → Pages → Build and deployment**, escolha **GitHub Actions**.
+4. Aguarde o workflow **Deploy InyffX to GitHub Pages**.
 
-Como a aplicação usa rotas por hash (`#/roleplay`, `#/canon`), todas as telas funcionam em subpastas do GitHub Pages sem regras especiais de redirecionamento.
+As páginas usam rotas por hash, como `#kick-off` e `#fyx-news`, portanto funcionam em subpastas do GitHub Pages sem redirecionamentos especiais.
+
+## Integrações
+
+As instruções completas e o contrato JSON estão em [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md).
+
+Resumo:
+
+- **IA + banco:** ainda não existe um provedor conectado. O front-end envia o RP para `POST /v1/roleplay/message` quando uma URL de backend é informada nas configurações.
+- **Spotify:** o fluxo PKCE está implementado. É necessário criar um app no Spotify Developer Dashboard, registrar a Redirect URI exibida pelo InyffX e colar o Client ID público.
+- **GitHub Pages:** nunca armazene uma chave OpenAI, senha de banco, service role ou Spotify Client Secret em `assets/config.js`.
 
 ## Filosofia técnica
 
-**A IA não é o banco de dados.** O banco de dados é a memória objetiva; a IA é a narradora e intérprete dessa memória.
+**A IA não é o banco de dados.** O banco é a memória objetiva; a IA é a narradora e intérprete dessa memória.
 
-Uma versão de produção deve recuperar apenas o contexto relevante para cada cena. Exemplo:
+O backend deve recuperar apenas o contexto necessário à cena atual e devolver, separadamente:
 
-```text
-cena atual
-  ├─ protagonista e estado da carreira
-  ├─ NPCs presentes e respectivas memórias
-  ├─ relação entre os participantes e suas razões
-  ├─ últimos eventos relevantes
-  ├─ fatos públicos conhecidos
-  └─ segredos que cada participante pode acessar
+1. a fala narrativa da IA;
+2. atualizações estruturadas de memória;
+3. o escopo de conhecimento de cada personagem;
+4. fatos confirmados, possibilidades e segredos sem misturá-los.
+
+## Persistência desta versão
+
+- A carreira e o fundo personalizado usam `localStorage`.
+- A sessão de login e os tokens Spotify usam `sessionStorage`.
+- O código de acesso local é salvo como hash SHA-256; ele serve apenas para a experiência da interface e não substitui autenticação de produção.
+- Limpar os dados do navegador remove as carreiras locais.
+- Sincronização entre dispositivos dependerá do backend.
+
+## Teste automatizado
+
+O teste em `tests/smoke.cjs` cobre cadastro, estado vazio, KICK OFF, modelo de partida, atualização de SEASONS/FYX NEWS e responsividade.
+
+```powershell
+node tests/smoke.cjs
 ```
-
-Entidades sugeridas para o backend:
-
-| Entidade | Responsabilidade |
-| --- | --- |
-| `careers` | universo, tom, módulos e save ativo |
-| `players` | protagonista e características objetivas |
-| `seasons` / `matches` | calendário, estatísticas e fatos do jogo |
-| `characters` | identidade, personalidade e objetivos dos NPCs |
-| `relationships` | estado atual e razões históricas da relação |
-| `canon_events` | acontecimentos confirmados e respectivas fontes |
-| `knowledge_edges` | quem sabe cada fato, desde quando e por qual fonte |
-| `scenes` / `messages` | sessões narrativas e falas em ordem |
-| `contracts` / `assets` | finanças, patrimônio e objetos importantes |
-| `media_items` | notícias, posts, coletivas e repercussões |
-
-## Limites desta demo
-
-GitHub Pages hospeda somente arquivos públicos e estáticos. Por isso, esta versão:
-
-- simula respostas narrativas com ramificações locais;
-- não contém chave de API nem chama um modelo de IA;
-- usa `localStorage`, não um banco multiusuário;
-- não possui login, sincronização entre dispositivos ou colaboração;
-- apresenta Spotify e análise de screenshots como fluxos de produto, sem conexão real.
-
-API keys nunca devem ser colocadas no JavaScript publicado. A versão completa precisará de um backend seguro para autenticação, banco de dados, armazenamento de imagens, orquestração da memória e chamadas à IA.
-
-## Próxima fase recomendada
-
-1. autenticação e múltiplas carreiras por usuário;
-2. banco relacional com eventos canônicos e grafo de conhecimento;
-3. serviço de recuperação de contexto por cena;
-4. chat em streaming com ferramentas estruturadas para atualizar o cânone;
-5. uploads e análise de screenshots;
-6. calendário, finanças e NPCs totalmente editáveis;
-7. integrações opcionais com Spotify e relatórios do The Sims;
-8. testes de contradição, custo e segurança narrativa.
 
 ---
 
-InyffX é um conceito independente e não é afiliado a EA, EA Sports FC, Konami, eFootball, PES, clubes, ligas ou veículos de mídia citados pelo usuário. As marcas de mídia exibidas na demo são fictícias.
+InyffX é um conceito independente e não é afiliado à Electronic Arts, EA SPORTS FC, Konami, eFootball, PES, The Sims, Spotify, clubes, ligas ou veículos de mídia.
