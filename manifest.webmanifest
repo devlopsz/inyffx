@@ -1,0 +1,17 @@
+{
+  "name": "InyffX — Sua carreira. Seu universo.",
+  "short_name": "InyffX",
+  "description": "Roleplay, memória e narrativa para o seu modo carreira de futebol.",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#07100f",
+  "theme_color": "#07100f",
+  "icons": [
+    {
+      "src": "favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
