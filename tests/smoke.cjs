@@ -17,6 +17,29 @@ const browserPath = process.env.INYFFX_BROWSER_PATH;
   const page = await context.newPage();
   const issues = [];
 
+  await page.addInitScript(() => {
+    window.INYFFX_TEST_CONFIG = {
+      apiBaseUrl: "https://api.inyffx.test",
+      aiProvider: "Cloudflare Workers AI",
+      aiModel: "GLM-4.7-Flash"
+    };
+  });
+  await page.route("https://api.inyffx.test/**", async (route) => {
+    if (route.request().method() === "OPTIONS") {
+      await route.fulfill({ status: 204, headers: { "Access-Control-Allow-Origin": "*" } });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "Access-Control-Allow-Origin": "*" },
+      body: JSON.stringify({
+        reply: "O vestiário ainda vibra com o resultado. O treinador espera que você conduza o próximo momento.",
+        memoryUpdates: {}
+      })
+    });
+  });
+
   page.on("pageerror", (error) => issues.push("pageerror: " + error.message));
   page.on("console", (message) => {
     if (message.type() === "error") issues.push("console: " + message.text());
@@ -54,7 +77,7 @@ const browserPath = process.env.INYFFX_BROWSER_PATH;
 
   const navCount = await page.locator("[data-route]").count();
   const emptyChat = await page.getByText("Seu universo começa na primeira mensagem.", { exact: true }).count();
-  const statusLocal = await page.getByText("INTERFACE LOCAL", { exact: true }).count();
+  const statusAi = await page.getByText("IA GRATUITA CONECTADA", { exact: true }).count();
 
   await page.locator('[data-open-tool="dice"]').click();
   await page.locator('[data-die="20"]').click();
@@ -78,7 +101,7 @@ const browserPath = process.env.INYFFX_BROWSER_PATH;
   await matchForm.locator('[name="highlights"]').fill("Gol decisivo aos 90 minutos.");
   await page.locator("#insertMatchTemplate").click();
   await page.locator("#chatForm").evaluate((form) => form.requestSubmit());
-  await page.getByText("Mensagem salva localmente.", { exact: false }).waitFor();
+  await page.getByText("O vestiário ainda vibra com o resultado.", { exact: false }).waitFor();
 
   const sentMatch = await page.getByText("[PARTIDA OFICIAL]", { exact: false }).count();
 
@@ -135,7 +158,7 @@ const browserPath = process.env.INYFFX_BROWSER_PATH;
     firstCreateStepVisible,
     navCount,
     emptyChat,
-    statusLocal,
+    statusAi,
     diceValue,
     sentMatch,
     matchRows,
@@ -163,7 +186,7 @@ const browserPath = process.env.INYFFX_BROWSER_PATH;
     !firstCreateStepVisible ||
     navCount !== 6 ||
     !emptyChat ||
-    !statusLocal ||
+    !statusAi ||
     diceValue < 1 ||
     diceValue > 20 ||
     !sentMatch ||

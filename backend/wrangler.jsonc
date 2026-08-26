@@ -1,0 +1,31 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "inyffx-api",
+  "main": "src/index.js",
+  "compatibility_date": "2026-08-26",
+  "workers_dev": true,
+  "observability": {
+    "enabled": true
+  },
+  "ai": {
+    "binding": "AI"
+  },
+  "ratelimits": [
+    {
+      "name": "RATE_LIMITER",
+      "namespace_id": "410773",
+      "simple": {
+        "limit": 10,
+        "period": 60
+      }
+    }
+  ],
+  "vars": {
+    "AI_PROVIDER": "cloudflare-workers-ai",
+    "AI_MODEL": "@cf/zai-org/glm-4.7-flash",
+    "ALLOWED_ORIGINS": "https://devlopsz.github.io,http://127.0.0.1:4173,http://localhost:4173",
+    "MAX_INPUT_CHARS": "12000",
+    "MAX_CONTEXT_CHARS": "32000",
+    "MAX_OUTPUT_TOKENS": "1100"
+  }
+}

@@ -4,5 +4,8 @@ desktop.ini
 *.log
 .idea/
 .vscode/
+node_modules/
+.wrangler/
+backend/dist/
 tests/artifacts/
 inyffx-v2-*.png

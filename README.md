@@ -19,7 +19,8 @@ Esta versão é um front-end estático compatível com GitHub Pages. Ela contém
 - `OFF THE PITCH`: fluxo opcional para The Sims 4, modelo copiável e moradias;
 - atualização local de `SEASONS` e `FYX NEWS` quando um modelo de partida preenchido é enviado;
 - integração Spotify por Authorization Code com PKCE, pronta para receber um Client ID;
-- contrato de API para conectar a IA e o banco sem expor chaves privadas.
+- IA gratuita do MVP preparada em Cloudflare Workers AI, sem chave ou endpoint configurado pelo jogador;
+- contrato de API e adaptador de provedor separados para trocar o modelo futuramente sem refazer a interface.
 
 ## Executar localmente
 
@@ -50,9 +51,21 @@ As instruções completas e o contrato JSON estão em [docs/INTEGRATIONS.md](doc
 
 Resumo:
 
-- **IA + banco:** ainda não existe um provedor conectado. O front-end envia o RP para `POST /v1/roleplay/message` quando uma URL de backend é informada nas configurações.
+- **IA do MVP:** o backend em `backend/` usa Cloudflare Workers AI com `@cf/zai-org/glm-4.7-flash`. O jogador não informa chave nem URL; o endereço público do Worker é definido uma vez pelo InyffX em `assets/config.js`.
+- **Banco multiusuário:** ainda não conectado. A memória estruturada continua no navegador nesta fase e já é enviada de forma seletiva ao backend.
 - **Spotify:** o fluxo PKCE está implementado. É necessário criar um app no Spotify Developer Dashboard, registrar a Redirect URI exibida pelo InyffX e colar o Client ID público.
 - **GitHub Pages:** nunca armazene uma chave OpenAI, senha de banco, service role ou Spotify Client Secret em `assets/config.js`.
+
+## Backend gratuito de IA
+
+```powershell
+cd backend
+npm install
+node --test tests/worker.test.js
+npx wrangler deploy --dry-run
+```
+
+O primeiro deploy exige apenas uma conta Cloudflare no plano Free e `npx wrangler login`. O binding `AI` autentica o Worker sem publicar uma API key. Consulte [backend/README.md](backend/README.md) para o procedimento completo.
 
 ## Filosofia técnica
 
@@ -72,6 +85,7 @@ O backend deve recuperar apenas o contexto necessário à cena atual e devolver,
 - O código de acesso local é salvo como hash SHA-256; ele serve apenas para a experiência da interface e não substitui autenticação de produção.
 - Limpar os dados do navegador remove as carreiras locais.
 - Sincronização entre dispositivos dependerá do backend.
+- A IA gratuita tem franquia diária e pode ficar indisponível até a renovação da cota; mensagens do jogador permanecem salvas localmente nesses casos.
 
 ## Teste automatizado
 

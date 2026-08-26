@@ -1,0 +1,15 @@
+{
+  "name": "inyffx-api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --remote",
+    "deploy": "wrangler deploy",
+    "test": "node --test tests/worker.test.js",
+    "check": "npm test && wrangler deploy --dry-run"
+  },
+  "devDependencies": {
+    "wrangler": "^4.126.0"
+  }
+}

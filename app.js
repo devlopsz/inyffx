@@ -9,7 +9,7 @@
   var ROUTES = ["kick-off", "fyx-news", "relationships", "seasons", "player-career", "off-the-pitch"];
   var TOOL_TITLES = { match: "MODELO DE PARTIDA", wheel: "ROLETA", dice: "ROLAGEM DE DADOS" };
   var WHEEL_COLORS = ["#37484f", "#52636c", "#365c69", "#604e70", "#68704e", "#4b5d72", "#6a4f4f", "#38615c", "#5b536d", "#4f6261", "#5f6542", "#485078"];
-  var PUBLIC_CONFIG = window.INYFFX_CONFIG || {};
+  var PUBLIC_CONFIG = Object.assign({}, window.INYFFX_CONFIG || {}, window.INYFFX_TEST_CONFIG || {});
   var state = loadState();
   var ui = {
     authTab: "login",
@@ -48,6 +48,7 @@
       var parsed = JSON.parse(localStorage.getItem(STORAGE_KEY));
       if (!parsed || parsed.version !== 2 || !Array.isArray(parsed.careers)) return fallback;
       parsed.settings = Object.assign({}, fallback.settings, parsed.settings || {});
+      if (String(PUBLIC_CONFIG.apiBaseUrl || "").trim()) parsed.settings.apiBaseUrl = String(PUBLIC_CONFIG.apiBaseUrl).trim();
       parsed.careers = parsed.careers.map(normalizeCareer);
       return parsed;
     } catch (error) {
@@ -117,7 +118,7 @@
       "seasonSelect", "seasonsContent", "careerContent", "copyOffPitchTemplate", "insertOffPitchTemplate",
       "offPitchTemplate", "residenceContent", "spotifyNow", "spotifyDisc", "spotifyStatus", "spotifyTrack",
       "spotifyArtist", "settingsModal", "settingsForm", "backgroundUpload", "overlayRange", "overlayOutput",
-      "blurRange", "blurOutput", "resetBackground", "apiBaseUrl", "backendStatusDot", "backendStatusText",
+      "blurRange", "blurOutput", "resetBackground", "backendStatusDot", "backendStatusText",
       "spotifyClientId", "spotifyRedirectUri", "copyRedirectUri", "disconnectSpotify", "connectSpotify",
       "saveSettings", "profileModal", "profileContent", "closeProfile", "closeProfileFooter", "logoutCareer",
       "customBackground", "toastRegion"
@@ -562,10 +563,14 @@
     el.sendMessage.disabled = true;
     setAiStatus("IA PENSANDO", true);
     appendPendingMessage();
+    var requestTimer = null;
     try {
+      var controller = new AbortController();
+      requestTimer = window.setTimeout(function () { controller.abort(); }, 90000);
       var response = await fetch(joinUrl(apiBaseUrl, "/v1/roleplay/message"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({
           schemaVersion: "1.0",
           careerId: career.id,
@@ -573,8 +578,12 @@
           context: buildBackendContext(career)
         })
       });
-      if (!response.ok) throw new Error("HTTP " + response.status);
-      var payload = await response.json();
+      var payload = await response.json().catch(function () { return {}; });
+      if (!response.ok) {
+        var apiError = new Error((payload.error && payload.error.message) || "HTTP " + response.status);
+        apiError.code = payload.error && payload.error.code;
+        throw apiError;
+      }
       removePendingMessage();
       var reply = clean(payload.reply || (payload.message && payload.message.content));
       if (reply) {
@@ -593,9 +602,21 @@
       setAiStatus("IA CONECTADA", true);
     } catch (error) {
       removePendingMessage();
-      setAiStatus("FALHA NA CONEXÃO", false);
-      toast("A mensagem foi salva, mas o backend não respondeu. Verifique a URL e o CORS.", "error");
+      if (error && error.code === "RATE_LIMITED") {
+        setAiStatus("LIMITE TEMPORÁRIO", false);
+        toast("Muitas mensagens em pouco tempo. Sua mensagem foi salva; aguarde um minuto e tente novamente.", "error");
+      } else if (error && error.code === "FREE_TIER_UNAVAILABLE") {
+        setAiStatus("COTA GRATUITA INDISPONÍVEL", false);
+        toast("A franquia gratuita da IA está indisponível agora. Sua mensagem foi salva para continuar depois.", "error");
+      } else if (error && error.name === "AbortError") {
+        setAiStatus("TEMPO ESGOTADO", false);
+        toast("A IA demorou mais que o esperado. Sua mensagem continua salva e você pode tentar novamente.", "error");
+      } else {
+        setAiStatus("FALHA NA CONEXÃO", false);
+        toast((error && error.message) || "A mensagem foi salva, mas o backend não respondeu.", "error");
+      }
     } finally {
+      if (requestTimer) window.clearTimeout(requestTimer);
       ui.sending = false;
       el.sendMessage.disabled = false;
     }
@@ -616,12 +637,23 @@
   }
 
   function buildBackendContext(career) {
+    var currentSeason = career.seasons.find(function (season) { return season.label === career.profile.season; }) || career.seasons[career.seasons.length - 1] || null;
     return {
       profile: career.profile,
       scene: career.sceneNumber,
       recentMessages: career.messages.slice(-12).map(function (message) {
         return { role: message.role, content: message.content, createdAt: message.createdAt };
       }),
+      memory: {
+        canonEvents: career.canonEvents.slice(-18),
+        characters: career.characters.slice(-24),
+        recentNews: career.news.slice(-8),
+        currentSeason: currentSeason ? Object.assign({}, currentSeason, { matches: (currentSeason.matches || []).slice(-10) }) : null,
+        finance: Object.assign({}, career.finance, { transactions: career.finance.transactions.slice(-12), pockets: career.finance.pockets.slice(-12) }),
+        hall: career.hall,
+        calendar: career.calendar.slice(-16),
+        offPitch: career.offPitch
+      },
       retrievalRequest: {
         includeRelevantCharacters: true,
         includeRecentCanon: true,
@@ -1257,7 +1289,6 @@
     ui.settingsSaved = false;
     el.overlayRange.value = ui.settingsDraft.overlay;
     el.blurRange.value = ui.settingsDraft.blur;
-    el.apiBaseUrl.value = ui.settingsDraft.apiBaseUrl || "";
     el.spotifyClientId.value = ui.settingsDraft.spotifyClientId || "";
     el.spotifyRedirectUri.value = getSpotifyRedirectUri();
     updateRangeOutputs();
@@ -1310,7 +1341,6 @@
     if (!ui.settingsDraft) ui.settingsDraft = Object.assign({}, state.settings);
     ui.settingsDraft.overlay = Number(el.overlayRange.value);
     ui.settingsDraft.blur = Number(el.blurRange.value);
-    ui.settingsDraft.apiBaseUrl = clean(el.apiBaseUrl.value).replace(/\/+$/, "");
     ui.settingsDraft.spotifyClientId = clean(el.spotifyClientId.value);
     state.settings = Object.assign({}, state.settings, ui.settingsDraft);
     ui.settingsSaved = true;
@@ -1329,10 +1359,11 @@
   }
 
   function updateBackendStatus() {
-    var configured = Boolean(clean((ui.settingsDraft && ui.settingsDraft.apiBaseUrl) || state.settings.apiBaseUrl));
-    el.backendStatusText.textContent = configured ? "Endpoint configurado · será validado ao enviar" : "Não conectado";
+    var configured = Boolean(clean(state.settings.apiBaseUrl || PUBLIC_CONFIG.apiBaseUrl));
+    var provider = clean(PUBLIC_CONFIG.aiProvider || "Cloudflare Workers AI");
+    el.backendStatusText.textContent = configured ? provider + " · integrado pelo InyffX" : "Aguardando publicação do backend InyffX";
     el.backendStatusText.parentElement.classList.toggle("is-connected", configured);
-    setAiStatus(configured ? "BACKEND CONFIGURADO" : "INTERFACE LOCAL", configured);
+    setAiStatus(configured ? "IA GRATUITA CONECTADA" : "IA AINDA NÃO PUBLICADA", configured);
   }
 
   function setAiStatus(label, connected) {
@@ -1376,7 +1407,6 @@
     }
     if (!ui.settingsDraft) ui.settingsDraft = Object.assign({}, state.settings);
     ui.settingsDraft.spotifyClientId = clientId;
-    ui.settingsDraft.apiBaseUrl = clean(el.apiBaseUrl.value).replace(/\/+$/, "");
     state.settings = Object.assign({}, state.settings, ui.settingsDraft);
     saveState();
     await beginSpotifyConnect();

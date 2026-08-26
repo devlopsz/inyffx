@@ -2283,6 +2283,43 @@ input[type="range"] {
   font-size: 0.79rem;
 }
 
+.integration-card {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  margin-bottom: 15px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--line);
+}
+
+.integration-card > div {
+  display: grid;
+  gap: 5px;
+  padding: 14px;
+  background: rgba(10, 12, 13, 0.94);
+}
+
+.integration-card span {
+  color: var(--muted);
+  font-family: "Cruyff Sans Mono", monospace;
+  font-size: 0.59rem;
+  letter-spacing: 0.06em;
+}
+
+.integration-card strong {
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+
+.integration-note {
+  margin: 11px 0 0;
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
 .copy-field {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

@@ -4,5 +4,7 @@
  */
 window.INYFFX_CONFIG = Object.freeze({
   apiBaseUrl: "",
+  aiProvider: "Cloudflare Workers AI",
+  aiModel: "GLM-4.7-Flash",
   spotifyClientId: ""
 });
