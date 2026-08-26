@@ -46,7 +46,7 @@ test("responde ao contrato do KICK OFF e normaliza memória", async () => {
         calls.push({ model, options });
         return {
           response: JSON.stringify({
-            reply: "O treinador fecha o tablet e levanta os olhos. — Chegou cedo. Precisamos conversar sobre o próximo jogo.",
+            reply: "O **treinador** fecha o tablet e levanta os olhos. — Chegou cedo. Precisamos conversar sobre o próximo jogo.",
             memoryUpdates: {
               characters: [{ name: "Rui Costa", role: "Treinador", relationship: "Profissional", relationshipLevel: 55 }],
               news: [{ type: "social", title: "Torcida comenta o treino", summary: "A expectativa aumentou.", source: "FYX Social" }]
@@ -63,12 +63,17 @@ test("responde ao contrato do KICK OFF e normaliza memória", async () => {
   assert.equal(response.status, 200);
   assert.equal(response.headers.get("Access-Control-Allow-Origin"), origin);
   assert.match(payload.reply, /treinador fecha o tablet/i);
+  assert.equal(payload.reply.includes("**"), false);
   assert.equal(payload.meta.freeTier, true);
   assert.equal(payload.memoryUpdates.characters[0].name, "Rui Costa");
   assert.match(payload.memoryUpdates.characters[0].id, /^character-/);
   assert.equal(payload.memoryUpdates.news[0].type, "social");
   assert.equal(calls.length, 1);
   assert.equal(calls[0].model, "@cf/zai-org/glm-4.7-flash");
+  assert.equal("reasoning_effort" in calls[0].options, false);
+  assert.equal(calls[0].options.chat_template_kwargs.enable_thinking, false);
+  assert.equal(calls[0].options.max_completion_tokens, 1100);
+  assert.equal("max_tokens" in calls[0].options, false);
   assert.equal(calls[0].options.response_format.type, "json_object");
   assert.equal(calls[0].options.messages.at(-1).role, "user");
 });
@@ -105,6 +110,24 @@ test("aceita JSON cercado por markdown e produz ids estáveis", () => {
   const first = sanitizeMemoryUpdates({ characters: [{ name: "Ana", role: "Amiga" }] }, "career-1", "2026-08-26T00:00:00.000Z");
   const second = sanitizeMemoryUpdates({ characters: [{ name: "Ana", role: "Amiga" }] }, "career-1", "2026-08-26T00:00:01.000Z");
   assert.equal(first.characters[0].id, second.characters[0].id);
+
+  const filtered = sanitizeMemoryUpdates({
+    characters: [
+      { name: "Jogador QA", role: "Atacante" },
+      { name: "Nome inventado", role: "Protagonista" },
+      { name: "Ana", role: "Amiga" }
+    ]
+  }, "career-1", "2026-08-26T00:00:02.000Z", "Jogador QA");
+  assert.deepEqual(filtered.characters.map((character) => character.name), ["Ana"]);
+});
+
+test("recupera a cena quando o JSON do modelo termina depois do campo reply", () => {
+  const truncated = '{"reply":"O treinador fecha o tablet. — Bom dia. Vamos conversar.","memoryUpdates":{"canonEvents":[{"title":"';
+  const parsed = parseModelPayload({
+    choices: [{ message: { content: truncated, reasoning: "raciocínio interno não deve aparecer" } }]
+  });
+  assert.equal(parsed.reply, "O treinador fecha o tablet. — Bom dia. Vamos conversar.");
+  assert.equal(parseModelPayload({ choices: [{ message: { content: '{"reply":"sem fechamento' } }] }), null);
 });
 
 test("expõe health check sem liberar o endpoint de escrita", async () => {

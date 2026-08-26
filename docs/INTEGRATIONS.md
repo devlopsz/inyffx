@@ -7,7 +7,7 @@
 | Interface e memória local | Funcional | Nada para testar no mesmo navegador |
 | Modelo de partida → SEASONS/FYX NEWS | Funcional | Nada; usa somente os fatos preenchidos |
 | Spotify — faixa atual | Front-end funcional | Client ID e Redirect URI cadastrada |
-| IA de roleplay | Backend implementado | Login e primeiro deploy na Cloudflare |
+| IA de roleplay | Publicada e conectada | Monitorar a franquia gratuita diária |
 | Banco multiusuário | Não conectado | Serviço, esquema, autenticação e migrações |
 | Upload/análise de screenshots | Não conectado | Object storage e endpoint multimodal |
 | Publicação GitHub | Workflow pronto | Repositório remoto/autorização da conta |
@@ -25,9 +25,9 @@ O backend está em `backend/` e usa:
 
 Segundo a documentação da Cloudflare consultada em 26/08/2026, Workers AI oferece 10.000 Neurons por dia sem cobrança no plano Free. Ao esgotar a franquia, novas inferências falham até a renovação diária; o frontend mantém a mensagem do jogador salva.
 
-O endereço do Worker é uma configuração pública do próprio InyffX. Ele não aparece como campo editável para usuários.
+O Worker de produção está publicado em `https://inyffx-api.inyffx-api.workers.dev` e definido na configuração pública do próprio InyffX. Ele não aparece como campo editável para usuários.
 
-### Primeiro deploy
+### Deploy e manutenção
 
 ```powershell
 cd backend
@@ -37,7 +37,7 @@ npx wrangler login
 npm run deploy
 ```
 
-Depois, copie somente a URL `workers.dev` retornada para `assets/config.js` e publique o frontend novamente. Nenhum token da Cloudflare entra no repositório.
+Em um novo ambiente, copie somente a URL `workers.dev` retornada para `assets/config.js` e publique o frontend novamente. Nenhum token da Cloudflare entra no repositório.
 
 ## IA e banco de dados
 

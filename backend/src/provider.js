@@ -21,8 +21,9 @@ export async function generateRoleplay(env, messages) {
   const model = String(env.AI_MODEL || DEFAULT_MODEL);
   const options = {
     messages,
-    max_tokens: positiveInteger(env.MAX_OUTPUT_TOKENS, 1100, 2000),
-    temperature: 0.78,
+    max_completion_tokens: positiveInteger(env.MAX_OUTPUT_TOKENS, 1100, 2000),
+    chat_template_kwargs: { enable_thinking: false },
+    temperature: 0.62,
     top_p: 0.92,
     repetition_penalty: 1.04,
     response_format: { type: "json_object" }

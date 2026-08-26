@@ -24,6 +24,12 @@ function cleanText(value, maximum = 1200) {
   return String(value == null ? "" : value).trim().slice(0, maximum);
 }
 
+function cleanNarrative(value) {
+  return cleanText(value, MAX_REPLY_CHARACTERS)
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/__([^_]+)__/g, "$1");
+}
+
 function cleanId(value) {
   const result = cleanText(value, 160);
   return /^[a-zA-Z0-9._:-]+$/.test(result) ? result : "";
@@ -82,21 +88,55 @@ function parseJsonLoose(value) {
   } catch (_) {
     const start = source.indexOf("{");
     const end = source.lastIndexOf("}");
-    if (start < 0 || end <= start) return null;
+    const reply = extractJsonStringField(source, "reply");
+    if (start < 0 || end <= start) return reply ? { reply } : null;
     try {
       return JSON.parse(source.slice(start, end + 1));
     } catch (_) {
-      return null;
+      return reply ? { reply } : null;
     }
   }
 }
 
+function extractJsonStringField(source, fieldName) {
+  const marker = new RegExp(`"${fieldName}"\\s*:\\s*"`, "i").exec(source);
+  if (!marker) return "";
+  const start = marker.index + marker[0].length - 1;
+  let escaped = false;
+  for (let index = start + 1; index < source.length; index += 1) {
+    const character = source[index];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (character === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (character !== '"') continue;
+    try {
+      return JSON.parse(source.slice(start, index + 1));
+    } catch (_) {
+      return "";
+    }
+  }
+  return "";
+}
+
+function parseTextPayload(value) {
+  const parsed = parseJsonLoose(value);
+  if (parsed) return parsed;
+  const source = cleanText(value, 50000);
+  if (!source || /^[\[{]/.test(source)) return null;
+  return { reply: source };
+}
+
 export function parseModelPayload(raw) {
-  if (raw && raw.response && typeof raw.response === "object") return raw.response;
-  if (raw && typeof raw.response === "string") return parseJsonLoose(raw.response) || { reply: raw.response };
+  if (raw && raw.response && typeof raw.response === "object") return parseModelPayload(raw.response);
+  if (raw && typeof raw.response === "string") return parseTextPayload(raw.response);
   const choiceContent = raw && raw.choices && raw.choices[0] && raw.choices[0].message && raw.choices[0].message.content;
-  if (choiceContent) return parseJsonLoose(choiceContent) || { reply: choiceContent };
-  if (typeof raw === "string") return parseJsonLoose(raw) || { reply: raw };
+  if (choiceContent) return parseTextPayload(choiceContent);
+  if (typeof raw === "string") return parseTextPayload(raw);
   return raw && typeof raw === "object" ? raw : null;
 }
 
@@ -165,6 +205,19 @@ function cleanCharacter(item, index, careerId, now) {
     secretsKnown: stringArray(item.secretsKnown, 20, 500),
     lastUpdated: cleanText(item.lastUpdated || now, 40)
   };
+}
+
+function comparableText(value) {
+  return cleanText(value, 200).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR");
+}
+
+function isProtagonistCharacter(character, protagonistName) {
+  if (!character) return false;
+  const name = comparableText(character.name);
+  const exactProtagonistName = comparableText(protagonistName);
+  const role = comparableText(character.role);
+  return Boolean(exactProtagonistName && name === exactProtagonistName)
+    || /protagonista|personagem principal|jogador do usuario|user player/.test(role);
 }
 
 function cleanMatch(item, index, careerId, now) {
@@ -299,12 +352,14 @@ function cleanOffPitch(value, careerId) {
   return result;
 }
 
-export function sanitizeMemoryUpdates(value, careerId, now = new Date().toISOString()) {
+export function sanitizeMemoryUpdates(value, careerId, now = new Date().toISOString(), protagonistName = "") {
   const source = value && typeof value === "object" ? value : {};
+  const characters = cleanList(source.characters, 24, (item, index) => cleanCharacter(item, index, careerId, now))
+    .filter((character) => !isProtagonistCharacter(character, protagonistName));
   return {
     canonEvents: cleanList(source.canonEvents, 20, (item, index) => cleanCanon(item, index, careerId, now)),
     news: cleanList(source.news, 20, (item, index) => cleanNews(item, index, careerId, now)),
-    characters: cleanList(source.characters, 24, (item, index) => cleanCharacter(item, index, careerId, now)),
+    characters,
     seasons: cleanSeasons(source.seasons, careerId, now),
     finance: cleanFinance(source.finance, careerId, now),
     hall: cleanHall(source.hall, careerId),
@@ -379,7 +434,7 @@ async function handleRoleplay(request, env, origin) {
   }
 
   const modelPayload = parseModelPayload(rawModelResponse);
-  const reply = cleanText(modelPayload && (modelPayload.reply || (modelPayload.message && modelPayload.message.content)), MAX_REPLY_CHARACTERS);
+  const reply = cleanNarrative(modelPayload && (modelPayload.reply || (modelPayload.message && modelPayload.message.content)));
   if (!reply) throw new ApiError(502, "INVALID_AI_RESPONSE", "A IA respondeu sem uma cena utilizável. Tente novamente.");
 
   const now = new Date().toISOString();
@@ -391,7 +446,12 @@ async function handleRoleplay(request, env, origin) {
       content: reply,
       createdAt: now
     },
-    memoryUpdates: sanitizeMemoryUpdates(modelPayload.memoryUpdates || modelPayload.updates || {}, payload.careerId, now),
+    memoryUpdates: sanitizeMemoryUpdates(
+      modelPayload.memoryUpdates || modelPayload.updates || {},
+      payload.careerId,
+      now,
+      payload.context && payload.context.profile && payload.context.profile.playerName
+    ),
     meta: {
       provider: String(env.AI_PROVIDER || "cloudflare-workers-ai"),
       model: String(env.AI_MODEL || DEFAULT_MODEL),
