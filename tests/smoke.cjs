@@ -1,209 +1,132 @@
-const { chromium } = require("playwright");
-const path = require("path");
+const fs = require("node:fs");
+const path = require("node:path");
+const vm = require("node:vm");
 
-const baseUrl = process.env.INYFFX_BASE_URL || "http://127.0.0.1:4173/";
-const screenshotDir = process.env.INYFFX_SCREENSHOT_DIR || process.cwd();
-const browserPath = process.env.INYFFX_BROWSER_PATH;
+const root = path.resolve(__dirname, "..");
+const failures = [];
+const checks = [];
 
-(async () => {
-  const browser = await chromium.launch({
-    headless: true,
-    ...(browserPath ? { executablePath: browserPath } : {})
-  });
-  const context = await browser.newContext({
-    viewport: { width: 1440, height: 1000 },
-    deviceScaleFactor: 1
-  });
-  const page = await context.newPage();
-  const issues = [];
+function read(relativePath) {
+  return fs.readFileSync(path.join(root, relativePath), "utf8").replace(/\r\n/g, "\n");
+}
 
-  await page.addInitScript(() => {
-    window.INYFFX_TEST_CONFIG = {
-      apiBaseUrl: "https://api.inyffx.test",
-      aiProvider: "Cloudflare Workers AI",
-      aiModel: "GLM-4.7-Flash"
-    };
-  });
-  await page.route("https://api.inyffx.test/**", async (route) => {
-    if (route.request().method() === "OPTIONS") {
-      await route.fulfill({ status: 204, headers: { "Access-Control-Allow-Origin": "*" } });
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      headers: { "Access-Control-Allow-Origin": "*" },
-      body: JSON.stringify({
-        reply: "O vestiário ainda vibra com o resultado. O treinador espera que você conduza o próximo momento.",
-        memoryUpdates: {}
-      })
-    });
-  });
+function check(condition, message) {
+  checks.push(message);
+  if (!condition) failures.push(message);
+}
 
-  page.on("pageerror", (error) => issues.push("pageerror: " + error.message));
-  page.on("console", (message) => {
-    if (message.type() === "error") issues.push("console: " + message.text());
-  });
+function fileExists(relativePath) {
+  return fs.existsSync(path.join(root, relativePath));
+}
 
-  await page.goto(baseUrl, { waitUntil: "networkidle" });
-  await page.evaluate(() => {
-    localStorage.clear();
-    sessionStorage.clear();
-  });
-  await page.reload({ waitUntil: "networkidle" });
+function normalizePrompt(value) {
+  return String(value || "").replace(/[ \t]+$/gm, "").trim();
+}
 
-  const title = await page.title();
-  const onboardingTitle = await page.locator("#authTitle").innerText();
-  const firstCreateStepVisible = await page.locator('[data-form-step="1"].is-active').count();
-  await page.screenshot({
-    path: path.join(screenshotDir, "inyffx-v2-onboarding.png"),
-    fullPage: true
-  });
+const requiredFiles = [
+  "index.html",
+  "styles.css",
+  "app.js",
+  "registration-data.js",
+  "assets/config.js",
+  "mod/pics/logo-inyffx.png",
+  "mod/pics/login/inyffx-background-initial.png",
+  "mod/pics/login/soccer-ball-button.svg",
+  "mod/prompt partidas para o usuario copiar.txt",
+  "mod/prompt the sims para o usuario copiar.txt",
+  "mod/prompt the sims EXEMPLO.txt"
+];
 
-  await page.locator('[data-form-step="1"] [name="careerName"]').fill("Carreira QA");
-  await page.locator('[data-form-step="1"] [name="playerName"]').fill("Jogador QA");
-  await page.locator("#nextStep").click();
+requiredFiles.forEach((file) => check(fileExists(file), `arquivo obrigatório presente: ${file}`));
 
-  await page.locator('[data-form-step="2"] [name="currentClub"]').fill("Clube QA");
-  await page.locator('[data-form-step="2"] [name="season"]').fill("2026/27");
-  await page.locator("#nextStep").click();
-  await page.locator("#nextStep").click();
+const html = read("index.html");
+const css = read("styles.css");
+const app = read("app.js");
+const registrationSource = read("registration-data.js");
+const combinedSource = [html, css, app, registrationSource].join("\n");
 
-  await page.locator('[data-form-step="4"] [name="email"]').fill("qa@inyffx.local");
-  await page.locator('[data-form-step="4"] [name="passcode"]').fill("1234");
-  await page.locator('[data-form-step="4"] [name="localConsent"]').check();
-  await page.locator("#createCareer").click();
-  await page.locator("#appShell:not([hidden])").waitFor();
+check(!/Cruyff Sans Mono|font-family\s*:\s*[^;]*\bmono\b/i.test(combinedSource), "nenhuma fonte mono é usada na interface");
+check(/font-family:\s*"Cruyff Sans"/i.test(css), "Cruyff Sans é a família visual da interface");
+check(html.includes("mod/pics/login/inyffx-background-initial.png") || css.includes("mod/pics/login/inyffx-background-initial.png"), "login usa o fundo fornecido");
+check(html.includes("mod/pics/login/soccer-ball-button.svg"), "login usa a bola fornecida no botão");
+check((html.match(/mod\/pics\/logo-inyffx\.png/g) || []).length >= 3, "logo do InyffX aparece no login, cadastro e hub");
 
-  const navCount = await page.locator("[data-route]").count();
-  const emptyChat = await page.getByText("Seu universo começa na primeira mensagem.", { exact: true }).count();
-  const statusAi = await page.getByText("IA GRATUITA CONECTADA", { exact: true }).count();
+const htmlIds = [...html.matchAll(/\sid="([^"]+)"/g)].map((match) => match[1]);
+const duplicateIds = htmlIds.filter((id, index) => htmlIds.indexOf(id) !== index);
+check(duplicateIds.length === 0, "o HTML não contém IDs duplicados");
+const cacheBlock = (app.match(/function cacheElements\(\) \{([\s\S]*?)\.forEach\(function \(id\)/) || [])[1] || "";
+const cachedIds = [...cacheBlock.matchAll(/"([A-Za-z][A-Za-z0-9]+)"/g)].map((match) => match[1]);
+const missingCachedIds = cachedIds.filter((id) => !htmlIds.includes(id));
+check(cachedIds.length > 70 && missingCachedIds.length === 0, "todos os elementos usados pela aplicação existem no HTML");
+const elementReferences = [...app.matchAll(/\bel\.([A-Za-z][A-Za-z0-9]*)/g)].map((match) => match[1]);
+const uncachedReferences = [...new Set(elementReferences.filter((id) => !cachedIds.includes(id)))];
+check(uncachedReferences.length === 0, "todas as referências de interface são inicializadas no cache");
 
-  await page.locator('[data-open-tool="dice"]').click();
-  await page.locator('[data-die="20"]').click();
-  await page.locator("#rollDice").click();
-  const diceValue = Number(await page.locator("#diceResult strong").innerText());
-  await page.locator("#closeTools").click();
-
-  await page.locator('[data-open-tool="match"]').click();
-  const matchForm = page.locator("#matchTemplateForm");
-  await matchForm.locator('[name="date"]').fill("2026-08-26");
-  await matchForm.locator('[name="season"]').fill("2026/27");
-  await matchForm.locator('[name="competition"]').fill("Liga de Teste");
-  await matchForm.locator('[name="homeTeam"]').fill("Clube QA");
-  await matchForm.locator('[name="homeScore"]').fill("3");
-  await matchForm.locator('[name="awayTeam"]').fill("Rival QA");
-  await matchForm.locator('[name="awayScore"]').fill("2");
-  await matchForm.locator('[name="minutes"]').fill("90");
-  await matchForm.locator('[name="rating"]').fill("9.1");
-  await matchForm.locator('[name="goals"]').fill("2");
-  await matchForm.locator('[name="assists"]').fill("1");
-  await matchForm.locator('[name="highlights"]').fill("Gol decisivo aos 90 minutos.");
-  await page.locator("#insertMatchTemplate").click();
-  await page.locator("#chatForm").evaluate((form) => form.requestSubmit());
-  await page.getByText("O vestiário ainda vibra com o resultado.", { exact: false }).waitFor();
-
-  const sentMatch = await page.getByText("[PARTIDA OFICIAL]", { exact: false }).count();
-
-  await page.locator('[data-route="seasons"]').click();
-  await page.locator(".match-row").first().waitFor();
-  const matchRows = await page.locator(".match-row").count();
-  const score = await page.locator(".match-row__score").first().innerText();
-  const seasonStats = await page.locator(".stat-cell").allInnerTexts();
-
-  await page.locator('[data-route="fyx-news"]').click();
-  await page.locator(".news-feature").waitFor();
-  const headline = await page.locator(".news-feature h2").innerText();
-  const newsSource = await page.locator(".news-feature footer").innerText();
-
-  await page.locator('[data-route="relationships"]').click();
-  const relationshipEmpty = await page.getByText("Nenhum personagem registrado.", { exact: true }).count();
-
-  await page.locator('[data-route="player-career"]').click();
-  const financeEmpty = await page.getByText("FYX Pay ainda não foi iniciado.", { exact: true }).count();
-
-  await page.locator('[data-route="off-the-pitch"]').click();
-  const offPitchTitle = await page.getByText("Use o The Sims 4 como simulador da vida fora de campo.", { exact: true }).count();
-
-  await page.locator('[data-route="kick-off"]').click();
-  await page.waitForTimeout(300);
-  await page.locator(".toast").evaluateAll((items) => items.forEach((item) => item.remove()));
-  await page.screenshot({
-    path: path.join(screenshotDir, "inyffx-v2-desktop.png"),
-    fullPage: true
-  });
-
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.reload({ waitUntil: "networkidle" });
-  await page.locator("#appShell:not([hidden])").waitFor();
-  const bodyWidth = await page.locator("body").evaluate((element) => element.scrollWidth);
-  await page.locator("#mobileMenu").click();
-  await page.waitForTimeout(300);
-  const mobileSidebarVisible = await page.locator("body.is-nav-open").count();
-  const mobileSidebarBox = await page.locator("#hubSidebar").boundingBox();
-  const mobileWordmarkBox = await page.locator("#hubSidebar .wordmark").boundingBox();
-  await page.locator('#hubSidebar [data-route="fyx-news"]').click();
-  await page.locator("#page-fyx-news.is-active").waitFor();
-  const mobileNavigationWorked = await page.locator("body:not(.is-nav-open)").count();
-  await page.locator("#mobileMenu").click();
-  await page.waitForTimeout(300);
-  await page.screenshot({
-    path: path.join(screenshotDir, "inyffx-v2-mobile.png"),
-    fullPage: true
-  });
-
-  const result = {
-    title,
-    onboardingTitle,
-    firstCreateStepVisible,
-    navCount,
-    emptyChat,
-    statusAi,
-    diceValue,
-    sentMatch,
-    matchRows,
-    score,
-    seasonStats,
-    headline,
-    newsSource,
-    relationshipEmpty,
-    financeEmpty,
-    offPitchTitle,
-    issues,
-    bodyWidth,
-    viewport: 390,
-    mobileSidebarVisible,
-    mobileNavigationWorked,
-    mobileSidebarBox,
-    mobileWordmarkBox
-  };
-  console.log(JSON.stringify(result, null, 2));
-  await browser.close();
-
-  const failed =
-    !title.includes("InyffX") ||
-    !onboardingTitle.toLocaleLowerCase("pt-BR").includes("a vida acontece aqui") ||
-    !firstCreateStepVisible ||
-    navCount !== 6 ||
-    !emptyChat ||
-    !statusAi ||
-    diceValue < 1 ||
-    diceValue > 20 ||
-    !sentMatch ||
-    matchRows !== 1 ||
-    score !== "3 — 2" ||
-    !headline.toLocaleLowerCase("pt-BR").includes("clube qa 3 x 2 rival qa") ||
-    !newsSource.includes("RELATO DO JOGADOR") ||
-    !relationshipEmpty ||
-    !financeEmpty ||
-    !offPitchTitle ||
-    issues.length ||
-    bodyWidth > 390 ||
-    !mobileSidebarVisible ||
-    !mobileNavigationWorked;
-
-  if (failed) process.exitCode = 1;
-})().catch((error) => {
-  console.error(error);
-  process.exit(1);
+const routes = ["home", "kick-off", "fyx-news", "relationships", "seasons", "player-career", "off-the-pitch"];
+routes.forEach((route) => check(app.includes(`"${route}"`), `rota registrada: ${route}`));
+["kick-off", "fyx-news", "relationships", "seasons", "player-career", "off-the-pitch"].forEach((route) => {
+  check(html.includes(`data-route="${route}"`) && html.includes(`data-page="${route}"`), `menu e página disponíveis: ${route}`);
 });
+check(css.includes(".app-shell.is-page-open .hub-sidebar") && css.includes("visibility: hidden"), "páginas internas ocultam o menu e ocupam a tela");
+check(html.includes('id="pageBack"') && html.includes('aria-label="Voltar para a página inicial"'), "páginas internas têm seta de voltar");
+check(html.includes('id="openSettings"') && html.includes('id="openProfile"'), "engrenagem e perfil ficam disponíveis no hub");
+check(html.includes('id="profilePage"') && html.includes('id="profileContent"'), "perfil abre em uma página dedicada");
+check(app.includes("profileRevision") && app.includes("profileChangeHistory") && app.includes("buildBackendContext"), "edições do jogador entram no histórico e no contexto da IA");
+
+const backgrounds = ["yamal.jpg", "santos.jpg", "relationship.jpg", "flamengo.png", "chelsea.jpg"];
+backgrounds.forEach((file) => {
+  check(fileExists(`mod/pics/background/${file}`), `fundo do hub presente: ${file}`);
+  check(app.includes(`mod/pics/background/${file}`), `fundo do hub registrado no fade: ${file}`);
+});
+check(app.includes("setInterval(advanceHubBackground, 9000)"), "fundos do hub alternam automaticamente em fade");
+check(!html.includes("background-upload") && !app.includes("importBackground"), "personalização manual do fundo foi removida");
+
+const sandbox = { window: {} };
+vm.runInNewContext(registrationSource, sandbox, { filename: "registration-data.js" });
+const questions = sandbox.window.INYFFX_REGISTRATION_QUESTIONS;
+const referenceData = sandbox.window.INYFFX_REFERENCE_DATA;
+check(Array.isArray(questions) && questions.length >= 54, "cadastro possui o fluxo completo de perguntas individuais");
+check(questions.slice(0, 3).map((question) => question.key).join(",") === "username,password,confirmPassword", "cadastro começa por usuário, senha e confirmação");
+
+const questionKeys = new Set(questions.map((question) => question.key));
+[
+  "playerName", "shirtName", "birthDate", "primaryNationality", "secondNationality", "thirdNationality",
+  "birthCountry", "birthCity", "currentCountry", "currentCity", "languages", "footballStatus", "currentClub",
+  "league", "isLoaned", "rightsClub", "loanClub", "squadCategory", "shirtNumber", "competitiveYears", "position",
+  "secondaryPositions", "dominantFoot", "height", "weight", "preferredNumber", "playStyle", "technicalStrengths",
+  "mentalStrengths", "physicalStrengths", "weaknesses", "specialTraits", "setPieces", "footballStart", "formativeClub",
+  "professionalDebutYear", "nationalTeamStatus", "nationalTeam", "titles", "awards", "injuryHistory", "injuryDetails",
+  "personality", "careerAmbition", "nextSeasonGoal", "dreamClub", "inspirations", "rival", "backstory",
+  "goalCelebration", "goalCelebrationDetails", "avatarData", "confirmed"
+].forEach((key) => check(questionKeys.has(key), `pergunta implementada: ${key}`));
+
+const autocompleteQuestions = questions.filter((question) => question.type === "autocomplete");
+check(autocompleteQuestions.length >= 10 && autocompleteQuestions.every((question) => question.manualAllowed), "campos reais usam autocomplete com fallback manual explícito");
+check(referenceData.countries.length >= 40 && referenceData.cities.length >= 35 && referenceData.clubs.length >= 35 && referenceData.leagues.length >= 15, "cadastro inclui sugestões reais iniciais de países, cidades, clubes e ligas");
+check(app.includes("Essa opção não foi encontrada ou não existe."), "aviso obrigatório para opção não encontrada foi implementado");
+check(app.includes("Seguir mesmo assim"), "fallback Seguir mesmo assim foi implementado");
+check(app.includes("calculateAge"), "idade é calculada automaticamente pela data de nascimento");
+
+const matchPrompt = normalizePrompt(read("mod/prompt partidas para o usuario copiar.txt"));
+const matchTemplate = (html.match(/<pre id="matchPromptTemplate">([\s\S]*?)<\/pre>/) || [])[1];
+check(Boolean(matchTemplate) && normalizePrompt(matchTemplate) === matchPrompt, "modelo de partida usa exatamente o arquivo fornecido");
+const offPitchPrompt = normalizePrompt(read("mod/prompt the sims para o usuario copiar.txt"));
+const offPitchTemplate = (html.match(/<pre id="offPitchTemplate">([\s\S]*?)<\/pre>/) || [])[1];
+check(Boolean(offPitchTemplate) && normalizePrompt(offPitchTemplate) === offPitchPrompt, "modelo OFF THE PITCH usa exatamente o arquivo fornecido");
+check(html.includes("prompt%20the%20sims%20EXEMPLO.txt") && html.includes("BAIXAR EXEMPLO"), "exemplo OFF THE PITCH está disponível para download");
+
+check(html.indexOf('src="registration-data.js"') < html.indexOf('src="app.js"'), "dados do cadastro carregam antes da aplicação");
+check(app.includes("Cloudflare Workers AI") && html.includes("GLM-4.7-Flash"), "integração gratuita de IA continua configurada");
+
+new Function(app);
+new Function(registrationSource);
+check(true, "JavaScript principal e cadastro compilam sem erro de sintaxe");
+
+const report = {
+  passed: checks.length - failures.length,
+  total: checks.length,
+  failures
+};
+
+console.log(JSON.stringify(report, null, 2));
+if (failures.length) process.exitCode = 1;

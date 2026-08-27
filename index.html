@@ -3,270 +3,125 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#080a0c" />
-    <meta name="description" content="InyffX — a camada narrativa para transformar seu modo carreira em um universo vivo." />
+    <meta name="theme-color" content="#000000" />
+    <meta name="description" content="InyffX — sua carreira de futebol como um universo vivo." />
     <title>InyffX — Player Career Universe</title>
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <div class="world-backdrop" id="worldBackdrop" aria-hidden="true">
-      <div class="world-backdrop__image" id="customBackground"></div>
-      <div class="world-backdrop__orb world-backdrop__orb--one"></div>
-      <div class="world-backdrop__orb world-backdrop__orb--two"></div>
-      <div class="world-backdrop__grain"></div>
-      <div class="world-backdrop__shade"></div>
-    </div>
     <div class="toast-region" id="toastRegion" aria-live="polite" aria-atomic="true"></div>
 
-    <section class="auth-gate" id="authGate" aria-labelledby="authTitle">
-      <header class="auth-topbar">
-        <a class="wordmark" href="#" aria-label="Início InyffX"><span>INYFF</span><b>X</b></a>
-        <p>PLAYER CAREER UNIVERSE</p>
-      </header>
-      <div class="auth-layout">
-        <div class="auth-intro">
-          <p class="eyebrow">SEU SAVE. SEU CÂNONE.</p>
-          <h1 id="authTitle">O futebol acontece no jogo.<br />A vida acontece aqui.</h1>
-          <p>Crie uma carreira para começar com o universo vazio. Tudo o que aparecer depois virá das suas informações e do roleplay no KICK OFF.</p>
-          <div class="auth-principle"><span>01</span><p>A IA narra. O banco preserva os fatos.</p></div>
-        </div>
+    <section class="auth-gate" id="authGate" aria-label="Acesso ao InyffX">
+      <section class="login-screen auth-panel is-active" id="loginScreen" data-auth-panel="login">
+        <div class="login-screen__shade" aria-hidden="true"></div>
+        <img class="login-screen__logo" src="mod/pics/logo-inyffx.png" alt="InyffX" />
+        <form class="login-card" id="loginForm">
+          <h1>Fazer Login</h1>
+          <label class="login-field"><span>NOME DE USUÁRIO</span><input id="loginCareer" type="text" autocomplete="username" placeholder="@seuusuario" autocapitalize="none" spellcheck="false" required /></label>
+          <label class="login-field"><span>SENHA</span><input id="loginPasscode" type="password" autocomplete="current-password" required /></label>
+          <label class="login-remember"><input id="rememberCareer" type="checkbox" /><span>Manter Conectado</span></label>
+          <p class="form-error" id="loginError" role="alert"></p>
+          <p class="login-hint" id="loginHint"></p>
+          <button class="ball-submit" type="submit" aria-label="Entrar na carreira"><img src="mod/pics/login/soccer-ball-button.svg" alt="" aria-hidden="true" /></button>
+          <button class="login-create" type="button" data-switch-auth="create"><span>NÃO TEM UMA CARREIRA?</span><strong>CRIE A SUA AGORA!</strong></button>
+        </form>
+        <footer class="login-footer"><strong>© 2027 InyffX</strong><span>Ao continuar, você concorda com os <a href="#terms">Termos de Uso</a> e a <a href="#privacy">Política de Privacidade</a> da Lopsz™</span></footer>
+      </section>
 
-        <div class="auth-card">
-          <div class="auth-tabs" role="tablist" aria-label="Acesso à carreira">
-            <button class="auth-tab is-active" type="button" role="tab" aria-selected="true" data-auth-tab="login">ENTRAR</button>
-            <button class="auth-tab" type="button" role="tab" aria-selected="false" data-auth-tab="create">CRIAR CARREIRA</button>
+      <section class="register-screen auth-panel" id="registerScreen" data-auth-panel="create" aria-label="Criação de carreira">
+        <img class="register-screen__logo" src="mod/pics/logo-inyffx.png" alt="InyffX" />
+        <form class="registration-wizard" id="createForm" novalidate>
+          <div class="registration-progress" aria-live="polite"><span id="registrationSection">CONTA</span><span id="registrationCount">1 / 1</span></div>
+          <div class="registration-question" id="registrationQuestion"></div>
+          <p class="form-error registration-error" id="createError" role="alert"></p>
+          <div class="registration-navigation">
+            <button class="wizard-arrow wizard-arrow--back" id="prevStep" type="button" aria-label="Voltar para a pergunta anterior">←</button>
+            <button class="wizard-arrow wizard-arrow--next" id="nextStep" type="button" aria-label="Continuar para a próxima pergunta">→</button>
+            <button class="wizard-finish" id="createCareer" type="submit" hidden>VAMOS AQUECER <span>→</span></button>
           </div>
-
-          <form class="auth-panel is-active" id="loginForm" data-auth-panel="login">
-            <div class="panel-heading">
-              <span class="section-number">01 / ACESSO</span>
-              <h2>Continuar carreira</h2>
-              <p id="loginHint">As carreiras salvas neste navegador aparecem aqui.</p>
-            </div>
-            <label class="field"><span>CARREIRA</span><select id="loginCareer" required><option value="">Nenhuma carreira local</option></select></label>
-            <label class="field"><span>CÓDIGO DE ACESSO</span><input id="loginPasscode" type="password" autocomplete="current-password" minlength="4" placeholder="••••••••" required /></label>
-            <p class="form-error" id="loginError" role="alert"></p>
-            <button class="primary-action" type="submit">ENTRAR NA CARREIRA <span>→</span></button>
-            <button class="text-action" type="button" data-switch-auth="create">Primeira vez? Crie uma carreira</button>
-          </form>
-
-          <form class="auth-panel create-panel" id="createForm" data-auth-panel="create">
-            <div class="form-progress" aria-label="Progresso do cadastro"><span class="is-active" data-progress="1"></span><span data-progress="2"></span><span data-progress="3"></span><span data-progress="4"></span></div>
-            <section class="form-step is-active" data-form-step="1">
-              <div class="panel-heading"><span class="section-number">01 / IDENTIDADE</span><h2>Quem é o jogador?</h2><p>Somente o que você preencher passará a fazer parte do cânone inicial.</p></div>
-              <div class="field-grid field-grid--two">
-                <label class="field field--wide"><span>NOME DA CARREIRA *</span><input name="careerName" type="text" placeholder="Ex.: Rumo ao topo" required /></label>
-                <label class="field field--wide"><span>NOME COMPLETO DO JOGADOR *</span><input name="playerName" type="text" autocomplete="name" placeholder="Nome do seu personagem" required /></label>
-                <label class="field"><span>DATA DE NASCIMENTO</span><input name="birthDate" type="date" /></label>
-                <label class="field"><span>NACIONALIDADE</span><input name="nationality" type="text" placeholder="Ex.: Brasileiro" /></label>
-                <label class="field"><span>CIDADE NATAL</span><input name="birthCity" type="text" placeholder="Cidade, país" /></label>
-                <label class="field"><span>PRONOMES</span><input name="pronouns" type="text" placeholder="Ex.: ele/dele" /></label>
-                <label class="field"><span>ALTURA (CM)</span><input name="height" type="number" inputmode="numeric" min="120" max="230" placeholder="180" /></label>
-                <label class="field"><span>PESO (KG)</span><input name="weight" type="number" inputmode="numeric" min="35" max="180" placeholder="75" /></label>
-              </div>
-            </section>
-
-            <section class="form-step" data-form-step="2">
-              <div class="panel-heading"><span class="section-number">02 / FUTEBOL</span><h2>Onde começa a carreira?</h2><p>Esses dados serão usados no contexto inicial do roleplay e da temporada.</p></div>
-              <div class="field-grid field-grid--two">
-                <label class="field"><span>JOGO</span><select name="gameTitle"><option value="">Selecionar</option><option>EA SPORTS FC</option><option>eFootball / PES</option><option>Football Manager</option><option>The Sims 4 + futebol</option><option>Outro</option></select></label>
-                <label class="field"><span>PLATAFORMA</span><select name="platform"><option value="">Selecionar</option><option>PC</option><option>PlayStation 5</option><option>PlayStation 4</option><option>Xbox Series X|S</option><option>Xbox One</option><option>Nintendo Switch</option><option>Outro</option></select></label>
-                <label class="field"><span>CLUBE ATUAL</span><input name="currentClub" type="text" placeholder="Clube no início do save" /></label>
-                <label class="field"><span>LIGA / PAÍS</span><input name="league" type="text" placeholder="Ex.: Premier League" /></label>
-                <label class="field"><span>TEMPORADA ATUAL</span><input name="season" type="text" placeholder="Ex.: 2026/27" /></label>
-                <label class="field"><span>NÚMERO</span><input name="shirtNumber" type="number" inputmode="numeric" min="0" max="99" placeholder="10" /></label>
-                <label class="field"><span>POSIÇÃO PRINCIPAL</span><select name="position"><option value="">Selecionar</option><option>Goleiro</option><option>Lateral direito</option><option>Zagueiro</option><option>Lateral esquerdo</option><option>Volante</option><option>Meio-campista</option><option>Meia ofensivo</option><option>Ponta direita</option><option>Ponta esquerda</option><option>Segundo atacante</option><option>Centroavante</option></select></label>
-                <label class="field"><span>POSIÇÃO SECUNDÁRIA</span><input name="secondaryPosition" type="text" placeholder="Opcional" /></label>
-                <label class="field"><span>PÉ DOMINANTE</span><select name="dominantFoot"><option value="">Selecionar</option><option>Direito</option><option>Esquerdo</option><option>Ambidestro</option></select></label>
-                <label class="field"><span>ESTILO DE JOGO</span><input name="playStyle" type="text" placeholder="Ex.: criador, veloz, finalizador" /></label>
-                <label class="field field--wide"><span>CLUBES ANTERIORES</span><input name="formerClubs" type="text" placeholder="Separe por vírgulas; deixe vazio se não houver" /></label>
-              </div>
-            </section>
-
-            <section class="form-step" data-form-step="3">
-              <div class="panel-heading"><span class="section-number">03 / HISTÓRIA</span><h2>Como esse universo deve ser?</h2><p>A personalidade orienta a IA, mas nunca autoriza que ela controle seu personagem.</p></div>
-              <div class="field-grid">
-                <label class="field"><span>PERSONALIDADE</span><textarea name="personality" rows="3" placeholder="Traços, valores, limites e maneira de falar"></textarea></label>
-                <label class="field"><span>HISTÓRIA DE VIDA</span><textarea name="backstory" rows="4" placeholder="Infância, formação, família e como chegou ao futebol"></textarea></label>
-                <label class="field"><span>OBJETIVOS DE CARREIRA</span><textarea name="careerGoals" rows="3" placeholder="Títulos, clubes, seleção, legado e objetivos pessoais"></textarea></label>
-                <div class="field-grid field-grid--two">
-                  <label class="field"><span>TOM DO UNIVERSO</span><select name="storyTone"><option value="realista">Realista</option><option value="equilibrado">Equilibrado</option><option value="cinematografico">Cinematográfico</option><option value="novela">Dramático / novela</option></select></label>
-                  <label class="field"><span>PROFUNDIDADE</span><select name="depth"><option value="essencial">Essencial</option><option value="completa" selected>Completa</option><option value="minuciosa">Minuciosa</option></select></label>
-                </div>
-                <fieldset class="module-picker"><legend>MÓDULOS DE INTERESSE</legend><label><input type="checkbox" name="modules" value="football" checked /> Futebol</label><label><input type="checkbox" name="modules" value="media" checked /> Mídia</label><label><input type="checkbox" name="modules" value="relationships" checked /> Relações</label><label><input type="checkbox" name="modules" value="romance" /> Romance</label><label><input type="checkbox" name="modules" value="finance" /> Finanças</label><label><input type="checkbox" name="modules" value="offpitch" /> The Sims / vida</label></fieldset>
-              </div>
-            </section>
-
-            <section class="form-step" data-form-step="4">
-              <div class="panel-heading"><span class="section-number">04 / VIDA & ACESSO</span><h2>Últimos detalhes</h2><p>Todos os campos são opcionais, exceto o acesso local.</p></div>
-              <div class="field-grid field-grid--two">
-                <label class="field"><span>EMPRESÁRIO(A)</span><input name="agentName" type="text" placeholder="Nome, se já existir" /></label>
-                <label class="field"><span>TREINADOR ATUAL</span><input name="coachName" type="text" placeholder="Nome, se já existir" /></label>
-                <label class="field field--wide"><span>FAMÍLIA / PESSOAS IMPORTANTES</span><input name="importantPeople" type="text" placeholder="Nomes separados por vírgulas" /></label>
-                <label class="field"><span>CIDADE ONDE VIVE</span><input name="currentCity" type="text" placeholder="Cidade atual" /></label>
-                <label class="field"><span>MORADIA ATUAL</span><input name="currentResidence" type="text" placeholder="Ex.: apartamento alugado" /></label>
-                <label class="field"><span>MOEDA</span><select name="currency"><option value="BRL">BRL — Real</option><option value="EUR">EUR — Euro</option><option value="GBP">GBP — Libra</option><option value="USD">USD — Dólar</option></select></label>
-                <label class="field"><span>SALDO INICIAL</span><input name="initialBalance" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0" /></label>
-                <label class="field field--wide"><span>E-MAIL *</span><input name="email" type="email" autocomplete="email" placeholder="voce@exemplo.com" required /></label>
-                <label class="field field--wide"><span>CÓDIGO DE ACESSO LOCAL *</span><input name="passcode" type="password" autocomplete="new-password" minlength="4" placeholder="Mínimo de 4 caracteres" required /></label>
-              </div>
-              <label class="consent-row"><input name="localConsent" type="checkbox" required /><span>Entendo que, nesta versão de interface, a carreira fica somente neste navegador.</span></label>
-            </section>
-
-            <p class="form-error" id="createError" role="alert"></p>
-            <div class="form-navigation"><button class="secondary-action" id="prevStep" type="button" hidden>← VOLTAR</button><button class="primary-action" id="nextStep" type="button">CONTINUAR <span>→</span></button><button class="primary-action" id="createCareer" type="submit" hidden>CRIAR E ENTRAR <span>→</span></button></div>
-          </form>
-        </div>
-      </div>
+          <button class="register-login-link" type="button" data-switch-auth="login">Já tenho uma carreira</button>
+        </form>
+      </section>
     </section>
 
     <div class="app-shell" id="appShell" hidden>
-      <div class="mobile-nav-scrim" id="mobileNavScrim" hidden></div>
+      <div class="hub-background" aria-hidden="true"><div class="hub-background__layer is-visible" id="hubBackgroundA"></div><div class="hub-background__layer" id="hubBackgroundB"></div><div class="hub-background__vignette"></div></div>
       <aside class="hub-sidebar" id="hubSidebar">
-        <div class="hub-sidebar__top">
-          <button class="icon-button" id="openSettings" type="button" aria-label="Abrir configurações" data-tooltip="Configurações"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8.4a3.6 3.6 0 1 0 0 7.2 3.6 3.6 0 0 0 0-7.2Zm8.2 4.9v-2.6l-2.1-.8a7 7 0 0 0-.5-1.2l.9-2-1.9-1.9-2 .9a7 7 0 0 0-1.2-.5L12.6 3H10l-.8 2.2a7 7 0 0 0-1.2.5l-2-.9-1.9 1.9.9 2a7 7 0 0 0-.5 1.2l-2.1.8v2.6l2.1.8c.1.4.3.8.5 1.2l-.9 2 1.9 1.9 2-.9c.4.2.8.4 1.2.5l.8 2.2h2.6l.8-2.2c.4-.1.8-.3 1.2-.5l2 .9 1.9-1.9-.9-2c.2-.4.4-.8.5-1.2l2.1-.8Z"/></svg></button>
-          <button class="icon-button" id="openProfile" type="button" aria-label="Ver ficha do jogador" data-tooltip="Ficha inicial"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12.3a4.2 4.2 0 1 0 0-8.4 4.2 4.2 0 0 0 0 8.4Zm-7.5 7.8c.4-3.7 3.5-6.4 7.5-6.4s7.1 2.7 7.5 6.4H4.5Z"/></svg></button>
+        <div class="hub-utility">
+          <button class="hub-utility__button" id="openSettings" type="button" aria-label="Abrir configurações" data-tooltip="Configurações"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8.4a3.6 3.6 0 1 0 0 7.2 3.6 3.6 0 0 0 0-7.2Zm8.2 4.9v-2.6l-2.1-.8a7 7 0 0 0-.5-1.2l.9-2-1.9-1.9-2 .9a7 7 0 0 0-1.2-.5L12.6 3H10l-.8 2.2a7 7 0 0 0-1.2.5l-2-.9-1.9 1.9.9 2a7 7 0 0 0-.5 1.2l-2.1.8v2.6l2.1.8c.1.4.3.8.5 1.2l-.9 2 1.9 1.9 2-.9c.4.2.8.4 1.2.5l.8 2.2h2.6l.8-2.2c.4-.1.8-.3 1.2-.5l2 .9 1.9-1.9-.9-2c.2-.4.4-.8.5-1.2l2.1-.8Z" /></svg></button>
+          <button class="hub-avatar" id="openProfile" type="button" aria-label="Abrir perfil do usuário e do jogador" data-tooltip="Meu perfil"><img id="hubAvatarImage" alt="Foto de perfil" hidden /><span id="hubAvatarFallback" aria-hidden="true">IX</span></button>
         </div>
-        <a class="wordmark wordmark--hub" href="#kick-off" data-route-link="kick-off" aria-label="InyffX — ir para Kick Off"><span>INYFF</span><b>X</b></a>
-        <div class="career-stamp"><span id="careerSeason">CARREIRA ATIVA</span><strong id="careerPlayerName">JOGADOR</strong><p id="careerClub">Clube ainda não definido</p></div>
-        <nav class="hub-nav" aria-label="Navegação principal">
-          <button class="hub-nav__item is-active" type="button" data-route="kick-off"><span>01</span><strong>KICK OFF</strong></button>
-          <button class="hub-nav__item" type="button" data-route="fyx-news"><span>02</span><strong>FYX NEWS</strong></button>
-          <button class="hub-nav__item" type="button" data-route="relationships"><span>03</span><strong>RELATIONSHIPS</strong></button>
-          <button class="hub-nav__item" type="button" data-route="seasons"><span>04</span><strong>SEASONS</strong></button>
-          <button class="hub-nav__item" type="button" data-route="player-career"><span>05</span><strong>PLAYER CAREER</strong></button>
-          <button class="hub-nav__item" type="button" data-route="off-the-pitch"><span>06</span><strong>OFF THE PITCH</strong></button>
-        </nav>
-        <button class="spotify-now" id="spotifyNow" type="button" aria-label="Conectar ou ver reprodução do Spotify"><span class="spotify-disc" id="spotifyDisc"><i></i></span><span class="spotify-copy"><small id="spotifyStatus">SPOTIFY</small><strong id="spotifyTrack">CONECTAR</strong><em id="spotifyArtist">Veja aqui o que está tocando</em></span></button>
+        <div class="hub-sidebar__content">
+          <button class="hub-logo" type="button" data-route="home" aria-label="Página inicial"><img src="mod/pics/logo-inyffx.png" alt="InyffX" /></button>
+          <nav class="hub-nav" aria-label="Navegação principal">
+            <button class="hub-nav__item" type="button" data-route="kick-off">KICK OFF</button>
+            <button class="hub-nav__item" type="button" data-route="fyx-news">FYX NEWS</button>
+            <button class="hub-nav__item" type="button" data-route="relationships">RELATIONSHIPS</button>
+            <button class="hub-nav__item" type="button" data-route="seasons">SEASONS</button>
+            <button class="hub-nav__item" type="button" data-route="player-career">PLAYER CAREER</button>
+            <button class="hub-nav__item" type="button" data-route="off-the-pitch">OFF THE PITCH</button>
+          </nav>
+          <button class="spotify-now" id="spotifyNow" type="button" aria-label="Conectar ou ver reprodução do Spotify"><span class="spotify-disc" id="spotifyDisc"><i></i></span><span class="spotify-copy"><small id="spotifyStatus">SPOTIFY</small><strong id="spotifyTrack">CONECTAR</strong><em id="spotifyArtist">seu Spotify</em></span></button>
+        </div>
       </aside>
 
-      <header class="mobile-header">
-        <button class="icon-button" id="mobileMenu" type="button" aria-label="Abrir menu"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18" fill="none" stroke="currentColor" stroke-width="1.8"/></svg></button>
-        <a class="wordmark" href="#kick-off" data-route-link="kick-off"><span>INYFF</span><b>X</b></a>
-        <button class="icon-button" id="mobileSettings" type="button" aria-label="Abrir configurações"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8.4a3.6 3.6 0 1 0 0 7.2 3.6 3.6 0 0 0 0-7.2Zm8.2 4.9v-2.6l-2.1-.8a7 7 0 0 0-.5-1.2l.9-2-1.9-1.9-2 .9a7 7 0 0 0-1.2-.5L12.6 3H10l-.8 2.2a7 7 0 0 0-1.2.5l-2-.9-1.9 1.9.9 2a7 7 0 0 0-.5 1.2l-2.1.8v2.6l2.1.8c.1.4.3.8.5 1.2l-.9 2 1.9 1.9 2-.9c.4.2.8.4 1.2.5l.8 2.2h2.6l.8-2.2c.4-.1.8-.3 1.2-.5l2 .9 1.9-1.9-.9-2c.2-.4.4-.8.5-1.2l2.1-.8Z"/></svg></button>
-      </header>
-
       <main class="app-main" id="appMain">
-        <section class="page page--kick-off is-active" id="page-kick-off" data-page="kick-off" aria-labelledby="kickOffTitle">
-          <div class="page-topline"><div><span class="section-number">01 / ROLEPLAY</span><h1 id="kickOffTitle">KICK OFF</h1></div><div class="status-chip" id="aiStatusChip"><i></i><span>INTERFACE LOCAL</span></div></div>
+        <button class="page-back" id="pageBack" type="button" aria-label="Voltar para a página inicial">←</button>
+        <section class="page page--kick-off" id="page-kick-off" data-page="kick-off" aria-labelledby="kickOffTitle">
+          <div class="page-topline"><div><span class="section-number">ROLEPLAY</span><h1 id="kickOffTitle">KICK OFF</h1></div><div class="status-chip" id="aiStatusChip"><i></i><span>VERIFICANDO IA</span></div></div>
           <div class="kick-layout">
             <div class="chat-stage">
               <div class="chat-context"><div><span>CENA ATUAL</span><strong id="sceneLabel">Roleplay livre</strong></div><button class="subtle-button" id="newScene" type="button">NOVA CENA</button></div>
-              <div class="chat-messages" id="chatMessages" aria-live="polite"><div class="empty-state empty-state--chat" id="chatEmpty"><span class="empty-state__index">00</span><h2>Seu universo começa na primeira mensagem.</h2><p>Você controla somente o seu personagem. A IA interpreta o mundo e os NPCs sem decidir o que você fala, sente ou faz.</p></div></div>
-              <form class="chat-composer" id="chatForm">
-                <label class="sr-only" for="chatInput">Mensagem de roleplay</label>
-                <textarea id="chatInput" rows="1" placeholder="Escreva como seu personagem ou descreva o contexto..." required></textarea>
-                <div class="composer-actions"><div class="composer-tools" aria-label="Ferramentas do chat">
-                  <button type="button" data-open-tool="match" aria-label="Abrir modelo de partida" data-tooltip="Modelo de partida"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm0 0 3.2 3.5-1.3 4.3H10L8.7 6.5 12 3Zm-8.2 7.1 4.5-.8 1.9 3.3-2.8 3.1-4.1-1.8m16.9-3.8-4.5-.8-1.9 3.3 2.8 3.1 4.1-1.8M8.6 20l.8-4.4h5.2l.8 4.4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></button>
-                  <button type="button" data-open-tool="wheel" aria-label="Abrir roleta" data-tooltip="Roleta"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M12 3.5v17M3.5 12h17M6 6l12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="1.2"/><circle cx="12" cy="12" r="1.8"/></svg></button>
-                  <button type="button" data-open-tool="dice" aria-label="Abrir dados" data-tooltip="Dados"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="8" r="1.1"/><circle cx="16" cy="8" r="1.1"/><circle cx="12" cy="12" r="1.1"/><circle cx="8" cy="16" r="1.1"/><circle cx="16" cy="16" r="1.1"/></svg></button>
-                </div><span class="composer-hint">ENTER envia · SHIFT + ENTER quebra linha</span><button class="send-button" id="sendMessage" type="submit" aria-label="Enviar mensagem">↑</button></div>
-              </form>
+              <div class="chat-messages" id="chatMessages" aria-live="polite"></div>
+              <form class="chat-composer" id="chatForm"><label class="sr-only" for="chatInput">Mensagem de roleplay</label><textarea id="chatInput" rows="1" placeholder="Escreva como seu personagem ou descreva o contexto..." required></textarea><div class="composer-actions"><div class="composer-tools" aria-label="Ferramentas do chat">
+                <button type="button" data-open-tool="match" aria-label="Abrir modelo de partida" data-tooltip="Modelo de partida"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm0 0 3.2 3.5-1.3 4.3H10L8.7 6.5 12 3Zm-8.2 7.1 4.5-.8 1.9 3.3-2.8 3.1-4.1-1.8m16.9-3.8-4.5-.8-1.9 3.3 2.8 3.1 4.1-1.8M8.6 20l.8-4.4h5.2l.8 4.4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" /></svg></button>
+                <button type="button" data-open-tool="wheel" aria-label="Abrir roleta" data-tooltip="Roleta"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M12 3.5v17M3.5 12h17M6 6l12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="1.2"/><circle cx="12" cy="12" r="1.8" /></svg></button>
+                <button type="button" data-open-tool="dice" aria-label="Abrir dados" data-tooltip="Dados"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="8" r="1.1"/><circle cx="16" cy="8" r="1.1"/><circle cx="12" cy="12" r="1.1"/><circle cx="8" cy="16" r="1.1"/><circle cx="16" cy="16" r="1.1"/></svg></button>
+              </div><span class="composer-hint">ENTER envia · SHIFT + ENTER quebra linha</span><button class="send-button" id="sendMessage" type="submit" aria-label="Enviar mensagem">↑</button></div></form>
             </div>
-
             <aside class="tool-drawer" id="toolDrawer" aria-hidden="true">
               <div class="tool-drawer__header"><div><span class="section-number">FERRAMENTAS OPCIONAIS</span><h2 id="toolTitle">MODELO DE PARTIDA</h2></div><button class="icon-button" id="closeTools" type="button" aria-label="Fechar ferramentas">×</button></div>
               <div class="tool-tabs" role="tablist" aria-label="Ferramentas de roleplay"><button class="is-active" type="button" data-tool-tab="match">PARTIDA</button><button type="button" data-tool-tab="wheel">ROLETA</button><button type="button" data-tool-tab="dice">DADOS</button></div>
-              <section class="tool-panel is-active" data-tool-panel="match">
-                <p class="tool-intro">Preencha somente o que aconteceu no seu jogo. O resultado enviado vira fato do cânone.</p>
-                <form id="matchTemplateForm" class="compact-form">
-                  <div class="field-grid field-grid--two">
-                    <label class="field"><span>DATA</span><input name="date" type="date" /></label><label class="field"><span>TEMPORADA</span><input name="season" type="text" placeholder="2026/27" /></label>
-                    <label class="field field--wide"><span>COMPETIÇÃO</span><input name="competition" type="text" placeholder="Premier League" /></label>
-                    <label class="field"><span>MANDANTE</span><input name="homeTeam" type="text" placeholder="Clube" /></label><label class="field"><span>PLACAR</span><input name="homeScore" type="number" min="0" max="99" placeholder="0" /></label>
-                    <label class="field"><span>VISITANTE</span><input name="awayTeam" type="text" placeholder="Clube" /></label><label class="field"><span>PLACAR</span><input name="awayScore" type="number" min="0" max="99" placeholder="0" /></label>
-                    <label class="field"><span>MINUTOS</span><input name="minutes" type="number" min="0" max="130" placeholder="90" /></label><label class="field"><span>NOTA</span><input name="rating" type="number" min="0" max="10" step="0.1" placeholder="8.5" /></label>
-                    <label class="field"><span>GOLS</span><input name="goals" type="number" min="0" max="30" placeholder="0" /></label><label class="field"><span>ASSISTÊNCIAS</span><input name="assists" type="number" min="0" max="30" placeholder="0" /></label>
-                    <label class="field"><span>CARTÕES</span><input name="cards" type="text" placeholder="Nenhum" /></label><label class="field"><span>LESÃO</span><input name="injury" type="text" placeholder="Nenhuma" /></label>
-                  </div>
-                  <label class="field"><span>COMO OS GOLS ACONTECERAM</span><textarea name="goalDetails" rows="3" placeholder="Minuto, jogada e contexto de cada gol"></textarea></label>
-                  <label class="field"><span>ACONTECIMENTOS IMPORTANTES</span><textarea name="highlights" rows="3" placeholder="Defesas, faltas, substituições, provocações..."></textarea></label>
-                  <div class="button-row"><button class="secondary-action" id="copyMatchTemplate" type="button">COPIAR MODELO</button><button class="primary-action" id="insertMatchTemplate" type="button">INSERIR NO CHAT <span>→</span></button></div>
-                </form>
-              </section>
-              <section class="tool-panel" data-tool-panel="wheel">
-                <p class="tool-intro">Crie possibilidades para esta cena. O resultado só entra no chat se você escolher usar.</p>
-                <div class="wheel-wrap"><div class="wheel-pointer" aria-hidden="true"></div><div class="wheel" id="wheel"><span id="wheelResult">?</span></div></div>
-                <div class="wheel-entries" id="wheelEntries"></div>
-                <div class="button-row"><button class="secondary-action" id="addWheelEntry" type="button">+ ADICIONAR</button><button class="primary-action" id="spinWheel" type="button">GIRAR ROLETA <span>↻</span></button></div>
-                <button class="text-action" id="useWheelResult" type="button" disabled>Usar resultado no chat</button>
-              </section>
-              <section class="tool-panel" data-tool-panel="dice">
-                <p class="tool-intro">Escolha o dado. A IA poderá interpretar o valor quando ele for enviado à cena.</p>
-                <div class="dice-picker" id="dicePicker"><button type="button" data-die="6">D6</button><button type="button" data-die="8">D8</button><button type="button" data-die="10">D10</button><button type="button" data-die="12">D12</button><button class="is-active" type="button" data-die="20">D20</button><button type="button" data-die="100">D100</button></div>
-                <div class="dice-result" id="diceResult"><span>D20</span><strong>—</strong><p>Aguardando rolagem</p></div>
-                <button class="primary-action primary-action--full" id="rollDice" type="button">ROLAR DADO <span>⌁</span></button><button class="text-action" id="useDiceResult" type="button" disabled>Usar resultado no chat</button><div class="dice-history" id="diceHistory"></div>
-              </section>
+              <section class="tool-panel is-active" data-tool-panel="match"><p class="tool-intro">Copie o modelo, preencha com os fatos do jogo e envie no chat. O que você informar passa a orientar o cânone da carreira.</p><div id="matchTemplateForm" class="prompt-template-box"><pre id="matchPromptTemplate">Jogo:
+Competição:
+Fase:
+Estádio:
+Uniforme:
+Formação: GO -
+LD - , ZC - , ZC - , LE -
+VOL -
+MAT - , MAT -
+PD - , CA - , PE -
+Gols do (nome do seu jogador):
+Partida: 00:00 -
+
+Placar final:
+Nota:
+
+Mande a Narração, manchetes, comentários, análises, repercussão em redes sociais e seguir com a imprensa com perguntas depois.</pre><div class="button-row"><button class="secondary-action" id="copyMatchTemplate" type="button">COPIAR MODELO</button><button class="primary-action" id="insertMatchTemplate" type="button">INSERIR NO CHAT <span>→</span></button></div></div></section>
+              <section class="tool-panel" data-tool-panel="wheel"><p class="tool-intro">Crie possibilidades para esta cena. O resultado só entra no chat quando você escolher usar.</p><div class="wheel-wrap"><div class="wheel-pointer" aria-hidden="true"></div><div class="wheel" id="wheel"><span id="wheelResult">?</span></div></div><div class="wheel-entries" id="wheelEntries"></div><div class="button-row"><button class="secondary-action" id="addWheelEntry" type="button">+ ADICIONAR</button><button class="primary-action" id="spinWheel" type="button">GIRAR ROLETA <span>↻</span></button></div><button class="text-action" id="useWheelResult" type="button" disabled>Usar resultado no chat</button></section>
+              <section class="tool-panel" data-tool-panel="dice"><p class="tool-intro">Escolha o dado. A IA poderá interpretar o valor quando ele for enviado à cena.</p><div class="dice-picker" id="dicePicker"><button type="button" data-die="6">D6</button><button type="button" data-die="8">D8</button><button type="button" data-die="10">D10</button><button type="button" data-die="12">D12</button><button class="is-active" type="button" data-die="20">D20</button><button type="button" data-die="100">D100</button></div><div class="dice-result" id="diceResult"><span>D20</span><strong>—</strong><p>Aguardando rolagem</p></div><button class="primary-action primary-action--full" id="rollDice" type="button">ROLAR DADO <span>⌁</span></button><button class="text-action" id="useDiceResult" type="button" disabled>Usar resultado no chat</button><div class="dice-history" id="diceHistory"></div></section>
             </aside>
           </div>
         </section>
 
-        <section class="page" id="page-fyx-news" data-page="fyx-news" aria-labelledby="newsTitle">
-          <div class="page-topline"><div><span class="section-number">02 / MÍDIA</span><h1 id="newsTitle">FYX NEWS</h1></div><span class="read-only-tag">CONSULTA · ATUALIZADA PELO RP</span></div>
-          <div class="filter-line" id="newsFilters"><button class="is-active" type="button" data-news-filter="all">TUDO</button><button type="button" data-news-filter="headline">MANCHETES</button><button type="button" data-news-filter="social">REDES SOCIAIS</button><button type="button" data-news-filter="analysis">ANÁLISES</button><button type="button" data-news-filter="gossip">FOFOCAS</button></div>
-          <div class="content-surface" id="newsContent"></div>
-        </section>
-
-        <section class="page" id="page-relationships" data-page="relationships" aria-labelledby="relationshipsTitle">
-          <div class="page-topline"><div><span class="section-number">03 / PERSONAGENS</span><h1 id="relationshipsTitle">RELATIONSHIPS</h1></div><span class="read-only-tag">MEMÓRIA INDIVIDUAL</span></div>
-          <div class="relationship-toolbar"><label class="search-field"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="m15.5 15.5 4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg><input id="relationshipSearch" type="search" placeholder="Buscar personagem" /></label><span id="relationshipCount">0 PERSONAGENS</span></div>
-          <div class="content-surface" id="relationshipsContent"></div>
-        </section>
-
-        <section class="page" id="page-seasons" data-page="seasons" aria-labelledby="seasonsTitle">
-          <div class="page-topline"><div><span class="section-number">04 / FUTEBOL</span><h1 id="seasonsTitle">SEASONS</h1></div><label class="season-selector"><span>TEMPORADA</span><select id="seasonSelect"></select></label></div>
-          <div class="content-surface" id="seasonsContent"></div>
-        </section>
-
-        <section class="page" id="page-player-career" data-page="player-career" aria-labelledby="careerTitle">
-          <div class="page-topline"><div><span class="section-number">05 / CARREIRA</span><h1 id="careerTitle">PLAYER CAREER</h1></div><span class="read-only-tag">CONSULTA</span></div>
-          <div class="career-tabs" role="tablist" aria-label="Áreas da carreira"><button class="is-active" type="button" data-career-tab="pay"><span>01</span>FYX PAY</button><button type="button" data-career-tab="hall"><span>02</span>HALL</button><button type="button" data-career-tab="calendar"><span>03</span>CALENDÁRIO</button></div>
-          <div class="content-surface" id="careerContent"></div>
-        </section>
-
-        <section class="page" id="page-off-the-pitch" data-page="off-the-pitch" aria-labelledby="offPitchTitle">
-          <div class="page-topline"><div><span class="section-number">06 / VIDA</span><h1 id="offPitchTitle">OFF THE PITCH</h1></div><span class="optional-tag">MODO OPCIONAL</span></div>
-          <div class="offpitch-layout">
-            <article class="offpitch-intro"><span class="giant-index">SIMS / 04</span><h2>Use o The Sims 4 como simulador da vida fora de campo.</h2><p>O site não controla o The Sims. Você joga, registra o que realmente aconteceu e envia o relatório ao KICK OFF. A IA classifica o conteúdo e só incorpora ao cânone o que for válido.</p><ol><li><span>01</span>Receba ou escolha objetivos para o dia.</li><li><span>02</span>Jogue a rotina no The Sims 4.</li><li><span>03</span>Envie fatos e screenshots no KICK OFF.</li><li><span>04</span>Confirme o que passa a ser cânone.</li></ol></article>
-            <div class="offpitch-side">
-              <section class="template-box"><div class="template-box__heading"><div><span class="section-number">MODELO COPIÁVEL</span><h3>RELATÓRIO OFF THE PITCH</h3></div><button class="secondary-action" id="copyOffPitchTemplate" type="button">COPIAR</button></div><pre id="offPitchTemplate">[OFF THE PITCH]
-Data:
-Local:
-Personagens presentes:
-Objetivo do dia:
-O que aconteceu:
-Decisões do meu personagem:
-Consequências visíveis:
-Itens ou dinheiro envolvidos:
-Screenshots anexados:
-O que deve ser considerado cânone:
-[/OFF THE PITCH]</pre><button class="text-action" id="insertOffPitchTemplate" type="button">Inserir no KICK OFF →</button></section>
-              <section class="residence-box" id="residenceContent"></section>
-            </div>
-          </div>
-        </section>
+        <section class="page" id="page-fyx-news" data-page="fyx-news" aria-labelledby="newsTitle"><div class="page-topline"><div><span class="section-number">MÍDIA</span><h1 id="newsTitle">FYX NEWS</h1></div><span class="read-only-tag">CONSULTA · ATUALIZADA PELO RP</span></div><div class="filter-line" id="newsFilters"><button class="is-active" type="button" data-news-filter="all">TUDO</button><button type="button" data-news-filter="headline">MANCHETES</button><button type="button" data-news-filter="social">REDES SOCIAIS</button><button type="button" data-news-filter="analysis">ANÁLISES</button><button type="button" data-news-filter="gossip">FOFOCAS</button></div><div class="content-surface" id="newsContent"></div></section>
+        <section class="page" id="page-relationships" data-page="relationships" aria-labelledby="relationshipsTitle"><div class="page-topline"><div><span class="section-number">PERSONAGENS</span><h1 id="relationshipsTitle">RELATIONSHIPS</h1></div><span class="read-only-tag">MEMÓRIA INDIVIDUAL</span></div><div class="relationship-toolbar"><label class="search-field"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="m15.5 15.5 4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.5" /></svg><input id="relationshipSearch" type="search" placeholder="Buscar personagem" /></label><span id="relationshipCount">0 PERSONAGENS</span></div><div class="content-surface" id="relationshipsContent"></div></section>
+        <section class="page" id="page-seasons" data-page="seasons" aria-labelledby="seasonsTitle"><div class="page-topline"><div><span class="section-number">FUTEBOL</span><h1 id="seasonsTitle">SEASONS</h1></div><label class="season-selector"><span>TEMPORADA</span><select id="seasonSelect"></select></label></div><div class="content-surface" id="seasonsContent"></div></section>
+        <section class="page" id="page-player-career" data-page="player-career" aria-labelledby="careerTitle"><div class="page-topline"><div><span class="section-number">CARREIRA</span><h1 id="careerTitle">PLAYER CAREER</h1></div><span class="read-only-tag">CONSULTA</span></div><div class="career-tabs" role="tablist" aria-label="Áreas da carreira"><button class="is-active" type="button" data-career-tab="pay">FYX PAY</button><button type="button" data-career-tab="hall">HALL</button><button type="button" data-career-tab="calendar">CALENDÁRIO</button></div><div class="content-surface" id="careerContent"></div></section>
+        <section class="page" id="page-off-the-pitch" data-page="off-the-pitch" aria-labelledby="offPitchTitle"><div class="page-topline"><div><span class="section-number">VIDA</span><h1 id="offPitchTitle">OFF THE PITCH</h1></div><span class="optional-tag">MODO OPCIONAL</span></div><div class="offpitch-layout"><article class="offpitch-intro"><span class="giant-index">SIMS / 04</span><h2>Use o The Sims 4 como simulador da vida fora de campo.</h2><p>O site não controla o The Sims. Você joga, registra o que realmente aconteceu e envia o relatório ao KICK OFF. A IA classifica o conteúdo e incorpora ao cânone apenas o que for válido.</p><ol><li><span>01</span>Receba ou escolha objetivos para o dia.</li><li><span>02</span>Jogue a rotina no The Sims 4.</li><li><span>03</span>Envie fatos e screenshots no KICK OFF.</li><li><span>04</span>Confirme o que passa a ser cânone.</li></ol></article><div class="offpitch-side"><section class="template-box"><div class="template-box__heading"><div><span class="section-number">MODELO COPIÁVEL</span><h3>RELATÓRIO OFF THE PITCH</h3></div><button class="secondary-action" id="copyOffPitchTemplate" type="button">COPIAR</button></div><pre id="offPitchTemplate">Objetivos iniciais:
+Coisas inesperadas:
+Eventos importantes:</pre><div class="template-actions"><button class="text-action" id="insertOffPitchTemplate" type="button">Inserir no KICK OFF →</button><a class="download-example" href="mod/prompt%20the%20sims%20EXEMPLO.txt" download="InyffX - Exemplo OFF THE PITCH.txt">BAIXAR EXEMPLO</a></div></section><section class="residence-box" id="residenceContent"></section></div></div></section>
       </main>
+
+      <section class="profile-page" id="profilePage" hidden aria-labelledby="profilePageTitle"><button class="page-back profile-page__back" id="closeProfile" type="button" aria-label="Voltar para a página inicial">←</button><header class="profile-hero"><div class="profile-hero__avatar"><img id="profileAvatarImage" alt="Foto de perfil" hidden /><span id="profileAvatarFallback">IX</span></div><div><span>MEU UNIVERSO</span><h1 id="profilePageTitle">PERFIL</h1><p id="profileIdentityLine"></p></div></header><div class="profile-page__content" id="profileContent"></div><button class="profile-logout" id="logoutCareer" type="button">SAIR DA CARREIRA</button></section>
     </div>
 
-    <dialog class="modal" id="settingsModal">
-      <form method="dialog" class="modal__shell" id="settingsForm">
-        <header class="modal__header"><div><span class="section-number">SISTEMA</span><h2>CONFIGURAÇÕES</h2></div><button class="icon-button" type="submit" value="cancel" aria-label="Fechar">×</button></header>
-        <div class="modal__content">
-          <section class="settings-section"><div class="settings-section__heading"><span>01</span><div><h3>FUNDO DA INTERFACE</h3><p>Use qualquer imagem do seu dispositivo.</p></div></div><label class="upload-zone" for="backgroundUpload"><input id="backgroundUpload" type="file" accept="image/*" /><strong>ESCOLHER IMAGEM</strong><span>JPG, PNG ou WEBP · otimizada no navegador</span></label><div class="range-grid"><label><span>ESCURECIMENTO <output id="overlayOutput">58%</output></span><input id="overlayRange" type="range" min="20" max="90" value="58" /></label><label><span>DESFOQUE <output id="blurOutput">0px</output></span><input id="blurRange" type="range" min="0" max="20" value="0" /></label></div><button class="text-action" id="resetBackground" type="button">Restaurar fundo padrão</button></section>
-          <section class="settings-section"><div class="settings-section__heading"><span>02</span><div><h3>IA INYFFX</h3><p>A inteligência do site é conectada pelo próprio InyffX. Nenhum jogador precisa informar chave ou endpoint.</p></div></div><div class="integration-card"><div><span>PROVEDOR DO MVP</span><strong>Cloudflare Workers AI</strong></div><div><span>MODELO</span><strong>GLM-4.7-Flash</strong></div></div><div class="connection-row"><i id="backendStatusDot"></i><span id="backendStatusText">Verificando integração</span></div><p class="integration-note">A franquia gratuita possui limite diário. Se ela terminar, suas mensagens continuam salvas para retomar depois.</p></section>
-          <section class="settings-section"><div class="settings-section__heading"><span>03</span><div><h3>SPOTIFY</h3><p>Mostra no disco a faixa reproduzida na sua conta.</p></div></div><label class="field"><span>SPOTIFY CLIENT ID</span><input id="spotifyClientId" type="text" autocomplete="off" placeholder="Client ID público do Spotify" /></label><label class="field"><span>REDIRECT URI</span><div class="copy-field"><input id="spotifyRedirectUri" type="text" readonly /><button id="copyRedirectUri" type="button">COPIAR</button></div></label><div class="button-row"><button class="secondary-action" id="disconnectSpotify" type="button">DESCONECTAR</button><button class="primary-action" id="connectSpotify" type="button">CONECTAR SPOTIFY <span>→</span></button></div></section>
-        </div>
-        <footer class="modal__footer"><button class="secondary-action" type="submit" value="cancel">CANCELAR</button><button class="primary-action" id="saveSettings" type="button">SALVAR CONFIGURAÇÕES <span>→</span></button></footer>
-      </form>
-    </dialog>
-
-    <dialog class="modal modal--profile" id="profileModal">
-      <div class="modal__shell"><header class="modal__header"><div><span class="section-number">CÂNONE INICIAL</span><h2>FICHA DO JOGADOR</h2></div><button class="icon-button" id="closeProfile" type="button" aria-label="Fechar">×</button></header><div class="modal__content" id="profileContent"></div><footer class="modal__footer"><button class="text-action text-action--danger" id="logoutCareer" type="button">Sair da carreira</button><button class="primary-action" id="closeProfileFooter" type="button">VOLTAR AO HUB <span>→</span></button></footer></div>
-    </dialog>
-
+    <dialog class="modal settings-modal" id="settingsModal"><form method="dialog" class="modal__shell" id="settingsForm"><header class="modal__header"><div><span class="section-number">SISTEMA</span><h2>CONFIGURAÇÕES</h2></div><button class="icon-button" type="submit" value="cancel" aria-label="Fechar">×</button></header><div class="modal__content"><section class="settings-section"><div class="settings-section__heading"><span>01</span><div><h3>IA INYFFX</h3><p>A inteligência do site é conectada pelo próprio InyffX. Nenhum jogador precisa informar chave ou endpoint.</p></div></div><div class="integration-card"><div><span>PROVEDOR DO MVP</span><strong>Cloudflare Workers AI</strong></div><div><span>MODELO</span><strong>GLM-4.7-Flash</strong></div></div><div class="connection-row"><i id="backendStatusDot"></i><span id="backendStatusText">Verificando integração</span></div></section><section class="settings-section"><div class="settings-section__heading"><span>02</span><div><h3>SPOTIFY</h3><p>Mostra no disco a faixa reproduzida na sua conta.</p></div></div><label class="field"><span>SPOTIFY CLIENT ID</span><input id="spotifyClientId" type="text" autocomplete="off" placeholder="Client ID público do Spotify" /></label><label class="field"><span>REDIRECT URI</span><div class="copy-field"><input id="spotifyRedirectUri" type="text" readonly /><button id="copyRedirectUri" type="button">COPIAR</button></div></label><div class="button-row"><button class="secondary-action" id="disconnectSpotify" type="button">DESCONECTAR</button><button class="primary-action" id="connectSpotify" type="button">CONECTAR SPOTIFY <span>→</span></button></div></section></div><footer class="modal__footer"><button class="secondary-action" type="submit" value="cancel">CANCELAR</button><button class="primary-action" id="saveSettings" type="button">SALVAR CONFIGURAÇÕES <span>→</span></button></footer></form></dialog>
     <script src="assets/config.js"></script>
+    <script src="registration-data.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

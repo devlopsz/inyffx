@@ -3,18 +3,30 @@
 
   var STORAGE_KEY = "inyffx-interface-v2";
   var SESSION_KEY = "inyffx-active-career-v2";
+  var PERSISTENT_SESSION_KEY = "inyffx-remembered-career-v1";
   var SPOTIFY_TOKEN_KEY = "inyffx-spotify-token-v1";
   var SPOTIFY_VERIFIER_KEY = "inyffx-spotify-verifier-v1";
   var SPOTIFY_STATE_KEY = "inyffx-spotify-state-v1";
-  var ROUTES = ["kick-off", "fyx-news", "relationships", "seasons", "player-career", "off-the-pitch"];
+  var ROUTES = ["home", "kick-off", "fyx-news", "relationships", "seasons", "player-career", "off-the-pitch"];
+  var HUB_BACKGROUNDS = [
+    "mod/pics/background/yamal.jpg",
+    "mod/pics/background/santos.jpg",
+    "mod/pics/background/relationship.jpg",
+    "mod/pics/background/flamengo.png",
+    "mod/pics/background/chelsea.jpg"
+  ];
+  var REGISTRATION_QUESTIONS = Array.isArray(window.INYFFX_REGISTRATION_QUESTIONS) ? window.INYFFX_REGISTRATION_QUESTIONS : [];
+  var REFERENCE_DATA = window.INYFFX_REFERENCE_DATA || {};
   var TOOL_TITLES = { match: "MODELO DE PARTIDA", wheel: "ROLETA", dice: "ROLAGEM DE DADOS" };
   var WHEEL_COLORS = ["#37484f", "#52636c", "#365c69", "#604e70", "#68704e", "#4b5d72", "#6a4f4f", "#38615c", "#5b536d", "#4f6261", "#5f6542", "#485078"];
   var PUBLIC_CONFIG = Object.assign({}, window.INYFFX_CONFIG || {}, window.INYFFX_TEST_CONFIG || {});
   var state = loadState();
   var ui = {
     authTab: "login",
-    createStep: 1,
-    route: "kick-off",
+    createStep: 0,
+    registrationAnswers: {},
+    registrationCustom: {},
+    route: "home",
     newsFilter: "all",
     careerTab: "pay",
     dieSides: 20,
@@ -24,6 +36,11 @@
     settingsDraft: null,
     settingsSaved: false,
     spotifyTimer: null,
+    backgroundTimer: null,
+    backgroundIndex: 0,
+    backgroundFront: "a",
+    profileEdit: "",
+    pendingAvatar: "",
     sending: false
   };
   var el = {};
@@ -33,10 +50,7 @@
       version: 2,
       settings: {
         apiBaseUrl: String(PUBLIC_CONFIG.apiBaseUrl || ""),
-        spotifyClientId: String(PUBLIC_CONFIG.spotifyClientId || ""),
-        backgroundData: "",
-        overlay: 58,
-        blur: 0
+        spotifyClientId: String(PUBLIC_CONFIG.spotifyClientId || "")
       },
       careers: []
     };
@@ -62,6 +76,13 @@
     safe.name = safe.name || "Carreira";
     safe.auth = safe.auth || { email: "", passHash: "" };
     safe.profile = safe.profile || {};
+    safe.user = Object.assign({
+      username: safe.auth.username || legacyUsername(safe),
+      avatarData: safe.profile.avatarData || ""
+    }, safe.user || {});
+    safe.user.username = normalizeUsername(safe.user.username || legacyUsername(safe));
+    safe.auth.username = safe.user.username;
+    safe.profileChangeHistory = Array.isArray(safe.profileChangeHistory) ? safe.profileChangeHistory : [];
     safe.messages = Array.isArray(safe.messages) ? safe.messages : [];
     safe.canonEvents = Array.isArray(safe.canonEvents) ? safe.canonEvents : [];
     safe.news = Array.isArray(safe.news) ? safe.news : [];
@@ -90,7 +111,7 @@
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
       return true;
     } catch (error) {
-      toast("Não foi possível salvar. A imagem de fundo pode ser grande demais para este navegador.", "error");
+      toast("Não foi possível salvar. A foto de perfil pode ser grande demais para este navegador.", "error");
       return false;
     }
   }
@@ -101,59 +122,57 @@
   }
 
   function activeCareer() {
-    var activeId = sessionStorage.getItem(SESSION_KEY);
+    var activeId = sessionStorage.getItem(SESSION_KEY) || localStorage.getItem(PERSISTENT_SESSION_KEY);
     return state.careers.find(function (career) { return career.id === activeId; }) || null;
+  }
+
+  function legacyUsername(career) {
+    var raw = clean(career && career.auth && career.auth.email).split("@")[0] || clean(career && career.name) || "jogador";
+    return normalizeUsername(raw);
   }
 
   function cacheElements() {
     [
-      "authGate", "appShell", "loginForm", "loginCareer", "loginPasscode", "loginHint", "loginError",
-      "createForm", "createError", "prevStep", "nextStep", "createCareer", "hubSidebar", "mobileMenu",
-      "mobileSettings", "mobileNavScrim", "openSettings", "openProfile", "careerSeason", "careerPlayerName",
-      "careerClub", "appMain", "chatMessages", "chatEmpty", "chatForm", "chatInput", "sendMessage",
+      "authGate", "appShell", "loginForm", "loginCareer", "loginPasscode", "rememberCareer", "loginHint", "loginError",
+      "createForm", "createError", "registrationQuestion", "registrationSection", "registrationCount", "prevStep",
+      "nextStep", "createCareer", "hubSidebar", "openSettings", "openProfile", "hubAvatarImage", "hubAvatarFallback",
+      "hubBackgroundA", "hubBackgroundB", "pageBack", "appMain", "chatMessages", "chatForm", "chatInput", "sendMessage",
       "sceneLabel", "newScene", "aiStatusChip", "toolDrawer", "toolTitle", "closeTools", "matchTemplateForm",
-      "copyMatchTemplate", "insertMatchTemplate", "wheel", "wheelResult", "wheelEntries", "addWheelEntry",
+      "matchPromptTemplate", "copyMatchTemplate", "insertMatchTemplate", "wheel", "wheelResult", "wheelEntries", "addWheelEntry",
       "spinWheel", "useWheelResult", "dicePicker", "diceResult", "rollDice", "useDiceResult", "diceHistory",
       "newsFilters", "newsContent", "relationshipSearch", "relationshipCount", "relationshipsContent",
       "seasonSelect", "seasonsContent", "careerContent", "copyOffPitchTemplate", "insertOffPitchTemplate",
       "offPitchTemplate", "residenceContent", "spotifyNow", "spotifyDisc", "spotifyStatus", "spotifyTrack",
-      "spotifyArtist", "settingsModal", "settingsForm", "backgroundUpload", "overlayRange", "overlayOutput",
-      "blurRange", "blurOutput", "resetBackground", "backendStatusDot", "backendStatusText",
+      "spotifyArtist", "settingsModal", "settingsForm", "backendStatusDot", "backendStatusText",
       "spotifyClientId", "spotifyRedirectUri", "copyRedirectUri", "disconnectSpotify", "connectSpotify",
-      "saveSettings", "profileModal", "profileContent", "closeProfile", "closeProfileFooter", "logoutCareer",
-      "customBackground", "toastRegion"
+      "saveSettings", "profilePage", "profileContent", "profileAvatarImage", "profileAvatarFallback", "profileIdentityLine",
+      "closeProfile", "logoutCareer", "toastRegion"
     ].forEach(function (id) { el[id] = document.getElementById(id); });
   }
 
   function bindEvents() {
-    document.querySelectorAll("[data-auth-tab]").forEach(function (button) {
-      button.addEventListener("click", function () { setAuthTab(button.dataset.authTab); });
-    });
     document.querySelectorAll("[data-switch-auth]").forEach(function (button) {
       button.addEventListener("click", function () { setAuthTab(button.dataset.switchAuth); });
     });
-    el.prevStep.addEventListener("click", function () { setCreateStep(ui.createStep - 1); });
-    el.nextStep.addEventListener("click", function () { if (validateCurrentStep()) setCreateStep(ui.createStep + 1); });
+    el.prevStep.addEventListener("click", previousRegistrationQuestion);
+    el.nextStep.addEventListener("click", continueRegistration);
     el.createForm.addEventListener("submit", createCareerFromForm);
+    el.registrationQuestion.addEventListener("click", handleRegistrationClick);
+    el.registrationQuestion.addEventListener("input", handleRegistrationInput);
+    el.registrationQuestion.addEventListener("change", handleRegistrationChange);
     el.loginForm.addEventListener("submit", loginToCareer);
     document.querySelectorAll("[data-route]").forEach(function (button) {
       button.addEventListener("click", function () { navigate(button.dataset.route); });
     });
-    document.querySelectorAll("[data-route-link]").forEach(function (link) {
-      link.addEventListener("click", function (event) {
-        event.preventDefault();
-        navigate(link.dataset.routeLink);
-      });
-    });
     window.addEventListener("hashchange", routeFromHash);
-    el.mobileMenu.addEventListener("click", toggleMobileNav);
-    el.mobileNavScrim.addEventListener("click", closeMobileNav);
+    el.pageBack.addEventListener("click", function () { navigate("home"); });
     el.openSettings.addEventListener("click", openSettings);
-    el.mobileSettings.addEventListener("click", openSettings);
     el.openProfile.addEventListener("click", openProfile);
     el.closeProfile.addEventListener("click", closeProfile);
-    el.closeProfileFooter.addEventListener("click", closeProfile);
     el.logoutCareer.addEventListener("click", logout);
+    el.profileContent.addEventListener("click", handleProfileClick);
+    el.profileContent.addEventListener("change", handleProfileChange);
+    el.profileContent.addEventListener("submit", saveProfileForm);
     el.chatForm.addEventListener("submit", sendChatMessage);
     el.chatInput.addEventListener("keydown", function (event) {
       if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
@@ -206,14 +225,8 @@
     });
     el.settingsModal.addEventListener("close", function () {
       document.body.classList.remove("is-modal-open");
-      if (!ui.settingsSaved) applyVisualSettings(state.settings);
       ui.settingsDraft = null;
     });
-    el.profileModal.addEventListener("close", function () { document.body.classList.remove("is-modal-open"); });
-    el.overlayRange.addEventListener("input", previewSettings);
-    el.blurRange.addEventListener("input", previewSettings);
-    el.backgroundUpload.addEventListener("change", importBackground);
-    el.resetBackground.addEventListener("click", resetBackgroundDraft);
     el.saveSettings.addEventListener("click", saveSettings);
     el.copyRedirectUri.addEventListener("click", function () {
       copyText(getSpotifyRedirectUri()).then(function () { toast("Redirect URI copiada."); });
@@ -225,139 +238,358 @@
 
   function setAuthTab(name) {
     ui.authTab = name === "create" ? "create" : "login";
-    document.querySelectorAll("[data-auth-tab]").forEach(function (button) {
-      var active = button.dataset.authTab === ui.authTab;
-      button.classList.toggle("is-active", active);
-      button.setAttribute("aria-selected", String(active));
-    });
     document.querySelectorAll("[data-auth-panel]").forEach(function (panel) {
       panel.classList.toggle("is-active", panel.dataset.authPanel === ui.authTab);
     });
     el.loginError.textContent = "";
     el.createError.textContent = "";
+    if (ui.authTab === "create") {
+      setCreateStep(ui.createStep);
+    } else {
+      window.setTimeout(function () { el.loginCareer.focus(); }, 80);
+    }
   }
 
   function setCreateStep(step) {
-    ui.createStep = Math.max(1, Math.min(4, step));
-    document.querySelectorAll("[data-form-step]").forEach(function (panel) {
-      panel.classList.toggle("is-active", Number(panel.dataset.formStep) === ui.createStep);
-    });
-    document.querySelectorAll("[data-progress]").forEach(function (segment) {
-      segment.classList.toggle("is-active", Number(segment.dataset.progress) <= ui.createStep);
-    });
-    el.prevStep.hidden = ui.createStep === 1;
-    el.nextStep.hidden = ui.createStep === 4;
-    el.createCareer.hidden = ui.createStep !== 4;
+    var questions = visibleRegistrationQuestions();
+    ui.createStep = Math.max(0, Math.min(Math.max(0, questions.length - 1), Number(step) || 0));
     el.createError.textContent = "";
-    var card = document.querySelector(".auth-card");
-    if (card) card.scrollIntoView({ behavior: "smooth", block: "start" });
+    renderRegistrationQuestion();
   }
 
-  function validateCurrentStep() {
-    var current = document.querySelector('[data-form-step="' + ui.createStep + '"]');
-    if (!current) return true;
-    var inputs = Array.prototype.slice.call(current.querySelectorAll("input, select, textarea"));
-    for (var i = 0; i < inputs.length; i += 1) {
-      if (!inputs[i].checkValidity()) {
-        inputs[i].reportValidity();
-        return false;
-      }
+  function visibleRegistrationQuestions() {
+    return REGISTRATION_QUESTIONS.filter(function (question) {
+      if (!question.when) return true;
+      var current = ui.registrationAnswers[question.when.key];
+      if (Object.prototype.hasOwnProperty.call(question.when, "equals")) return current === question.when.equals;
+      if (Object.prototype.hasOwnProperty.call(question.when, "notEquals")) return current !== question.when.notEquals;
+      return true;
+    });
+  }
+
+  function currentRegistrationQuestion() {
+    return visibleRegistrationQuestions()[ui.createStep] || null;
+  }
+
+  function registrationOptions(question) {
+    var options = Array.isArray(question.options) ? question.options.slice() : (Array.isArray(REFERENCE_DATA[question.source]) ? REFERENCE_DATA[question.source].slice() : []);
+    if (Array.isArray(question.excludeKeys)) {
+      var excluded = [];
+      question.excludeKeys.forEach(function (key) {
+        var value = ui.registrationAnswers[key];
+        if (Array.isArray(value)) excluded = excluded.concat(value);
+      });
+      options = options.filter(function (option) { return excluded.indexOf(option) < 0; });
     }
+    if (question.source === "cities" && question.dependsOn && ui.registrationAnswers[question.dependsOn]) {
+      var country = normalizeKey(ui.registrationAnswers[question.dependsOn]);
+      options.sort(function (a, b) {
+        var aMatch = normalizeKey(a).indexOf(country) >= 0 ? 0 : 1;
+        var bMatch = normalizeKey(b).indexOf(country) >= 0 ? 0 : 1;
+        return aMatch - bMatch || a.localeCompare(b, "pt-BR");
+      });
+    }
+    return options;
+  }
+
+  function renderRegistrationQuestion() {
+    var questions = visibleRegistrationQuestions();
+    var question = questions[ui.createStep];
+    if (!question) {
+      el.registrationQuestion.innerHTML = '<h1>Não foi possível carregar o cadastro.</h1>';
+      el.nextStep.hidden = true;
+      return;
+    }
+    el.registrationSection.textContent = question.section;
+    el.registrationCount.textContent = (ui.createStep + 1) + " / " + questions.length;
+    el.prevStep.hidden = ui.createStep === 0;
+    el.nextStep.hidden = question.type === "review";
+    el.createCareer.hidden = question.type !== "review";
+    var value = ui.registrationAnswers[question.key];
+    var optional = question.required ? "" : '<span class="question-optional">OPCIONAL</span>';
+    var control = renderRegistrationControl(question, value);
+    el.registrationQuestion.innerHTML = [
+      '<div class="question-heading"><span>', escapeHTML(question.section), "</span>", optional, "<h1>", escapeHTML(question.prompt), "</h1></div>",
+      control,
+      question.hint ? '<p class="question-hint">' + escapeHTML(question.hint) + "</p>" : ""
+    ].join("");
+    window.scrollTo({ top: 0, behavior: "instant" });
+    window.setTimeout(function () {
+      var input = el.registrationQuestion.querySelector("input:not([type=checkbox]), textarea");
+      if (input && question.type !== "file") input.focus();
+    }, 60);
+  }
+
+  function renderRegistrationControl(question, value) {
+    var safeValue = Array.isArray(value) ? value : clean(value);
+    var common = ' data-registration-input="' + escapeHTML(question.key) + '" name="' + escapeHTML(question.key) + '"';
+    if (question.type === "select") {
+      return '<div class="question-choices">' + registrationOptions(question).map(function (option) {
+        return '<button type="button" class="question-choice' + (safeValue === option ? " is-selected" : "") + '" data-registration-choice="' + escapeHTML(option) + '"><span>' + escapeHTML(option) + "</span><i>→</i></button>";
+      }).join("") + "</div>";
+    }
+    if (question.type === "multi") {
+      var selected = Array.isArray(value) ? value : [];
+      return '<div class="question-multi">' + registrationOptions(question).map(function (option) {
+        return '<button type="button" class="multi-choice' + (selected.indexOf(option) >= 0 ? " is-selected" : "") + '" data-registration-multi="' + escapeHTML(option) + '"><span>' + escapeHTML(option) + "</span><i>✓</i></button>";
+      }).join("") + "</div>";
+    }
+    if (question.type === "textarea") {
+      return '<label class="wizard-input wizard-input--textarea"><textarea' + common + ' maxlength="' + Number(question.maxLength || 3000) + '" placeholder="' + escapeHTML(question.placeholder || "Escreva aqui") + '">' + escapeHTML(safeValue) + "</textarea></label>";
+    }
+    if (question.type === "autocomplete") {
+      var exact = registrationOptions(question).some(function (option) { return normalizeKey(option) === normalizeKey(safeValue); });
+      var unmatched = Boolean(safeValue) && !exact;
+      return [
+        '<div class="wizard-autocomplete"><label class="wizard-input"><input type="text"', common, ' value="', escapeHTML(safeValue), '" placeholder="', escapeHTML(question.placeholder || "Comece a digitar"), '" autocomplete="off" aria-autocomplete="list" /></label>',
+        '<div class="autocomplete-suggestions" data-registration-suggestions></div>',
+        '<div class="autocomplete-manual', unmatched ? " is-visible" : "", '" data-autocomplete-manual-wrap><p>Essa opção não foi encontrada ou não existe.</p><label><input type="checkbox" data-registration-manual ', ui.registrationCustom[question.key] ? "checked" : "", ' /><span>Seguir mesmo assim</span></label></div></div>'
+      ].join("");
+    }
+    if (question.type === "file") {
+      var preview = clean(value) ? '<img src="' + escapeHTML(value) + '" alt="Prévia da foto do jogador" />' : '<span class="photo-upload__placeholder">+</span>';
+      return '<label class="photo-upload">' + preview + '<strong>' + (clean(value) ? "TROCAR FOTO" : "ESCOLHER FOTO") + '</strong><input type="file"' + common + ' accept="' + escapeHTML(question.accept || "image/*") + '" /></label><button class="skip-photo" type="button" data-skip-photo>Fazer depois</button>';
+    }
+    if (question.type === "review") return renderRegistrationReview();
+    var type = question.type === "username" ? "text" : question.type;
+    var attrs = [
+      question.placeholder ? ' placeholder="' + escapeHTML(question.placeholder) + '"' : "",
+      question.minLength ? ' minlength="' + Number(question.minLength) + '"' : "",
+      question.maxLength ? ' maxlength="' + Number(question.maxLength) + '"' : "",
+      question.min !== undefined ? ' min="' + Number(question.min) + '"' : "",
+      question.max !== undefined ? ' max="' + Number(question.max) + '"' : "",
+      question.type === "username" ? ' autocapitalize="none" spellcheck="false" autocomplete="username"' : "",
+      question.type === "password" ? ' autocomplete="new-password"' : ""
+    ].join("");
+    return '<label class="wizard-input"><input type="' + escapeHTML(type) + '"' + common + ' value="' + escapeHTML(safeValue) + '"' + attrs + ' />' + (question.suffix ? '<span class="wizard-input__suffix">' + escapeHTML(question.suffix) + "</span>" : "") + "</label>";
+  }
+
+  function renderRegistrationReview() {
+    var answers = ui.registrationAnswers;
+    var identity = [
+      ["Nome completo", answers.playerName], ["Nome na camisa", answers.shirtName],
+      ["Data de nascimento", answers.birthDate ? formatDate(answers.birthDate) : ""], ["Idade", answers.birthDate ? calculateAge(answers.birthDate) + " anos" : ""],
+      ["Nacionalidade(s)", [answers.primaryNationality, answers.secondNationality, answers.thirdNationality].filter(Boolean).join(", ")]
+    ];
+    var origin = [["Nascimento", [answers.birthCity, answers.birthCountry].filter(Boolean).join(" · ")], ["Onde vive", [answers.currentCity, answers.currentCountry].filter(Boolean).join(" · ")]];
+    var career = [["Situação", answers.footballStatus], ["Clube", answers.currentClub], ["Liga", answers.league], ["Temporada", answers.season], ["Categoria", answers.squadCategory], ["Camisa", answers.shirtNumber]];
+    var profile = [["Posição", answers.position], ["Outras posições", registrationValue(answers.secondaryPositions)], ["Pé dominante", answers.dominantFoot], ["Altura", answers.height ? answers.height + " cm" : ""], ["Peso", answers.weight ? answers.weight + " kg" : ""], ["Estilo", registrationValue(answers.playStyle)], ["Forças", registrationValue([].concat(answers.technicalStrengths || [], answers.mentalStrengths || [], answers.physicalStrengths || []))], ["Fraquezas", registrationValue(answers.weaknesses)]];
+    var narrative = [["Personalidade", answers.personality], ["Ambição", answers.careerAmbition], ["História", answers.backstory]];
+    return '<div class="registration-review">' + reviewSection("IDENTIDADE", identity) + reviewSection("ORIGEM", origin) + reviewSection("CARREIRA", career) + reviewSection("PERFIL", profile) + reviewSection("NARRATIVA", narrative) + '<label class="review-confirm"><input type="checkbox" data-registration-confirm ' + (answers.confirmed ? "checked" : "") + ' /><span>Confirmo que as informações do personagem estão corretas.</span></label></div>';
+  }
+
+  function reviewSection(title, rows) {
+    return '<section><h2>' + escapeHTML(title) + '</h2><div class="review-grid">' + rows.filter(function (row) { return clean(row[1]); }).map(function (row) { return '<div><span>' + escapeHTML(row[0]) + '</span><strong>' + escapeHTML(row[1]) + "</strong></div>"; }).join("") + "</div></section>";
+  }
+
+  function registrationValue(value) {
+    return Array.isArray(value) ? value.join(", ") : clean(value);
+  }
+
+  function previousRegistrationQuestion() {
+    saveCurrentRegistrationAnswer();
+    setCreateStep(ui.createStep - 1);
+  }
+
+  function continueRegistration() {
+    saveCurrentRegistrationAnswer();
+    if (!validateCurrentRegistrationQuestion()) return;
+    setCreateStep(ui.createStep + 1);
+  }
+
+  function saveCurrentRegistrationAnswer() {
+    var question = currentRegistrationQuestion();
+    if (!question || question.type === "select" || question.type === "multi" || question.type === "file") return;
+    if (question.type === "review") {
+      var confirmation = el.registrationQuestion.querySelector("[data-registration-confirm]");
+      ui.registrationAnswers.confirmed = Boolean(confirmation && confirmation.checked);
+      return;
+    }
+    var input = el.registrationQuestion.querySelector("[data-registration-input]");
+    if (!input) return;
+    ui.registrationAnswers[question.key] = question.type === "username" ? normalizeUsername(input.value) : clean(input.value);
+    if (question.type === "autocomplete") {
+      var manual = el.registrationQuestion.querySelector("[data-registration-manual]");
+      ui.registrationCustom[question.key] = Boolean(manual && manual.checked);
+    }
+  }
+
+  function validateCurrentRegistrationQuestion() {
+    var question = currentRegistrationQuestion();
+    if (!question) return false;
+    var value = ui.registrationAnswers[question.key];
+    var missing = Array.isArray(value) ? value.length === 0 : !clean(value);
+    el.createError.textContent = "";
+    if (question.required && missing) return registrationError(question.type === "review" ? "Confirme que as informações estão corretas." : "Responda esta pergunta para continuar.");
+    if (missing) return true;
+    if (question.type === "username") {
+      if (!/^@[a-z0-9._]{3,30}$/.test(value)) return registrationError("Use @ no início e de 3 a 30 letras, números, pontos ou underlines.");
+      if (state.careers.some(function (career) { return normalizeUsername(career.user && career.user.username) === value; })) return registrationError("Este nome de usuário já está em uso neste navegador.");
+    }
+    if (question.key === "password" && String(value).length < 6) return registrationError("A senha precisa ter pelo menos 6 caracteres.");
+    if (question.key === "confirmPassword" && value !== ui.registrationAnswers.password) return registrationError("As senhas não coincidem.");
+    if (question.minLength && String(value).length < question.minLength) return registrationError("Use pelo menos " + question.minLength + " caracteres.");
+    if (question.maxLength && String(value).length > question.maxLength) return registrationError("Use no máximo " + question.maxLength + " caracteres.");
+    if (question.type === "number") {
+      var number = Number(value);
+      if (!Number.isFinite(number) || (question.min !== undefined && number < question.min) || (question.max !== undefined && number > question.max)) return registrationError("Informe um valor válido entre " + question.min + " e " + question.max + ".");
+    }
+    if (question.type === "autocomplete") {
+      var exact = registrationOptions(question).some(function (option) { return normalizeKey(option) === normalizeKey(value); });
+      if (!exact && !ui.registrationCustom[question.key]) return registrationError("Essa opção não foi encontrada ou não existe. Marque “Seguir mesmo assim” para usar o texto digitado.");
+    }
+    if (question.key === "secondNationality" && normalizeKey(value) === normalizeKey(ui.registrationAnswers.primaryNationality)) return registrationError("A segunda nacionalidade precisa ser diferente da principal.");
+    if (question.key === "thirdNationality" && [ui.registrationAnswers.primaryNationality, ui.registrationAnswers.secondNationality].some(function (item) { return normalizeKey(item) === normalizeKey(value); })) return registrationError("A terceira nacionalidade precisa ser diferente das anteriores.");
+    if (question.key === "secondaryPositions" && value.indexOf(ui.registrationAnswers.position) >= 0) return registrationError("Não repita a posição principal entre as posições secundárias.");
+    if (question.key === "shirtNumber" && !/^([1-9]|[1-9][0-9])$/.test(value) && normalizeKey(value) !== "nao definido") return registrationError("Informe um número de 1 a 99 ou escreva “Não definido”.");
     return true;
+  }
+
+  function registrationError(message) {
+    el.createError.textContent = message;
+    return false;
+  }
+
+  function handleRegistrationClick(event) {
+    var choice = event.target.closest("[data-registration-choice]");
+    var multi = event.target.closest("[data-registration-multi]");
+    var suggestion = event.target.closest("[data-registration-suggestion]");
+    var skipPhoto = event.target.closest("[data-skip-photo]");
+    var question = currentRegistrationQuestion();
+    if (!question) return;
+    if (choice) {
+      ui.registrationAnswers[question.key] = choice.dataset.registrationChoice;
+      if (question.key === "hasSecondNationality" && choice.dataset.registrationChoice === "Não") {
+        delete ui.registrationAnswers.secondNationality;
+        delete ui.registrationAnswers.hasThirdNationality;
+        delete ui.registrationAnswers.thirdNationality;
+      }
+      if (question.key === "hasThirdNationality" && choice.dataset.registrationChoice === "Não") delete ui.registrationAnswers.thirdNationality;
+      renderRegistrationQuestion();
+      return;
+    }
+    if (multi) {
+      var selected = Array.isArray(ui.registrationAnswers[question.key]) ? ui.registrationAnswers[question.key].slice() : [];
+      var option = multi.dataset.registrationMulti;
+      var index = selected.indexOf(option);
+      if (index >= 0) selected.splice(index, 1);
+      else if (selected.length >= Number(question.max || 99)) return void toast("Você pode escolher até " + question.max + " opções.", "error");
+      else selected.push(option);
+      if (option === "Não" && selected.indexOf("Não") >= 0) selected = ["Não"];
+      else if (option !== "Não") selected = selected.filter(function (item) { return item !== "Não"; });
+      ui.registrationAnswers[question.key] = selected;
+      renderRegistrationQuestion();
+      return;
+    }
+    if (suggestion) {
+      ui.registrationAnswers[question.key] = suggestion.dataset.registrationSuggestion;
+      ui.registrationCustom[question.key] = false;
+      renderRegistrationQuestion();
+      return;
+    }
+    if (skipPhoto) {
+      ui.registrationAnswers.avatarData = "";
+      continueRegistration();
+    }
+  }
+
+  function handleRegistrationInput(event) {
+    var input = event.target.closest("[data-registration-input]");
+    var question = currentRegistrationQuestion();
+    if (!input || !question) return;
+    if (question.type === "username") {
+      var normalized = normalizeUsername(input.value);
+      if (input.value !== normalized) input.value = normalized;
+      ui.registrationAnswers[question.key] = normalized;
+    } else if (question.type !== "file") ui.registrationAnswers[question.key] = input.value;
+    if (question.type === "autocomplete") {
+      ui.registrationCustom[question.key] = false;
+      renderAutocompleteSuggestions(question, input.value);
+    }
+    el.createError.textContent = "";
+  }
+
+  async function handleRegistrationChange(event) {
+    var fileInput = event.target.closest('input[type="file"][data-registration-input]');
+    var manual = event.target.closest("[data-registration-manual]");
+    var confirm = event.target.closest("[data-registration-confirm]");
+    var question = currentRegistrationQuestion();
+    if (manual && question) ui.registrationCustom[question.key] = manual.checked;
+    if (confirm) ui.registrationAnswers.confirmed = confirm.checked;
+    if (!fileInput || !question) return;
+    var file = fileInput.files && fileInput.files[0];
+    if (!file) return;
+    try {
+      ui.registrationAnswers.avatarData = await optimizeImage(file, 720, 720, 0.8);
+      renderRegistrationQuestion();
+      toast("Foto adicionada ao perfil.");
+    } catch (error) {
+      registrationError("Não foi possível processar essa imagem.");
+    }
+  }
+
+  function renderAutocompleteSuggestions(question, rawValue) {
+    var list = el.registrationQuestion.querySelector("[data-registration-suggestions]");
+    var manualWrap = el.registrationQuestion.querySelector("[data-autocomplete-manual-wrap]");
+    if (!list) return;
+    var query = normalizeKey(rawValue);
+    var minimum = question.source === "countries" || question.source === "nationalities" ? 1 : 2;
+    var exact = registrationOptions(question).some(function (option) { return normalizeKey(option) === query; });
+    var matches = query.length >= minimum ? registrationOptions(question).filter(function (option) { return normalizeKey(option).indexOf(query) >= 0; }).slice(0, 10) : [];
+    list.innerHTML = matches.map(function (option) { return '<button type="button" data-registration-suggestion="' + escapeHTML(option) + '">' + escapeHTML(option) + "</button>"; }).join("");
+    list.classList.toggle("is-visible", matches.length > 0 && !exact);
+    if (manualWrap) manualWrap.classList.toggle("is-visible", Boolean(rawValue) && !exact && matches.length === 0);
   }
 
   async function createCareerFromForm(event) {
     event.preventDefault();
-    if (ui.createStep !== 4) {
-      if (validateCurrentStep()) setCreateStep(ui.createStep + 1);
-      return;
-    }
-    if (!validateCurrentStep() || !el.createForm.checkValidity()) {
-      el.createForm.reportValidity();
-      return;
-    }
-    var data = new FormData(el.createForm);
-    var email = clean(data.get("email")).toLowerCase();
-    var passcode = String(data.get("passcode") || "");
-    if (state.careers.some(function (career) { return clean(career.auth && career.auth.email).toLowerCase() === email; })) {
-      el.createError.textContent = "Já existe uma carreira local com este e-mail.";
-      return;
-    }
+    saveCurrentRegistrationAnswer();
+    if (!validateCurrentRegistrationQuestion() || !ui.registrationAnswers.confirmed) return;
+    var answers = ui.registrationAnswers;
+    var username = normalizeUsername(answers.username);
+    if (state.careers.some(function (career) { return normalizeUsername(career.user && career.user.username) === username; })) return registrationError("Este nome de usuário já está em uso neste navegador.");
     el.createCareer.disabled = true;
-    el.createCareer.textContent = "CRIANDO...";
+    el.createCareer.textContent = "CRIANDO UNIVERSO...";
     try {
-      var profile = {
-        playerName: clean(data.get("playerName")),
-        birthDate: clean(data.get("birthDate")),
-        nationality: clean(data.get("nationality")),
-        birthCity: clean(data.get("birthCity")),
-        pronouns: clean(data.get("pronouns")),
-        height: clean(data.get("height")),
-        weight: clean(data.get("weight")),
-        gameTitle: clean(data.get("gameTitle")),
-        platform: clean(data.get("platform")),
-        currentClub: clean(data.get("currentClub")),
-        league: clean(data.get("league")),
-        season: clean(data.get("season")),
-        shirtNumber: clean(data.get("shirtNumber")),
-        position: clean(data.get("position")),
-        secondaryPosition: clean(data.get("secondaryPosition")),
-        dominantFoot: clean(data.get("dominantFoot")),
-        playStyle: clean(data.get("playStyle")),
-        formerClubs: clean(data.get("formerClubs")),
-        personality: clean(data.get("personality")),
-        backstory: clean(data.get("backstory")),
-        careerGoals: clean(data.get("careerGoals")),
-        storyTone: clean(data.get("storyTone")),
-        depth: clean(data.get("depth")),
-        modules: data.getAll("modules").map(clean),
-        agentName: clean(data.get("agentName")),
-        coachName: clean(data.get("coachName")),
-        importantPeople: clean(data.get("importantPeople"))
-      };
-      var hasInitialBalance = String(data.get("initialBalance") || "") !== "";
+      var profile = Object.assign({}, answers, {
+        nationality: [answers.primaryNationality, answers.secondNationality, answers.thirdNationality].filter(Boolean).join(", "),
+        secondaryPosition: registrationValue(answers.secondaryPositions),
+        playStyle: registrationValue(answers.playStyle),
+        careerGoals: [answers.careerAmbition, answers.nextSeasonGoal].filter(Boolean).join(" · "),
+        modules: ["football", "media", "relationships", "offpitch"]
+      });
+      delete profile.username;
+      delete profile.password;
+      delete profile.confirmPassword;
+      delete profile.confirmed;
       var career = normalizeCareer({
         id: uid("career"),
-        name: clean(data.get("careerName")),
-        auth: { email: email, passHash: await hashText(passcode) },
+        name: (answers.playerName || "Carreira") + (answers.season ? " — " + answers.season : ""),
+        user: { username: username, avatarData: answers.avatarData || "" },
+        auth: { username: username, email: "", passHash: await hashText(answers.password) },
         profile: profile,
-        messages: [],
-        canonEvents: [],
-        news: [],
-        characters: createInitialCharacters(profile),
-        seasons: [],
-        finance: {
-          initialized: hasInitialBalance,
-          currency: clean(data.get("currency")) || "BRL",
-          balance: numberOrZero(data.get("initialBalance")),
-          transactions: [],
-          pockets: []
-        },
-        hall: { trophies: [], records: [], awards: [] },
-        calendar: [],
-        offPitch: {
-          currentCity: clean(data.get("currentCity")),
-          currentResidence: clean(data.get("currentResidence")),
-          houses: []
-        },
-        tools: { wheelEntries: ["", ""], diceHistory: [] },
-        sceneNumber: 1,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
+        messages: [], canonEvents: [], news: [], characters: [], seasons: [],
+        finance: { initialized: false, currency: "BRL", balance: 0, transactions: [], pockets: [] },
+        hall: { trophies: [], records: [], awards: [] }, calendar: [],
+        offPitch: { currentCity: answers.currentCity || "", currentResidence: "", houses: [] },
+        tools: { wheelEntries: ["", ""], diceHistory: [] }, sceneNumber: 1,
+        createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
       });
       state.careers.push(career);
       if (!saveState()) throw new Error("storage");
       sessionStorage.setItem(SESSION_KEY, career.id);
-      el.createForm.reset();
-      setCreateStep(1);
-      populateLoginCareers();
+      localStorage.removeItem(PERSISTENT_SESSION_KEY);
+      ui.registrationAnswers = {};
+      ui.registrationCustom = {};
+      ui.createStep = 0;
+      window.location.hash = "home";
       startApp();
-      toast("Carreira criada. O universo começou vazio.");
+      toast("Carreira criada. Vamos aquecer.");
     } catch (error) {
       el.createError.textContent = "Não foi possível criar a carreira neste navegador.";
     } finally {
       el.createCareer.disabled = false;
-      el.createCareer.innerHTML = "CRIAR E ENTRAR <span>→</span>";
+      el.createCareer.innerHTML = "VAMOS AQUECER <span>→</span>";
     }
   }
 
@@ -388,9 +620,13 @@
   async function loginToCareer(event) {
     event.preventDefault();
     el.loginError.textContent = "";
-    var career = state.careers.find(function (item) { return item.id === el.loginCareer.value; });
+    var username = normalizeUsername(el.loginCareer.value);
+    el.loginCareer.value = username;
+    var career = state.careers.find(function (item) {
+      return normalizeUsername(item.user && item.user.username) === username || normalizeKey(item.name) === normalizeKey(el.loginCareer.value);
+    });
     if (!career) {
-      el.loginError.textContent = "Selecione uma carreira salva.";
+      el.loginError.textContent = "Nome de usuário não encontrado neste navegador.";
       return;
     }
     var candidate = await hashText(el.loginPasscode.value);
@@ -399,31 +635,26 @@
       return;
     }
     sessionStorage.setItem(SESSION_KEY, career.id);
+    if (el.rememberCareer.checked) localStorage.setItem(PERSISTENT_SESSION_KEY, career.id);
+    else localStorage.removeItem(PERSISTENT_SESSION_KEY);
     el.loginPasscode.value = "";
+    window.location.hash = "home";
     startApp();
   }
 
   function populateLoginCareers() {
     if (!state.careers.length) {
-      el.loginCareer.innerHTML = '<option value="">Nenhuma carreira local</option>';
-      el.loginCareer.disabled = true;
-      el.loginPasscode.disabled = true;
-      el.loginHint.textContent = "Nenhuma carreira foi criada neste navegador.";
+      el.loginHint.textContent = "Nenhuma carreira foi criada neste navegador ainda.";
       return;
     }
-    el.loginCareer.disabled = false;
-    el.loginPasscode.disabled = false;
-    el.loginHint.textContent = "As carreiras salvas neste navegador aparecem aqui.";
-    el.loginCareer.innerHTML = '<option value="">Selecionar carreira</option>' + state.careers.map(function (career) {
-      return '<option value="' + escapeHTML(career.id) + '">' + escapeHTML(career.name) + " · " + escapeHTML(career.profile.playerName || "Jogador") + "</option>";
-    }).join("");
+    el.loginHint.textContent = "Disponível neste navegador: " + state.careers.map(function (career) { return career.user.username; }).join(", ");
   }
 
   function showAuth() {
     el.appShell.hidden = true;
     el.authGate.hidden = false;
     populateLoginCareers();
-    setAuthTab(state.careers.length ? "login" : "create");
+    setAuthTab("login");
   }
 
   function startApp() {
@@ -434,6 +665,7 @@
     }
     el.authGate.hidden = true;
     el.appShell.hidden = false;
+    startHubSlideshow();
     renderAll();
     routeFromHash();
     startSpotifyPolling();
@@ -441,8 +673,10 @@
 
   function logout() {
     sessionStorage.removeItem(SESSION_KEY);
+    localStorage.removeItem(PERSISTENT_SESSION_KEY);
     closeProfile();
     closeTools();
+    stopHubSlideshow();
     stopSpotifyPolling();
     showAuth();
     window.location.hash = "";
@@ -450,23 +684,24 @@
   }
 
   function navigate(route) {
-    var target = ROUTES.indexOf(route) >= 0 ? route : "kick-off";
+    var target = ROUTES.indexOf(route) >= 0 ? route : "home";
     if (window.location.hash.slice(1) !== target) window.location.hash = target;
     else activateRoute(target);
   }
 
   function routeFromHash() {
     var requested = window.location.hash.replace(/^#/, "");
-    activateRoute(ROUTES.indexOf(requested) >= 0 ? requested : "kick-off");
+    activateRoute(ROUTES.indexOf(requested) >= 0 ? requested : "home");
   }
 
   function activateRoute(route) {
     ui.route = route;
     document.querySelectorAll("[data-page]").forEach(function (page) { page.classList.toggle("is-active", page.dataset.page === route); });
     document.querySelectorAll("[data-route]").forEach(function (button) { button.classList.toggle("is-active", button.dataset.route === route); });
-    closeMobileNav();
+    el.appShell.classList.toggle("is-page-open", route !== "home");
+    el.appShell.dataset.route = route;
     if (route !== "kick-off") closeTools();
-    renderRoute(route);
+    if (route !== "home") renderRoute(route);
     window.scrollTo({ top: 0, behavior: "instant" });
   }
 
@@ -480,23 +715,61 @@
     if (route === "off-the-pitch") renderResidence();
   }
 
-  function toggleMobileNav() {
-    var opening = !document.body.classList.contains("is-nav-open");
-    document.body.classList.toggle("is-nav-open", opening);
-    el.mobileNavScrim.hidden = !opening;
+  function startHubSlideshow() {
+    stopHubSlideshow();
+    if (!el.hubBackgroundA || !el.hubBackgroundB || !HUB_BACKGROUNDS.length) return;
+    ui.backgroundIndex = 0;
+    ui.backgroundFront = "a";
+    el.hubBackgroundA.style.backgroundImage = 'url("' + HUB_BACKGROUNDS[0] + '")';
+    el.hubBackgroundA.classList.add("is-visible");
+    el.hubBackgroundB.classList.remove("is-visible");
+    HUB_BACKGROUNDS.slice(1).forEach(function (source) { var image = new Image(); image.src = source; });
+    if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    ui.backgroundTimer = window.setInterval(advanceHubBackground, 9000);
   }
 
-  function closeMobileNav() {
-    document.body.classList.remove("is-nav-open");
-    el.mobileNavScrim.hidden = true;
+  function advanceHubBackground() {
+    ui.backgroundIndex = (ui.backgroundIndex + 1) % HUB_BACKGROUNDS.length;
+    var incoming = ui.backgroundFront === "a" ? el.hubBackgroundB : el.hubBackgroundA;
+    var outgoing = ui.backgroundFront === "a" ? el.hubBackgroundA : el.hubBackgroundB;
+    incoming.style.backgroundImage = 'url("' + HUB_BACKGROUNDS[ui.backgroundIndex] + '")';
+    incoming.classList.add("is-visible");
+    outgoing.classList.remove("is-visible");
+    ui.backgroundFront = ui.backgroundFront === "a" ? "b" : "a";
+  }
+
+  function stopHubSlideshow() {
+    if (ui.backgroundTimer) window.clearInterval(ui.backgroundTimer);
+    ui.backgroundTimer = null;
+  }
+
+  function renderAvatar(career) {
+    var avatar = clean(career.user && career.user.avatarData) || clean(career.profile && career.profile.avatarData);
+    var initials = playerInitials(career.profile && career.profile.playerName);
+    [el.hubAvatarImage, el.profileAvatarImage].forEach(function (image) {
+      if (!image) return;
+      image.hidden = !avatar;
+      if (avatar) image.src = avatar;
+      else image.removeAttribute("src");
+    });
+    [el.hubAvatarFallback, el.profileAvatarFallback].forEach(function (fallback) {
+      if (!fallback) return;
+      fallback.hidden = Boolean(avatar);
+      fallback.textContent = initials;
+    });
+    if (el.profileIdentityLine) el.profileIdentityLine.textContent = (career.user.username || "@jogador") + " · " + (career.profile.playerName || "Jogador");
+  }
+
+  function playerInitials(name) {
+    var parts = clean(name).split(/\s+/).filter(Boolean);
+    if (!parts.length) return "IX";
+    return (parts[0].charAt(0) + (parts.length > 1 ? parts[parts.length - 1].charAt(0) : "")).toLocaleUpperCase("pt-BR");
   }
 
   function renderAll() {
     var career = activeCareer();
     if (!career) return;
-    el.careerPlayerName.textContent = career.profile.playerName || "JOGADOR";
-    el.careerSeason.textContent = career.profile.season ? "TEMPORADA " + career.profile.season : "CARREIRA ATIVA";
-    el.careerClub.textContent = career.profile.currentClub || "Clube ainda não definido";
+    renderAvatar(career);
     el.sceneLabel.textContent = career.sceneNumber > 1 ? "Cena " + career.sceneNumber : "Roleplay livre";
     renderChat();
     renderNews();
@@ -509,7 +782,6 @@
     renderDiceHistory();
     renderProfile();
     updateBackendStatus();
-    applyVisualSettings(state.settings);
   }
 
   function renderChat() {
@@ -640,6 +912,7 @@
     var currentSeason = career.seasons.find(function (season) { return season.label === career.profile.season; }) || career.seasons[career.seasons.length - 1] || null;
     return {
       profile: career.profile,
+      profileRevision: career.profileRevision || null,
       scene: career.sceneNumber,
       recentMessages: career.messages.slice(-12).map(function (message) {
         return { role: message.role, content: message.content, createdAt: message.createdAt };
@@ -753,41 +1026,31 @@
   }
 
   function buildMatchTemplate() {
-    var data = new FormData(el.matchTemplateForm);
-    function value(name) {
-      var result = clean(data.get(name));
-      return result || "Não informado";
-    }
-    return [
-      "[PARTIDA OFICIAL]",
-      "Data: " + value("date"),
-      "Temporada: " + value("season"),
-      "Competição: " + value("competition"),
-      "Mandante: " + value("homeTeam"),
-      "Gols do mandante: " + value("homeScore"),
-      "Visitante: " + value("awayTeam"),
-      "Gols do visitante: " + value("awayScore"),
-      "Minutos jogados: " + value("minutes"),
-      "Nota: " + value("rating"),
-      "Gols do meu jogador: " + value("goals"),
-      "Assistências: " + value("assists"),
-      "Cartões: " + value("cards"),
-      "Lesão: " + value("injury"),
-      "Como os gols aconteceram:",
-      value("goalDetails"),
-      "Acontecimentos importantes:",
-      value("highlights"),
-      "[/PARTIDA OFICIAL]"
-    ].join("\n");
+    var career = activeCareer();
+    var playerName = career && career.profile.playerName ? career.profile.playerName : "nome do seu jogador";
+    return String(el.matchPromptTemplate.textContent || "").replace("(nome do seu jogador)", playerName).trim();
   }
 
   function registerMatchFromMessage(career, message) {
     var fields = parseTaggedBlock(message.content, "PARTIDA OFICIAL");
+    var looseTemplate = false;
+    if (!fields && /^Jogo\s*:/im.test(message.content) && /^Placar final\s*:/im.test(message.content)) {
+      fields = parseLooseFields(message.content);
+      looseTemplate = true;
+    }
     if (!fields) return false;
     var homeTeam = validField(fieldValue(fields, "mandante"));
     var awayTeam = validField(fieldValue(fields, "visitante"));
     var homeScore = parseStrictNumber(fieldValue(fields, "gols do mandante"));
     var awayScore = parseStrictNumber(fieldValue(fields, "gols do visitante"));
+    if (looseTemplate) {
+      var game = fieldValue(fields, "jogo");
+      var scoreLine = fieldValue(fields, "placar final");
+      var gameMatch = game.match(/^(.+?)\s+(?:x|×|vs\.?|versus)\s+(.+)$/i);
+      var scoreMatch = scoreLine.match(/(\d+)\s*(?:x|×|[-–])\s*(\d+)/i);
+      if (gameMatch) { homeTeam = clean(gameMatch[1]); awayTeam = clean(gameMatch[2]); }
+      if (scoreMatch) { homeScore = Number(scoreMatch[1]); awayScore = Number(scoreMatch[2]); }
+    }
     if (!homeTeam || !awayTeam || homeScore === null || awayScore === null) {
       toast("O modelo foi enviado, mas mandante, visitante e placar precisam estar preenchidos para atualizar SEASONS.", "error");
       return false;
@@ -814,7 +1077,7 @@
       awayScore: awayScore,
       minutes: numberOrZero(fieldValue(fields, "minutos jogados")),
       rating: numberOrZero(fieldValue(fields, "nota")),
-      goals: numberOrZero(fieldValue(fields, "gols do meu jogador")),
+      goals: looseTemplate ? looseGoalCount(fields) : numberOrZero(fieldValue(fields, "gols do meu jogador")),
       assists: numberOrZero(fieldValue(fields, "assistencias")),
       cards: validField(fieldValue(fields, "cartoes")),
       injury: validField(fieldValue(fields, "lesao")),
@@ -833,6 +1096,28 @@
       certainty: "fact"
     });
     return true;
+  }
+
+  function parseLooseFields(text) {
+    var fields = {};
+    var currentKey = "";
+    String(text).split(/\r?\n/).forEach(function (line) {
+      var keyMatch = line.match(/^([^:]+):\s*(.*)$/);
+      if (keyMatch) {
+        currentKey = normalizeKey(keyMatch[1]);
+        fields[currentKey] = clean(keyMatch[2]);
+      } else if (currentKey && clean(line)) fields[currentKey] = clean((fields[currentKey] ? fields[currentKey] + "\n" : "") + line);
+    });
+    return fields;
+  }
+
+  function looseGoalCount(fields) {
+    var key = Object.keys(fields).find(function (item) { return item.indexOf("gols do ") === 0; });
+    if (!key) return 0;
+    var direct = parseStrictNumber(fields[key]);
+    if (direct !== null) return direct;
+    var matches = String(fields[key]).match(/\b\d{1,3}(?:'|min|\s*-)/gi);
+    return matches ? matches.length : 0;
   }
 
   function createFactualMatchNews(career, match) {
@@ -1114,34 +1399,194 @@
   function renderProfile() {
     var career = activeCareer();
     if (!career) return;
+    renderAvatar(career);
     var profile = career.profile;
+    if (ui.profileEdit === "user") {
+      el.profileContent.innerHTML = renderUserProfileForm(career);
+      return;
+    }
+    if (ui.profileEdit === "player") {
+      el.profileContent.innerHTML = renderPlayerProfileForm(career);
+      return;
+    }
     var rows = [
-      ["Carreira", career.name], ["Jogador", profile.playerName],
-      ["Nascimento", profile.birthDate ? formatDate(profile.birthDate) : ""], ["Nacionalidade", profile.nationality],
-      ["Cidade natal", profile.birthCity], ["Pronomes", profile.pronouns],
+      ["Nome completo", profile.playerName], ["Nome na camisa", profile.shirtName],
+      ["Nascimento", profile.birthDate ? formatDate(profile.birthDate) : ""], ["Idade", profile.birthDate ? calculateAge(profile.birthDate) + " anos" : ""], ["Nacionalidade", profile.nationality],
+      ["Cidade natal", profile.birthCity], ["Onde vive", [profile.currentCity, profile.currentCountry].filter(Boolean).join(" · ")],
       ["Altura", profile.height ? profile.height + " cm" : ""], ["Peso", profile.weight ? profile.weight + " kg" : ""],
       ["Jogo", profile.gameTitle], ["Plataforma", profile.platform], ["Clube atual", profile.currentClub],
       ["Liga", profile.league], ["Temporada", profile.season], ["Camisa", profile.shirtNumber],
       ["Posição", [profile.position, profile.secondaryPosition].filter(Boolean).join(" / ")],
       ["Pé dominante", profile.dominantFoot], ["Estilo de jogo", profile.playStyle],
-      ["Clubes anteriores", profile.formerClubs], ["Personalidade", profile.personality, true],
-      ["História", profile.backstory, true], ["Objetivos", profile.careerGoals, true],
-      ["Tom e profundidade", [profile.storyTone, profile.depth].filter(Boolean).join(" · ")],
-      ["Módulos", (profile.modules || []).join(", ")]
+      ["Pontos fortes técnicos", registrationValue(profile.technicalStrengths), true],
+      ["Pontos fortes mentais", registrationValue(profile.mentalStrengths), true],
+      ["Pontos fortes físicos", registrationValue(profile.physicalStrengths), true],
+      ["Fraquezas", registrationValue(profile.weaknesses), true], ["Personalidade", profile.personality, true],
+      ["História", profile.backstory, true], ["Objetivos", profile.careerGoals, true]
     ].filter(function (row) { return clean(row[1]); });
-    el.profileContent.innerHTML = '<div class="profile-grid">' + rows.map(function (row) {
-      return '<div class="profile-item' + (row[2] ? " profile-item--wide" : "") + '"><span>' + escapeHTML(row[0]) + '</span><strong>' + escapeHTML(row[1]) + "</strong></div>";
-    }).join("") + "</div>";
+    el.profileContent.innerHTML = [
+      '<section class="profile-section profile-section--user"><header><div><span>CONTA</span><h2>PERFIL DO USUÁRIO</h2></div><button type="button" data-profile-edit="user">EDITAR</button></header><div class="profile-user-summary"><strong>', escapeHTML(career.user.username || "@jogador"), '</strong><span>Carreira salva neste navegador</span></div></section>',
+      '<section class="profile-section"><header><div><span>PERSONAGEM</span><h2>FICHA DO JOGADOR</h2></div><button type="button" data-profile-edit="player">EDITAR</button></header><div class="profile-grid">',
+      rows.map(function (row) { return '<div class="profile-item' + (row[2] ? " profile-item--wide" : "") + '"><span>' + escapeHTML(row[0]) + '</span><strong>' + escapeHTML(row[1]) + "</strong></div>"; }).join(""),
+      "</div></section>"
+    ].join("");
   }
 
   function openProfile() {
+    ui.profileEdit = "";
+    ui.pendingAvatar = "";
     renderProfile();
+    el.profilePage.hidden = false;
+    el.appShell.classList.add("is-profile-open");
     document.body.classList.add("is-modal-open");
-    el.profileModal.showModal();
+    window.scrollTo({ top: 0, behavior: "instant" });
   }
 
   function closeProfile() {
-    if (el.profileModal.open) el.profileModal.close();
+    if (!el.profilePage) return;
+    el.profilePage.hidden = true;
+    el.appShell.classList.remove("is-profile-open");
+    document.body.classList.remove("is-modal-open");
+    ui.profileEdit = "";
+    ui.pendingAvatar = "";
+    if (activeCareer()) navigate("home");
+  }
+
+  function renderUserProfileForm(career) {
+    return [
+      '<form class="profile-edit-form" id="userProfileForm"><header><div><span>EDIÇÃO</span><h2>PERFIL DO USUÁRIO</h2></div></header>',
+      '<label class="profile-edit-avatar"><span class="profile-edit-avatar__preview">', clean(ui.pendingAvatar || career.user.avatarData) ? '<img src="' + escapeHTML(ui.pendingAvatar || career.user.avatarData) + '" alt="Prévia da foto" />' : escapeHTML(playerInitials(career.profile.playerName)), '</span><strong>ALTERAR FOTO</strong><input type="file" name="avatar" accept="image/*" data-profile-avatar /></label>',
+      profileEditField("Nome de usuário", "username", career.user.username, "text", "@seuusuario"),
+      profileEditField("Nova senha", "newPassword", "", "password", "Deixe vazio para manter a atual"),
+      '<div class="profile-form-actions"><button type="button" data-profile-cancel>CANCELAR</button><button type="submit">SALVAR PERFIL <span>→</span></button></div></form>'
+    ].join("");
+  }
+
+  function renderPlayerProfileForm(career) {
+    var profile = career.profile;
+    return [
+      '<form class="profile-edit-form profile-edit-form--player" id="playerProfileForm"><header><div><span>EDIÇÃO</span><h2>FICHA DO JOGADOR</h2><p>Alterações salvas passam a integrar o contexto objetivo consultado pela IA.</p></div></header><div class="profile-edit-grid">',
+      profileEditField("Nome completo", "playerName", profile.playerName, "text"),
+      profileEditField("Nome na camisa", "shirtName", profile.shirtName, "text"),
+      profileEditField("Data de nascimento", "birthDate", profile.birthDate, "date"),
+      profileEditField("Nacionalidade principal", "primaryNationality", profile.primaryNationality || profile.nationality, "text"),
+      profileEditField("Cidade de nascimento", "birthCity", profile.birthCity, "text"),
+      profileEditField("Cidade atual", "currentCity", profile.currentCity, "text"),
+      profileEditField("Clube atual", "currentClub", profile.currentClub, "text"),
+      profileEditField("Liga", "league", profile.league, "text"),
+      profileEditField("Temporada", "season", profile.season, "text"),
+      profileEditField("Número atual", "shirtNumber", profile.shirtNumber, "text"),
+      profileEditField("Posição principal", "position", profile.position, "text"),
+      profileEditField("Posições secundárias", "secondaryPosition", profile.secondaryPosition, "text"),
+      profileEditField("Pé dominante", "dominantFoot", profile.dominantFoot, "text"),
+      profileEditField("Altura (cm)", "height", profile.height, "number"),
+      profileEditField("Peso (kg)", "weight", profile.weight, "number"),
+      profileEditField("Estilo de jogo", "playStyle", registrationValue(profile.playStyle), "text", "Separe por vírgulas"),
+      profileEditTextarea("Pontos fortes técnicos", "technicalStrengths", registrationValue(profile.technicalStrengths)),
+      profileEditTextarea("Pontos fortes mentais", "mentalStrengths", registrationValue(profile.mentalStrengths)),
+      profileEditTextarea("Pontos fortes físicos", "physicalStrengths", registrationValue(profile.physicalStrengths)),
+      profileEditTextarea("Fraquezas", "weaknesses", registrationValue(profile.weaknesses)),
+      profileEditTextarea("Personalidade", "personality", profile.personality),
+      profileEditTextarea("História", "backstory", profile.backstory),
+      profileEditTextarea("Objetivos", "careerGoals", profile.careerGoals),
+      '</div><div class="profile-form-actions"><button type="button" data-profile-cancel>CANCELAR</button><button type="submit">SALVAR FICHA <span>→</span></button></div></form>'
+    ].join("");
+  }
+
+  function profileEditField(label, name, value, type, placeholder) {
+    return '<label class="profile-edit-field"><span>' + escapeHTML(label) + '</span><input name="' + escapeHTML(name) + '" type="' + escapeHTML(type || "text") + '" value="' + escapeHTML(clean(value)) + '" placeholder="' + escapeHTML(placeholder || "") + '" /></label>';
+  }
+
+  function profileEditTextarea(label, name, value) {
+    return '<label class="profile-edit-field profile-edit-field--wide"><span>' + escapeHTML(label) + '</span><textarea name="' + escapeHTML(name) + '" rows="3">' + escapeHTML(clean(value)) + "</textarea></label>";
+  }
+
+  function handleProfileClick(event) {
+    var edit = event.target.closest("[data-profile-edit]");
+    var cancel = event.target.closest("[data-profile-cancel]");
+    if (edit) {
+      ui.profileEdit = edit.dataset.profileEdit;
+      ui.pendingAvatar = "";
+      renderProfile();
+    } else if (cancel) {
+      ui.profileEdit = "";
+      ui.pendingAvatar = "";
+      renderProfile();
+    }
+  }
+
+  async function handleProfileChange(event) {
+    var input = event.target.closest("[data-profile-avatar]");
+    if (!input) return;
+    var file = input.files && input.files[0];
+    if (!file) return;
+    try {
+      ui.pendingAvatar = await optimizeImage(file, 720, 720, 0.8);
+      renderProfile();
+      toast("Nova foto pronta para salvar.");
+    } catch (error) {
+      toast("Não foi possível processar essa imagem.", "error");
+    }
+  }
+
+  async function saveProfileForm(event) {
+    var form = event.target.closest("form");
+    if (!form || (form.id !== "userProfileForm" && form.id !== "playerProfileForm")) return;
+    event.preventDefault();
+    var career = activeCareer();
+    if (!career) return;
+    var data = new FormData(form);
+    if (form.id === "userProfileForm") {
+      var username = normalizeUsername(data.get("username"));
+      if (!/^@[a-z0-9._]{3,30}$/.test(username)) return void toast("Informe um nome de usuário válido começando com @.", "error");
+      if (state.careers.some(function (item) { return item.id !== career.id && normalizeUsername(item.user && item.user.username) === username; })) return void toast("Este nome de usuário já está em uso neste navegador.", "error");
+      var newPassword = String(data.get("newPassword") || "");
+      if (newPassword && newPassword.length < 6) return void toast("A nova senha precisa ter pelo menos 6 caracteres.", "error");
+      career.user.username = username;
+      career.auth.username = username;
+      if (newPassword) career.auth.passHash = await hashText(newPassword);
+      if (ui.pendingAvatar) {
+        career.user.avatarData = ui.pendingAvatar;
+        career.profile.avatarData = ui.pendingAvatar;
+      }
+      career.updatedAt = new Date().toISOString();
+      saveState();
+      ui.profileEdit = "";
+      ui.pendingAvatar = "";
+      renderProfile();
+      toast("Perfil do usuário atualizado.");
+      return;
+    }
+    var arrayFields = ["technicalStrengths", "mentalStrengths", "physicalStrengths", "weaknesses"];
+    var changed = [];
+    Array.from(data.entries()).forEach(function (entry) {
+      var key = entry[0];
+      var incoming = arrayFields.indexOf(key) >= 0 ? splitCommaList(entry[1]) : clean(entry[1]);
+      var previous = arrayFields.indexOf(key) >= 0 ? registrationValue(career.profile[key]) : clean(career.profile[key]);
+      var comparable = arrayFields.indexOf(key) >= 0 ? registrationValue(incoming) : clean(incoming);
+      if (previous !== comparable) {
+        career.profile[key] = incoming;
+        changed.push(key);
+      }
+    });
+    if (!changed.length) {
+      ui.profileEdit = "";
+      renderProfile();
+      toast("Nenhuma informação foi alterada.");
+      return;
+    }
+    if (career.profile.primaryNationality) career.profile.nationality = [career.profile.primaryNationality, career.profile.secondNationality, career.profile.thirdNationality].filter(Boolean).join(", ");
+    career.offPitch.currentCity = career.profile.currentCity || career.offPitch.currentCity;
+    var updatedAt = new Date().toISOString();
+    career.profileRevision = { updatedAt: updatedAt, changedFields: changed.slice() };
+    career.profileChangeHistory.push({ id: uid("profile-change"), updatedAt: updatedAt, changedFields: changed.slice() });
+    career.canonEvents.push({ id: uid("canon"), type: "profile_update", title: "Ficha objetiva do jogador atualizada", summary: "Campos alterados pelo usuário: " + changed.join(", ") + ".", occurredAt: updatedAt, certainty: "fact" });
+    career.updatedAt = updatedAt;
+    saveState();
+    ui.profileEdit = "";
+    renderAll();
+    renderProfile();
+    toast("Ficha salva e atualizada no contexto da IA.");
   }
 
   function renderWheelEntries() {
@@ -1287,75 +1732,22 @@
   function openSettings() {
     ui.settingsDraft = Object.assign({}, state.settings);
     ui.settingsSaved = false;
-    el.overlayRange.value = ui.settingsDraft.overlay;
-    el.blurRange.value = ui.settingsDraft.blur;
     el.spotifyClientId.value = ui.settingsDraft.spotifyClientId || "";
     el.spotifyRedirectUri.value = getSpotifyRedirectUri();
-    updateRangeOutputs();
     updateBackendStatus();
     document.body.classList.add("is-modal-open");
     el.settingsModal.showModal();
   }
 
-  function previewSettings() {
-    if (!ui.settingsDraft) ui.settingsDraft = Object.assign({}, state.settings);
-    ui.settingsDraft.overlay = Number(el.overlayRange.value);
-    ui.settingsDraft.blur = Number(el.blurRange.value);
-    updateRangeOutputs();
-    applyVisualSettings(ui.settingsDraft);
-  }
-
-  function updateRangeOutputs() {
-    el.overlayOutput.value = el.overlayRange.value + "%";
-    el.blurOutput.value = el.blurRange.value + "px";
-  }
-
-  async function importBackground(event) {
-    var file = event.target.files && event.target.files[0];
-    if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      toast("Escolha um arquivo de imagem.", "error");
-      return;
-    }
-    try {
-      var dataUrl = await optimizeImage(file);
-      if (!ui.settingsDraft) ui.settingsDraft = Object.assign({}, state.settings);
-      ui.settingsDraft.backgroundData = dataUrl;
-      applyVisualSettings(ui.settingsDraft);
-      toast("Fundo carregado. Salve as configurações para manter.");
-    } catch (error) {
-      toast("Não foi possível processar essa imagem.", "error");
-    } finally {
-      event.target.value = "";
-    }
-  }
-
-  function resetBackgroundDraft() {
-    if (!ui.settingsDraft) ui.settingsDraft = Object.assign({}, state.settings);
-    ui.settingsDraft.backgroundData = "";
-    applyVisualSettings(ui.settingsDraft);
-    toast("Fundo padrão restaurado na prévia.");
-  }
-
   function saveSettings() {
     if (!ui.settingsDraft) ui.settingsDraft = Object.assign({}, state.settings);
-    ui.settingsDraft.overlay = Number(el.overlayRange.value);
-    ui.settingsDraft.blur = Number(el.blurRange.value);
     ui.settingsDraft.spotifyClientId = clean(el.spotifyClientId.value);
     state.settings = Object.assign({}, state.settings, ui.settingsDraft);
     ui.settingsSaved = true;
     saveState();
-    applyVisualSettings(state.settings);
     updateBackendStatus();
     el.settingsModal.close();
     toast("Configurações salvas.");
-  }
-
-  function applyVisualSettings(settings) {
-    var safe = settings || {};
-    document.documentElement.style.setProperty("--backdrop-overlay", String((Number(safe.overlay || 58) / 100).toFixed(2)));
-    document.documentElement.style.setProperty("--backdrop-blur", Number(safe.blur || 0) + "px");
-    el.customBackground.style.backgroundImage = safe.backgroundData ? 'url("' + safe.backgroundData + '")' : "";
   }
 
   function updateBackendStatus() {
@@ -1371,7 +1763,7 @@
     el.aiStatusChip.classList.toggle("is-connected", Boolean(connected));
   }
 
-  function optimizeImage(file) {
+  function optimizeImage(file, maxWidth, maxHeight, quality) {
     return new Promise(function (resolve, reject) {
       var reader = new FileReader();
       reader.onerror = reject;
@@ -1379,13 +1771,15 @@
         var image = new Image();
         image.onerror = reject;
         image.onload = function () {
-          var ratio = Math.min(1, 1920 / image.naturalWidth, 1080 / image.naturalHeight);
+          var widthLimit = Number(maxWidth || 1920);
+          var heightLimit = Number(maxHeight || 1080);
+          var ratio = Math.min(1, widthLimit / image.naturalWidth, heightLimit / image.naturalHeight);
           var canvas = document.createElement("canvas");
           canvas.width = Math.max(1, Math.round(image.naturalWidth * ratio));
           canvas.height = Math.max(1, Math.round(image.naturalHeight * ratio));
           var context = canvas.getContext("2d");
           context.drawImage(image, 0, 0, canvas.width, canvas.height);
-          resolve(canvas.toDataURL("image/webp", 0.82));
+          resolve(canvas.toDataURL("image/webp", Number(quality || 0.82)));
         };
         image.src = reader.result;
       };
@@ -1702,6 +2096,23 @@
     return String(value == null ? "" : value).trim();
   }
 
+  function normalizeUsername(value) {
+    var raw = clean(value);
+    if (!raw) return "";
+    raw = raw.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR");
+    raw = raw.replace(/^@+/, "").replace(/\s+/g, "").replace(/[^a-z0-9._]/g, "").slice(0, 30);
+    return "@" + raw;
+  }
+
+  function calculateAge(value) {
+    var birth = new Date(String(value) + "T12:00:00");
+    if (Number.isNaN(birth.getTime())) return 0;
+    var today = new Date();
+    var age = today.getFullYear() - birth.getFullYear();
+    var beforeBirthday = today.getMonth() < birth.getMonth() || (today.getMonth() === birth.getMonth() && today.getDate() < birth.getDate());
+    return Math.max(0, age - (beforeBirthday ? 1 : 0));
+  }
+
   function escapeHTML(value) {
     return String(value == null ? "" : value)
       .replace(/&/g, "&amp;")
@@ -1786,7 +2197,6 @@
   async function init() {
     cacheElements();
     bindEvents();
-    applyVisualSettings(state.settings);
     populateLoginCareers();
     el.spotifyRedirectUri.value = getSpotifyRedirectUri();
     await handleSpotifyCallback();

@@ -1,0 +1,603 @@
+DOCUMENTO PARA IMPLEMENTAÇÃO
+CADASTRO DE JOGADOR
+
+OBJETIVO
+Criar um cadastro de jogador completo, realista e útil para um RPG de futebol, sem transformar o onboarding em um formulário burocrático. O fluxo ideal é em formato de perguntas, uma por tela/etapa
+
+IMPORTANTE:
+- Idade deve ser calculada automaticamente pela data de nascimento; não perguntar idade separadamente.
+- País, cidade, nacionalidade, clube e liga devem ser dados normalizados sempre que possível.
+- As perguntas opcionais mais profundas podem ficar numa etapa “Completar perfil” após o cadastro básico.
+
+
+1. REGRA OBRIGATÓRIA PARA NACIONALIDADE, PAÍSES, CIDADES E LIGAS
+
+Esta regra é ESSENCIAL e deve ser implementada exatamente como comportamento padrão.
+
+CAMPOS QUE DEVEM USAR BUSCA + AUTOCOMPLETE COM OPÇÕES REAIS:
+1. Nacionalidade principal.
+2. Nacionalidade secundária, caso exista.
+3. Terceira nacionalidade, caso exista.
+4. País de nascimento.
+5. Cidade de nascimento.
+6. País onde mora atualmente.
+7. Cidade onde mora atualmente.
+8. Liga/divisão em que joga atualmente.
+9. Recomenda-se aplicar o mesmo sistema também ao clube atual.
+10. Recomenda-se aplicar o mesmo sistema a clubes anteriores e clube formador.
+
+COMPORTAMENTO:
+- O campo não deve ser um simples texto livre.
+- Conforme a pessoa digitar, devem surgir sugestões reais para seleção.
+- A pessoa deve poder clicar/tocar numa sugestão para confirmar.
+- Países/nacionalidades podem começar a sugerir após 1 ou 2 caracteres.
+- Cidades, clubes e ligas podem começar a sugerir após 2 ou 3 caracteres.
+- Mostrar no máximo aproximadamente 8 a 10 sugestões de cada vez.
+- Aplicar debounce na busca para não fazer uma requisição a cada tecla.
+
+EXEMPLOS DE COMO MOSTRAR:
+Cidade:
+“São Paulo, São Paulo - Brasil”
+“São Paulo de Olivença, Amazonas - Brasil”
+
+Liga:
+“Premier League, Inglaterra (1ª divisão)”
+“Premier League 2, Inglaterra (categoria de base)”
+
+Clube:
+“Chelsea FC, Londres - Inglaterra”
+“Chelsea U21 - Inglaterra (base/reservas)”
+
+SE O ITEM DIGITADO NÃO FOR ENCONTRADO:
+Mostrar o aviso exatamente:
+
+“Essa opção não foi encontrada ou não existe.”
+
+Logo abaixo, exibir uma opção marcável:
+
+[ ] Seguir mesmo assim
+
+REGRAS DO “SEGUIR MESMO ASSIM”:
+- Enquanto a pessoa não selecionar uma sugestão real e também não marcar “Seguir mesmo assim”, a seta de “Continuar” deve permanecer bloqueada.
+- Se marcar “Seguir mesmo assim”, aceitar exatamente o texto digitado.
+- Salvar esse registro como manual/customizado.
+- Não misturar silenciosamente um registro customizado com um registro real.
+- Se futuramente o sistema reconhecer aquele valor como real, pode sugerir uma correção ao usuário, mas nunca alterar automaticamente.
+
+REGRA IMPORTANTE:
+Se o usuário selecionar uma opção real e depois editar o texto do campo, a seleção anterior deve ser invalidada e o campo precisa ser validado novamente.
+
+NORMALIZAÇÃO:
+- Busca deve ignorar diferenças simples de maiúsculas/minúsculas.
+- Deve lidar bem com acentos.
+- Deve aceitar aliases comuns.
+Exemplo: “Man United”, “Manchester United” e “Manchester Utd” podem apontar para o mesmo clube real.
+
+NACIONALIDADE X PAÍS:
+Para um RPG de futebol, vale separar tecnicamente:
+- nacionalidade futebolística/associação;
+- país geográfico de nascimento/residência.
+
+Isso evita problemas como Inglaterra, Escócia, País de Gales e Irlanda do Norte, que existem separadamente no futebol, embora estejam dentro do Reino Unido no contexto geográfico.
+
+CIDADE DEPENDENTE DO PAÍS:
+Depois de selecionar o país, priorizar/filtrar cidades daquele país.
+Exemplo:
+País de nascimento: Brasil
+Cidade de nascimento: ao digitar “São”, priorizar cidades brasileiras.
+
+LIGA:
+A pergunta deve ser sobre a LIGA/COMPETIÇÃO DOMÉSTICA PRINCIPAL em que o jogador disputa a temporada atualmente.
+Não confundir automaticamente Champions League, Libertadores, Copa do Brasil, FA Cup etc. com a “liga atual”.
+
+Se um clube real for selecionado e a base souber sua liga atual:
+- pré-preencher a liga;
+- permitir o usuário confirmar;
+- permitir alterar, caso seja necessário.
+
+
+2. FLUXO DO CADASTRO
+
+FORMATO:
+- Uma pergunta principal por tela/card.
+- setas para voltar e continuar.
+
+
+PERGUNTA 1 — OBRIGATÓRIA
+“Qual é o nome completo do jogador?”
+Tipo: texto.
+Exemplo: Caio Alexandre da Silva.
+Validação:
+- 2 a 80 caracteres.
+- Permitir acentos, hífens e apóstrofos.
+
+PERGUNTA 2 — OBRIGATÓRIA
+“Qual o nome na camisa?”
+Tipo: texto.
+
+PERGUNTA 3 — OBRIGATÓRIA
+“Qual é a data de nascimento dele?”
+Tipo: calendário/data.
+Formato interno recomendado: YYYY-MM-DD.
+O sistema calcula automaticamente:
+- idade atual;
+
+PERGUNTA 4 — OBRIGATÓRIA
+“Qual é a nacionalidade principal dele?”
+Tipo: autocomplete de nacionalidades reais.
+
+PERGUNTA 5 — OBRIGATÓRIA
+“Ele possui outra nacionalidade?”
+Opções:
+- Não.
+- Sim.
+
+SE SIM:
+
+PERGUNTA 5A
+“Qual é a segunda nacionalidade?”
+Tipo: autocomplete real.
+Não permitir selecionar a mesma da nacionalidade principal.
+
+Depois:
+“Ele possui uma terceira nacionalidade?”
+- Não.
+- Sim.
+
+Se sim, permitir uma terceira nacionalidade.
+Recomendação: máximo de 3 nacionalidades no cadastro inicial.
+
+PERGUNTA 6 — OBRIGATÓRIA
+“Em qual país ele nasceu?”
+Tipo: autocomplete de países/territórios reais.
+Aplicar validação real + “Seguir mesmo assim”.
+
+PERGUNTA 7 — OBRIGATÓRIA
+“Em qual cidade ele nasceu?”
+Tipo: autocomplete de cidades reais.
+Priorizar resultados do país selecionado na pergunta anterior.
+Mostrar cidade + estado/região/província + país quando possível.
+
+PERGUNTA 8 — OBRIGATÓRIA
+“Em qual país ele mora atualmente?”
+Tipo: autocomplete de países reais.
+
+PERGUNTA 9 — OBRIGATÓRIA
+“Em qual cidade ele mora atualmente?”
+Tipo: autocomplete de cidades reais.
+Priorizar resultados do país atual.
+
+PERGUNTA 10 — OPCIONAL
+“Quais idiomas ele fala?”
+Tipo: multiselect.
+Exemplos:
+Português, Inglês, Espanhol, Francês, Italiano, Alemão, Japonês etc.
+Permitir múltiplos.
+Opcionalmente perguntar nível:
+- Básico.
+- Intermediário.
+- Avançado.
+- Fluente/Nativo.
+
+
+PERGUNTA 11 — OBRIGATÓRIA
+“Qual é a situação atual dele no futebol?”
+Opções:
+- Jogador de base.
+- Amador.
+- Semiprofissional.
+- Profissional.
+
+
+PERGUNTA 12 — OBRIGATÓRIA
+“Em qual clube ele joga atualmente?”
+Tipo: autocomplete de clubes reais.
+
+Ao selecionar clube real, armazenar o ID real do clube e, quando possível:
+- país;
+- cidade;
+- liga atual;
+- escudo;
+- nível/divisão;
+sem exigir que o jogador digite tudo de novo.
+
+PERGUNTA 13 — OBRIGATÓRIA
+“Em qual liga ou divisão doméstica ele joga atualmente?”
+Tipo: autocomplete de ligas/competições reais.
+Exemplos:
+Brasileirão Série A
+Premier League
+LaLiga
+Serie A
+Bundesliga
+Ligue 1
+Eredivisie
+Championship
+Brasileirão Série B
+
+Mostrar:
+Nome da liga — país — nível/divisão, quando disponível.
+
+PERGUNTA 14 — CONDICIONAL
+“Ele está emprestado?”
+Opções:
+- Não.
+- Sim.
+
+SE SIM:
+Perguntar:
+“Qual clube possui os direitos do jogador?”
+“Para qual clube ele está emprestado?”
+Ambos com autocomplete de clubes reais + possibilidade de “Seguir mesmo assim”.
+
+PERGUNTA 15 — OBRIGATÓRIO
+“Em qual categoria/elenco ele está?”
+Opções sugeridas:
+- Time principal.
+- Reservas.
+- Sub-20.
+- Sub-18.
+- Sub-17.
+
+PERGUNTA 16 — OBRIGATÓRIO
+“Qual número de camisa ele usa atualmente?”
+Tipo: número.
+Faixa recomendada: 1 a 99.
+Permitir “Não definido”.
+
+PERGUNTA 18 — OPCIONAL
+“Há quantos anos ele joga futebol competitivo?”
+Tipo: número.
+Pode ser calculado se o usuário preencher o histórico posteriormente.
+
+
+PERGUNTA 19 — OBRIGATÓRIA
+“Qual é a posição principal dele?”
+Opções normalizadas:
+- Goleiro (GK)
+- Lateral-direito (RB)
+- Ala-direito (RWB)
+- Zagueiro (CB)
+- Lateral-esquerdo (LB)
+- Ala-esquerdo (LWB)
+- Volante (DM)
+- Meio-campista central (CM)
+- Meia ofensivo (AM/CAM)
+- Ponta-direita (RW)
+- Ponta-esquerda (LW)
+- Segundo atacante (SS)
+- Centroavante/Atacante (ST/CF)
+
+PERGUNTA 20 — OPCIONAL
+“Ele joga em outras posições?”
+Tipo: multiselect.
+Permitir até 3 posições secundárias.
+Não repetir a principal.
+
+PERGUNTA 21 — OBRIGATÓRIA
+“Qual é o pé dominante?”
+Opções:
+- Direito.
+- Esquerdo.
+- Ambos / ambidestro.
+
+PERGUNTA 22 — OBRIGATÓRIA
+“Qual é a altura dele?”
+Tipo: número.
+Unidade padrão: cm.
+Mostrar também conversão imperial apenas se o site precisar.
+
+PERGUNTA 23 — OBRIGATÓRIA
+“Qual é o peso dele?”
+Tipo: número.
+Unidade padrão: kg.
+
+PERGUNTA 24 — OPCIONAL
+“Qual é o número de camisa preferido dele?”
+Tipo: número.
+Isso é diferente do número atual do clube.
+
+PERGUNTA 25 — OBRIGATÓRIA
+“Como você descreveria o estilo de jogo dele?”
+Tipo: escolher até 3 arquétipos.
+Sugestões gerais:
+- Finalizador.
+- Driblador.
+- Criador.
+- Armador.
+- Velocista.
+- Atacante de profundidade.
+- Pivô.
+- Jogador associativo.
+- Pressionador.
+- Box-to-box.
+- Regista.
+- Volante destruidor.
+- Meia infiltrador.
+- Ala ofensivo.
+- Lateral equilibrado.
+- Lateral defensivo.
+- Zagueiro construtor.
+- Zagueiro agressivo.
+- Líbero.
+- Goleiro tradicional.
+- Goleiro-líbero.
+
+Idealmente filtrar arquétipos de acordo com a posição principal.
+
+PERGUNTA 26 — OBRIGATÓRIA
+“Quais são os maiores pontos fortes TÉCNICOS dele?”
+Escolher até 4.
+Opções:
+- Finalização.
+- Passe curto.
+- Passe longo.
+- Visão/criação.
+- Drible.
+- Primeiro toque/domínio.
+- Cruzamento.
+- Cabeceio.
+- Chute de longe.
+- Cobrança de falta.
+- Pênaltis.
+- Escanteios.
+- Desarme.
+- Marcação.
+- Técnica geral.
+- Jogo aéreo.
+- Saída de bola.
+
+PERGUNTA 27 — OBRIGATÓRIA
+“Quais são os maiores pontos fortes MENTAIS dele?”
+Escolher até 4.
+Opções:
+- Tomada de decisão.
+- Frieza/composição.
+- Antecipação.
+- Posicionamento.
+- Movimentação sem bola.
+- Inteligência tática.
+- Criatividade.
+- Coragem.
+- Liderança.
+- Trabalho em equipe.
+- Determinação.
+- Concentração.
+- Disciplina.
+- Competitividade.
+- Capacidade sob pressão.
+
+PERGUNTA 28 — OBRIGATÓRIA
+“Quais são os maiores pontos fortes FÍSICOS dele?”
+Escolher até 3.
+Opções:
+- Aceleração.
+- Velocidade.
+- Agilidade.
+- Equilíbrio.
+- Força.
+- Resistência/fôlego.
+- Impulsão.
+- Explosão.
+- Mudança de direção.
+
+PERGUNTA 29 — OBRIGATÓRIA
+“Quais são as principais fraquezas dele?”
+Tipo: multiselect.
+Usar as mesmas categorias técnicas, mentais e físicas.
+Não permitir marcar exatamente o mesmo item como força e fraqueza.
+
+PERGUNTA 30 — OBRIGATÓRIA
+“Quais jogadas ou características especiais combinam com ele?”
+Escolher até 5.
+Exemplos:
+- Corta para dentro.
+- Vai à linha de fundo.
+- Tenta dribles com frequência.
+- Procura tabelas.
+- Ataca o espaço.
+- Joga de costas.
+- Finaliza colocado.
+- Finaliza com força.
+- Tenta chutes de longe.
+- Procura passes em profundidade.
+- Faz lançamentos longos.
+- Chega de trás na área.
+- Pressiona a saída de bola.
+- Dá carrinhos.
+- Evita usar o pé fraco.
+- Usa os dois pés.
+- Tenta voleios/bicicletas.
+- Busca cabeceios.
+- Segura a bola.
+- Faz ultrapassagens.
+- Inverte o jogo.
+
+PERGUNTA 31 — OBRIGATÓRIA
+“Ele costuma cobrar bolas paradas?”
+Permitir selecionar:
+- Pênaltis.
+- Faltas diretas.
+- Faltas indiretas.
+- Escanteio pela direita.
+- Escanteio pela esquerda.
+- Não.
+
+
+PERGUNTA 32 — OBRIGATÓRIA
+“Onde ele começou no futebol?”
+Pode ser:
+- Clube de base.
+- Academia.
+- Time escolar.
+- Time amador.
+- Projeto social.
+- Outro.
+
+Se for um clube:
+usar autocomplete de clube real + “Seguir mesmo assim”.
+
+PERGUNTA 33 — OBRIGATÓRIA
+“Qual foi o clube formador principal dele?”
+Autocomplete real + fallback customizado.
+
+PERGUNTA 35 — OBRIGATÓRIA
+“Em que ano ele fez a estreia profissional?”
+Tipo: ano.
+Se ainda não estreou:
+- “Ainda não estreou profissionalmente”.
+
+PERGUNTA 36 — OBRIGATÓRIA
+“Ele já representa alguma seleção?”
+Opções:
+- Não.
+- Seleção principal.
+- Seleção de base.
+
+Se sim:
+“Qual seleção?”
+Autocomplete de seleções/associações reais.
+
+Opcionalmente:
+- Jogos pela seleção.
+- Gols.
+- Assistências.
+- Categoria da seleção.
+
+PERGUNTA 37 — OBRIGATÓRIA
+“Ele possui títulos importantes?”
+Tipo: lista repetível.
+Para cada título:
+- Competição/título.
+- Clube/seleção.
+- Ano.
+
+PERGUNTA 38 — OPCIONAL
+“Ele possui prêmios individuais importantes?”
+Exemplos:
+- Artilheiro.
+- Melhor jogador.
+- Melhor jovem.
+- Seleção do campeonato.
+- Outro.
+
+PERGUNTA 39 — OPCIONAL
+“Existe alguma lesão importante no histórico dele?”
+Opções:
+- Não.
+- Sim.
+
+Se sim, permitir descrição curta e temporada/ano.
+Não transformar isso automaticamente em diagnóstico médico real; é informação narrativa do personagem.
+
+
+PERGUNTA 43 — RECOMENDADA
+“Qual é a maior ambição da carreira dele?”
+Escolher uma principal:
+- Ser o melhor jogador do mundo.
+- Ganhar a Bola de Ouro.
+- Ganhar a Copa do Mundo.
+- Ganhar a Champions League.
+- Virar ídolo de um clube.
+- Quebrar recordes.
+- Ser artilheiro histórico.
+- Representar seu país no mais alto nível.
+- Jogar em uma grande liga.
+- Fazer uma carreira longa e vitoriosa.
+- Outra.
+
+Se “Outra”, texto curto.
+
+PERGUNTA 44 — OPCIONAL
+“Qual é o objetivo dele para a próxima temporada?”
+Texto curto.
+
+PERGUNTA 45 — OPCIONAL
+“Existe algum clube dos sonhos?”
+Autocomplete de clube real + “Nenhum” + “Seguir mesmo assim”.
+
+PERGUNTA 46 — OPCIONAL
+“Existe algum jogador que o inspira?”
+Autocomplete de jogadores reais se houver uma base própria; caso contrário, texto livre.
+Permitir mais de um, com limite.
+
+PERGUNTA 47 — OPCIONAL
+“Ele tem algum rival ou adversário que queira superar?”
+Pode aceitar:
+- “Ainda não”.
+
+PERGUNTA 48 — RECOMENDADA
+“Conte resumidamente a história dele antes do início do RPG.”
+Tipo: textarea.
+Sugestão de limite: 1.500 a 3.000 caracteres.
+Ajuda a IA/narrativa a entender:
+- origem;
+- dificuldades;
+- momentos marcantes;
+- motivação;
+- relação com futebol.
+
+PERGUNTA 51 — OBRIGATÓRIA
+“Ele tem uma comemoração de gol característica?”
+Opções:
+- Não.
+- Sim, descrever.
+
+
+PERGUNTA 53 — OPCIONAL
+“Deseja adicionar uma foto do jogador agora?”
+Opções:
+- Enviar imagem.
+- Fazer depois.
+
+salvar essa imagem como foto de perfil do usuário
+
+TELA:
+“Revise seu jogador”
+
+Mostrar revisão minimalista e simples, compacta:
+
+IDENTIDADE
+- Nome completo.
+- Nome no futebol.
+- Data de nascimento.
+- Idade calculada.
+- Nacionalidade(s).
+
+ORIGEM
+- País/cidade de nascimento.
+- País/cidade atual.
+
+CARREIRA
+- Status.
+- Clube.
+- Liga.
+- Categoria.
+- Número.
+
+PERFIL
+- Posição principal.
+- Posições secundárias.
+- Pé dominante.
+- Altura.
+- Peso.
+- Estilo.
+- Forças/fraquezas.
+
+NARRATIVA
+- Personalidade.
+- Ambição.
+- História resumida.
+
+BOTÃO FINAL:
+“Vamos Aquecer”
+
+Antes de criar:
+[ ] Confirmo que as informações do personagem estão corretas.
+
+Depois de criar:
+- permitir editar perfil;
+- registrar histórico de alterações importantes;
+- não recalcular retroativamente eventos de carreira já ocorridos sem confirmação.
+
+FIM DO DOCUMENTO

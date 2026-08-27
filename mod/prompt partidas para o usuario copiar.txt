@@ -1,0 +1,17 @@
+Jogo:
+Competição:
+Fase:
+Estádio:
+Uniforme:
+Formação: GO -
+LD - , ZC - , ZC - , LE -
+VOL -
+MAT - , MAT -
+PD - , CA - , PE -
+Gols do (nome do seu jogador):
+Partida: 00:00 -
+
+Placar final:
+Nota:
+
+Mande a Narração, manchetes, comentários, análises, repercussão em redes sociais e seguir com a imprensa com perguntas depois.

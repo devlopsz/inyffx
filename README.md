@@ -8,15 +8,20 @@ Interface web para transformar um modo carreira de jogador em um universo persis
 
 Esta versão é um front-end estático compatível com GitHub Pages. Ela contém:
 
-- cadastro em quatro etapas e login de carreiras salvas no navegador;
+- login por nome de usuário e cadastro cinematográfico com uma pergunta por tela;
+- criação de conta primeiro (`@usuário`, senha e confirmação), seguida pela ficha completa do personagem;
+- autocomplete com opções reais iniciais para nacionalidades, países, cidades, clubes e ligas, com fallback manual identificado;
 - estado inicial vazio: nenhum personagem, jogo, notícia, conquista ou compromisso é inventado;
-- hub minimalista com fundo personalizável e todas as fontes em Cruyff Sans;
+- hub minimalista em tela cheia, menu sobre gradiente e fundos fornecidos alternando em fade;
+- engrenagem e foto do perfil na lateral; o perfil abre em tela cheia e permite editar usuário e jogador;
+- páginas internas em tela cheia, sem o menu lateral e com seta de retorno ao hub;
+- todas as fontes em Cruyff Sans, sem uso das variantes mono;
 - `KICK OFF`: chat de RP, modelo de partida, roleta editável e dados D6, D8, D10, D12, D20 e D100;
 - `FYX NEWS`: manchetes, redes sociais, análises e fofocas em modo consulta;
 - `RELATIONSHIPS`: fichas de todos os personagens confirmados no cânone;
 - `SEASONS`: partidas narradas e estatísticas agregadas por temporada;
 - `PLAYER CAREER`: FYX Pay, Hall da carreira e calendário;
-- `OFF THE PITCH`: fluxo opcional para The Sims 4, modelo copiável e moradias;
+- `OFF THE PITCH`: fluxo opcional para The Sims 4, modelo copiável, arquivo de exemplo para download e moradias;
 - atualização local de `SEASONS` e `FYX NEWS` quando um modelo de partida preenchido é enviado;
 - integração Spotify por Authorization Code com PKCE, pronta para receber um Client ID;
 - IA gratuita do MVP preparada em Cloudflare Workers AI, sem chave ou endpoint configurado pelo jogador;
@@ -80,16 +85,17 @@ O backend deve recuperar apenas o contexto necessário à cena atual e devolver,
 
 ## Persistência desta versão
 
-- A carreira e o fundo personalizado usam `localStorage`.
+- A carreira, a ficha do usuário e a ficha do jogador usam `localStorage`.
 - A sessão de login e os tokens Spotify usam `sessionStorage`.
 - O código de acesso local é salvo como hash SHA-256; ele serve apenas para a experiência da interface e não substitui autenticação de produção.
+- Alterações feitas na ficha do jogador entram no histórico da carreira e no contexto estruturado enviado à IA nas próximas cenas.
 - Limpar os dados do navegador remove as carreiras locais.
 - Sincronização entre dispositivos dependerá do backend.
 - A IA gratuita tem franquia diária e pode ficar indisponível até a renovação da cota; mensagens do jogador permanecem salvas localmente nesses casos.
 
 ## Teste automatizado
 
-O teste em `tests/smoke.cjs` cobre cadastro, estado vazio, KICK OFF, modelo de partida, atualização de SEASONS/FYX NEWS e responsividade.
+O teste sem dependências em `tests/smoke.cjs` valida os assets, a estrutura das telas, as rotas, os 54+ passos do cadastro, os prompts fornecidos, a ausência de fontes mono e a integração já configurada.
 
 ```powershell
 node tests/smoke.cjs
