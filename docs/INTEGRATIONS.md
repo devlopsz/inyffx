@@ -18,7 +18,7 @@ O backend está em `backend/` e usa:
 
 - Cloudflare Workers no plano Free para o endpoint serverless;
 - Workers AI por binding, sem API key exposta nem chave para o jogador;
-- `@cf/zai-org/glm-4.7-flash`, escolhido para diálogo multilíngue, instruções e contexto longo;
+- `@cf/qwen/qwen3-30b-a3b-fp8`, escolhido após teste de obediência às regras de roleplay, diálogo multilíngue e custo baixo;
 - JSON estruturado para separar a narração das atualizações de memória;
 - CORS restrito, validação de tamanho, timeout no navegador e rate limiting por carreira e IP;
 - adaptador isolado em `backend/src/provider.js`, ponto único para a futura troca por OpenAI ou outro provedor.
@@ -146,7 +146,7 @@ Os tokens ficam em `sessionStorage`: fechar a sessão do navegador exige uma nov
 window.INYFFX_CONFIG = Object.freeze({
   apiBaseUrl: "https://inyffx-api.seu-subdominio.workers.dev",
   aiProvider: "Cloudflare Workers AI",
-  aiModel: "GLM-4.7-Flash",
+  aiModel: "Qwen3 30B A3B",
   spotifyClientId: "client_id_publico"
 });
 ```

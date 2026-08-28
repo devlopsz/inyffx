@@ -56,7 +56,7 @@ As instruções completas e o contrato JSON estão em [docs/INTEGRATIONS.md](doc
 
 Resumo:
 
-- **IA do MVP:** o backend em `backend/` usa Cloudflare Workers AI com `@cf/zai-org/glm-4.7-flash`. O jogador não informa chave nem URL; o endereço público do Worker é definido uma vez pelo InyffX em `assets/config.js`.
+- **IA do MVP:** o backend em `backend/` usa Cloudflare Workers AI com `@cf/qwen/qwen3-30b-a3b-fp8`. O jogador não informa chave nem URL; o endereço público do Worker é definido uma vez pelo InyffX em `assets/config.js`.
 - **Banco multiusuário:** ainda não conectado. A memória estruturada continua no navegador nesta fase e já é enviada de forma seletiva ao backend.
 - **Spotify:** o fluxo PKCE está implementado. É necessário criar um app no Spotify Developer Dashboard, registrar a Redirect URI exibida pelo InyffX e colar o Client ID público.
 - **GitHub Pages:** nunca armazene uma chave OpenAI, senha de banco, service role ou Spotify Client Secret em `assets/config.js`.

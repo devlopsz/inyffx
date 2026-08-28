@@ -5,7 +5,7 @@ Worker serverless do MVP. Ele recebe o contrato já usado pelo `KICK OFF`, chama
 ## Escolha do MVP
 
 - provedor: Cloudflare Workers AI;
-- modelo inicial: `@cf/zai-org/glm-4.7-flash`;
+- modelo inicial: `@cf/qwen/qwen3-30b-a3b-fp8`;
 - plano: Workers Free, sem cartão obrigatório;
 - autenticação entre Worker e modelo: binding `AI`, sem API key no JavaScript;
 - proteção: CORS restrito, validação de entrada, limite por carreira e IP, tamanho máximo e teto de saída;

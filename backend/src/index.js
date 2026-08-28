@@ -411,6 +411,21 @@ function providerFailure(error) {
   return new ApiError(502, "AI_PROVIDER_ERROR", "A IA não conseguiu concluir esta cena. Tente novamente.");
 }
 
+function openingNeedsDirection(payload) {
+  const recentMessages = payload.context && Array.isArray(payload.context.recentMessages) ? payload.context.recentMessages : [];
+  if (recentMessages.length) return false;
+  const content = comparableText(payload.message && payload.message.content);
+  if (!content || content.length > 90) return false;
+  return /^(oi|ola|opa|hey|e ai|bom dia|boa tarde|boa noite)\b/.test(content)
+    || /\b(por onde comecamos|como comecamos|vamos comecar|quero comecar|podemos comecar|comecamos por onde)\b/.test(content);
+}
+
+function openingDirectionReply(payload) {
+  const protagonistName = cleanText(payload.context && payload.context.profile && payload.context.profile.playerName, 160);
+  const vocative = protagonistName ? `, ${protagonistName}` : "";
+  return `Por onde começamos${vocative}? Diga onde você está agora, quem está com você e qual momento quer viver primeiro. Nada acontece até você escolher o ponto de partida.`;
+}
+
 async function handleRoleplay(request, env, origin) {
   const rawBody = await request.text();
   if (rawBody.length > MAX_BODY_CHARACTERS) throw new ApiError(413, "PAYLOAD_TOO_LARGE", "A memória enviada ficou grande demais para o MVP.");
@@ -423,6 +438,22 @@ async function handleRoleplay(request, env, origin) {
 
   const payload = normalizeRequest(body, env);
   await enforceRateLimit(request, env, payload.careerId);
+  if (openingNeedsDirection(payload)) {
+    const now = new Date().toISOString();
+    const reply = openingDirectionReply(payload);
+    return jsonResponse({
+      schemaVersion: "1.0",
+      reply,
+      message: { id: `message-${crypto.randomUUID()}`, content: reply, createdAt: now },
+      memoryUpdates: sanitizeMemoryUpdates({}, payload.careerId, now),
+      meta: {
+        provider: String(env.AI_PROVIDER || "cloudflare-workers-ai"),
+        model: String(env.AI_MODEL || DEFAULT_MODEL),
+        freeTier: true,
+        guardedOpening: true
+      }
+    }, 200, origin);
+  }
   const messages = buildModelMessages(payload, numberFromEnv(env.MAX_CONTEXT_CHARS, 32000, 60000));
 
   let rawModelResponse;

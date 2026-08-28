@@ -1,4 +1,4 @@
-export const DEFAULT_MODEL = "@cf/zai-org/glm-4.7-flash";
+export const DEFAULT_MODEL = "@cf/qwen/qwen3-30b-a3b-fp8";
 
 function positiveInteger(value, fallback, maximum) {
   const parsed = Number.parseInt(String(value || ""), 10);
@@ -19,15 +19,24 @@ export async function generateRoleplay(env, messages) {
   }
 
   const model = String(env.AI_MODEL || DEFAULT_MODEL);
+  const isQwen3 = /\/qwen\/qwen3(?:-|\.)/i.test(model);
+  const preparedMessages = isQwen3 ? messages.map((message, index) => {
+    if (index !== messages.length - 2 || message.role !== "system") return message;
+    return { ...message, content: `${message.content}\n/no_think` };
+  }) : messages;
+  const maximumOutput = positiveInteger(env.MAX_OUTPUT_TOKENS, 1100, 2000);
   const options = {
-    messages,
-    max_completion_tokens: positiveInteger(env.MAX_OUTPUT_TOKENS, 1100, 2000),
-    chat_template_kwargs: { enable_thinking: false },
+    messages: preparedMessages,
     temperature: 0.62,
     top_p: 0.92,
     repetition_penalty: 1.04,
     response_format: { type: "json_object" }
   };
+  if (isQwen3) options.max_tokens = maximumOutput;
+  else {
+    options.max_completion_tokens = maximumOutput;
+    options.chat_template_kwargs = { enable_thinking: false };
+  }
 
   try {
     return await env.AI.run(model, options);

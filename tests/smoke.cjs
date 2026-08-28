@@ -32,6 +32,14 @@ const requiredFiles = [
   "mod/pics/logo-inyffx.png",
   "mod/pics/login/inyffx-background-initial.png",
   "mod/pics/login/soccer-ball-button.svg",
+  "mod/pics/favicon.ico",
+  "mod/pics/icons/engrenagem.svg",
+  "mod/pics/icons/profile.svg",
+  "mod/pics/icons/novo dia.svg",
+  "mod/pics/icons/mais.svg",
+  "mod/pics/icons/partida.svg",
+  "mod/pics/icons/roleta.svg",
+  "mod/pics/icons/dado.svg",
   "mod/prompt partidas para o usuario copiar.txt",
   "mod/prompt the sims para o usuario copiar.txt",
   "mod/prompt the sims EXEMPLO.txt"
@@ -49,6 +57,7 @@ check(!/Cruyff Sans Mono|font-family\s*:\s*[^;]*\bmono\b/i.test(combinedSource),
 check(/font-family:\s*"Cruyff Sans"/i.test(css), "Cruyff Sans é a família visual da interface");
 check(html.includes("mod/pics/login/inyffx-background-initial.png") || css.includes("mod/pics/login/inyffx-background-initial.png"), "login usa o fundo fornecido");
 check(html.includes("mod/pics/login/soccer-ball-button.svg"), "login usa a bola fornecida no botão");
+check(html.includes('href="mod/pics/favicon.ico"'), "favicon oficial do InyffX está configurado");
 check((html.match(/mod\/pics\/logo-inyffx\.png/g) || []).length >= 3, "logo do InyffX aparece no login, cadastro e hub");
 
 const htmlIds = [...html.matchAll(/\sid="([^"]+)"/g)].map((match) => match[1]);
@@ -73,22 +82,31 @@ check(html.includes('id="openSettings"') && html.includes('id="openProfile"'), "
 check(html.includes('id="profilePage"') && html.includes('id="profileContent"'), "perfil abre em uma página dedicada");
 check(app.includes("profileRevision") && app.includes("profileChangeHistory") && app.includes("buildBackendContext"), "edições do jogador entram no histórico e no contexto da IA");
 
-const backgrounds = ["yamal.jpg", "santos.jpg", "relationship.jpg", "flamengo.png", "chelsea.jpg"];
-backgrounds.forEach((file) => {
+const backgrounds = {
+  "kick-off": "kick-off.jpg",
+  "fyx-news": "fyx-news.jpeg",
+  relationships: "relationships.jpg",
+  seasons: "seasons.jpg",
+  "player-career": "player-career.jpg",
+  "off-the-pitch": "off-the-pitch.webp"
+};
+Object.entries(backgrounds).forEach(([route, file]) => {
   check(fileExists(`mod/pics/background/${file}`), `fundo do hub presente: ${file}`);
-  check(app.includes(`mod/pics/background/${file}`), `fundo do hub registrado no fade: ${file}`);
+  check(app.includes(`mod/pics/background/${file}`) && html.includes(`data-hub-preview="${route}"`), `fundo do hub ligado ao hover de ${route}`);
 });
-check(app.includes("setInterval(advanceHubBackground, 9000)"), "fundos do hub alternam automaticamente em fade");
+check(!app.includes("advanceHubBackground") && !app.includes("backgroundTimer"), "slideshow automático dos fundos foi removido");
 check(!html.includes("background-upload") && !app.includes("importBackground"), "personalização manual do fundo foi removida");
 
 const sandbox = { window: {} };
 vm.runInNewContext(registrationSource, sandbox, { filename: "registration-data.js" });
 const questions = sandbox.window.INYFFX_REGISTRATION_QUESTIONS;
 const referenceData = sandbox.window.INYFFX_REFERENCE_DATA;
-check(Array.isArray(questions) && questions.length >= 54, "cadastro possui o fluxo completo de perguntas individuais");
+check(Array.isArray(questions) && questions.length >= 52, "cadastro possui o fluxo completo de perguntas individuais");
 check(questions.slice(0, 3).map((question) => question.key).join(",") === "username,password,confirmPassword", "cadastro começa por usuário, senha e confirmação");
 
 const questionKeys = new Set(questions.map((question) => question.key));
+check(!questionKeys.has("gameTitle") && !questionKeys.has("platform"), "cadastro não pergunta jogo ou plataforma");
+check(!app.includes("profile.gameTitle") && !app.includes("profile.platform"), "perfil também não expõe jogo ou plataforma antigos");
 [
   "playerName", "shirtName", "birthDate", "primaryNationality", "secondNationality", "thirdNationality",
   "birthCountry", "birthCity", "currentCountry", "currentCity", "languages", "footballStatus", "currentClub",
@@ -106,6 +124,12 @@ check(referenceData.countries.length >= 40 && referenceData.cities.length >= 35 
 check(app.includes("Essa opção não foi encontrada ou não existe."), "aviso obrigatório para opção não encontrada foi implementado");
 check(app.includes("Seguir mesmo assim"), "fallback Seguir mesmo assim foi implementado");
 check(app.includes("calculateAge"), "idade é calculada automaticamente pela data de nascimento");
+check(app.includes("is-ultra-dense") && css.includes("overflow: hidden"), "cadastro adapta alternativas densas sem rolagem da página");
+
+check(html.includes('id="chatHistoryList"') && app.includes("createCareerChat") && app.includes("selectChatFromHistory"), "KICK OFF mantém conversas separadas por Novo Dia");
+check(html.includes('id="kickToolsMenu"') && html.includes('data-open-tool="match"') && html.includes('data-open-tool="wheel"') && html.includes('data-open-tool="dice"'), "menu de ferramentas do KICK OFF contém os três cards");
+check(app.includes("data-expand-message") && app.includes("isLongUserMessage"), "mensagens longas do usuário oferecem Mostrar Mais");
+check(!app.includes("chat-message__meta"), "mensagens do KICK OFF não exibem nomes de autor");
 
 const matchPrompt = normalizePrompt(read("mod/prompt partidas para o usuario copiar.txt"));
 const matchTemplate = (html.match(/<pre id="matchPromptTemplate">([\s\S]*?)<\/pre>/) || [])[1];
@@ -116,7 +140,7 @@ check(Boolean(offPitchTemplate) && normalizePrompt(offPitchTemplate) === offPitc
 check(html.includes("prompt%20the%20sims%20EXEMPLO.txt") && html.includes("BAIXAR EXEMPLO"), "exemplo OFF THE PITCH está disponível para download");
 
 check(html.indexOf('src="registration-data.js"') < html.indexOf('src="app.js"'), "dados do cadastro carregam antes da aplicação");
-check(app.includes("Cloudflare Workers AI") && html.includes("GLM-4.7-Flash"), "integração gratuita de IA continua configurada");
+check(app.includes("Cloudflare Workers AI") && html.includes("Qwen3 30B A3B"), "integração gratuita de IA continua configurada");
 
 new Function(app);
 new Function(registrationSource);

@@ -8,13 +8,15 @@
   var SPOTIFY_VERIFIER_KEY = "inyffx-spotify-verifier-v1";
   var SPOTIFY_STATE_KEY = "inyffx-spotify-state-v1";
   var ROUTES = ["home", "kick-off", "fyx-news", "relationships", "seasons", "player-career", "off-the-pitch"];
-  var HUB_BACKGROUNDS = [
-    "mod/pics/background/yamal.jpg",
-    "mod/pics/background/santos.jpg",
-    "mod/pics/background/relationship.jpg",
-    "mod/pics/background/flamengo.png",
-    "mod/pics/background/chelsea.jpg"
-  ];
+  var HUB_BACKGROUNDS = {
+    "kick-off": "mod/pics/background/kick-off.jpg",
+    "fyx-news": "mod/pics/background/fyx-news.jpeg",
+    "relationships": "mod/pics/background/relationships.jpg",
+    "seasons": "mod/pics/background/seasons.jpg",
+    "player-career": "mod/pics/background/player-career.jpg",
+    "off-the-pitch": "mod/pics/background/off-the-pitch.webp"
+  };
+  var DEFAULT_HUB_BACKGROUND = "kick-off";
   var REGISTRATION_QUESTIONS = Array.isArray(window.INYFFX_REGISTRATION_QUESTIONS) ? window.INYFFX_REGISTRATION_QUESTIONS : [];
   var REFERENCE_DATA = window.INYFFX_REFERENCE_DATA || {};
   var TOOL_TITLES = { match: "MODELO DE PARTIDA", wheel: "ROLETA", dice: "ROLAGEM DE DADOS" };
@@ -36,9 +38,8 @@
     settingsDraft: null,
     settingsSaved: false,
     spotifyTimer: null,
-    backgroundTimer: null,
-    backgroundIndex: 0,
-    backgroundFront: "a",
+    toolsMenuOpen: false,
+    historyOpen: false,
     profileEdit: "",
     pendingAvatar: "",
     sending: false
@@ -84,6 +85,34 @@
     safe.auth.username = safe.user.username;
     safe.profileChangeHistory = Array.isArray(safe.profileChangeHistory) ? safe.profileChangeHistory : [];
     safe.messages = Array.isArray(safe.messages) ? safe.messages : [];
+    safe.chats = Array.isArray(safe.chats) ? safe.chats.filter(function (chat) {
+      return chat && typeof chat === "object";
+    }).map(function (chat, index) {
+      var messages = Array.isArray(chat.messages) ? chat.messages : [];
+      return {
+        id: chat.id || uid("chat"),
+        title: clean(chat.title) || "Dia " + (index + 1),
+        scene: Number(chat.scene || index + 1),
+        messages: messages,
+        createdAt: chat.createdAt || (messages[0] && messages[0].createdAt) || new Date().toISOString(),
+        updatedAt: chat.updatedAt || (messages[messages.length - 1] && messages[messages.length - 1].createdAt) || new Date().toISOString()
+      };
+    }) : [];
+    if (!safe.chats.length && safe.messages.length) {
+      safe.chats.push({
+        id: uid("chat"),
+        title: chatTitleFromContent((safe.messages.find(function (message) { return message.role === "user"; }) || {}).content, "Primeiro dia"),
+        scene: Number((safe.messages[0] && safe.messages[0].scene) || safe.sceneNumber || 1),
+        messages: safe.messages,
+        createdAt: (safe.messages[0] && safe.messages[0].createdAt) || new Date().toISOString(),
+        updatedAt: (safe.messages[safe.messages.length - 1] && safe.messages[safe.messages.length - 1].createdAt) || new Date().toISOString()
+      });
+    }
+    safe.activeChatId = safe.chats.some(function (chat) { return chat.id === safe.activeChatId; })
+      ? safe.activeChatId
+      : (safe.chats.length ? safe.chats[safe.chats.length - 1].id : "");
+    var normalizedActiveChat = safe.chats.find(function (chat) { return chat.id === safe.activeChatId; });
+    safe.messages = normalizedActiveChat ? normalizedActiveChat.messages : [];
     safe.canonEvents = Array.isArray(safe.canonEvents) ? safe.canonEvents : [];
     safe.news = Array.isArray(safe.news) ? safe.news : [];
     safe.characters = Array.isArray(safe.characters) ? safe.characters : [];
@@ -135,9 +164,10 @@
     [
       "authGate", "appShell", "loginForm", "loginCareer", "loginPasscode", "rememberCareer", "loginHint", "loginError",
       "createForm", "createError", "registrationQuestion", "registrationSection", "registrationCount", "prevStep",
-      "nextStep", "createCareer", "hubSidebar", "openSettings", "openProfile", "hubAvatarImage", "hubAvatarFallback",
-      "hubBackgroundA", "hubBackgroundB", "pageBack", "appMain", "chatMessages", "chatForm", "chatInput", "sendMessage",
+      "nextStep", "createCareer", "hubSidebar", "openSettings", "openProfile",
+      "hubBackgroundA", "pageBack", "appMain", "chatMessages", "chatForm", "chatInput", "sendMessage",
       "sceneLabel", "newScene", "aiStatusChip", "toolDrawer", "toolTitle", "closeTools", "matchTemplateForm",
+      "chatHistoryControl", "toggleChatHistory", "chatHistoryPanel", "chatHistoryList", "kickToolsMenu", "toggleToolsMenu",
       "matchPromptTemplate", "copyMatchTemplate", "insertMatchTemplate", "wheel", "wheelResult", "wheelEntries", "addWheelEntry",
       "spinWheel", "useWheelResult", "dicePicker", "diceResult", "rollDice", "useDiceResult", "diceHistory",
       "newsFilters", "newsContent", "relationshipSearch", "relationshipCount", "relationshipsContent",
@@ -164,6 +194,10 @@
     document.querySelectorAll("[data-route]").forEach(function (button) {
       button.addEventListener("click", function () { navigate(button.dataset.route); });
     });
+    document.querySelectorAll("[data-hub-preview]").forEach(function (button) {
+      button.addEventListener("mouseenter", function () { previewHubBackground(button.dataset.hubPreview); });
+      button.addEventListener("focus", function () { previewHubBackground(button.dataset.hubPreview); });
+    });
     window.addEventListener("hashchange", routeFromHash);
     el.pageBack.addEventListener("click", function () { navigate("home"); });
     el.openSettings.addEventListener("click", openSettings);
@@ -181,7 +215,11 @@
       }
     });
     el.chatInput.addEventListener("input", autosizeComposer);
+    el.chatMessages.addEventListener("click", handleChatMessageClick);
     el.newScene.addEventListener("click", startNewScene);
+    el.toggleToolsMenu.addEventListener("click", toggleToolsMenu);
+    el.toggleChatHistory.addEventListener("click", toggleChatHistory);
+    el.chatHistoryList.addEventListener("click", selectChatFromHistory);
     document.querySelectorAll("[data-open-tool]").forEach(function (button) {
       button.addEventListener("click", function () { openTool(button.dataset.openTool); });
     });
@@ -305,6 +343,14 @@
     el.prevStep.hidden = ui.createStep === 0;
     el.nextStep.hidden = question.type === "review";
     el.createCareer.hidden = question.type !== "review";
+    var optionCount = question.type === "select" || question.type === "multi" ? registrationOptions(question).length : 0;
+    el.registrationQuestion.className = [
+      "registration-question",
+      "registration-question--" + question.type,
+      optionCount > 8 ? "is-dense" : "",
+      optionCount > 24 ? "is-ultra-dense" : ""
+    ].filter(Boolean).join(" ");
+    el.registrationQuestion.style.setProperty("--option-count", String(optionCount));
     var value = ui.registrationAnswers[question.key];
     var optional = question.required ? "" : '<span class="question-optional">OPCIONAL</span>';
     var control = renderRegistrationControl(question, value);
@@ -535,7 +581,7 @@
     var query = normalizeKey(rawValue);
     var minimum = question.source === "countries" || question.source === "nationalities" ? 1 : 2;
     var exact = registrationOptions(question).some(function (option) { return normalizeKey(option) === query; });
-    var matches = query.length >= minimum ? registrationOptions(question).filter(function (option) { return normalizeKey(option).indexOf(query) >= 0; }).slice(0, 10) : [];
+    var matches = query.length >= minimum ? registrationOptions(question).filter(function (option) { return normalizeKey(option).indexOf(query) >= 0; }).slice(0, 8) : [];
     list.innerHTML = matches.map(function (option) { return '<button type="button" data-registration-suggestion="' + escapeHTML(option) + '">' + escapeHTML(option) + "</button>"; }).join("");
     list.classList.toggle("is-visible", matches.length > 0 && !exact);
     if (manualWrap) manualWrap.classList.toggle("is-visible", Boolean(rawValue) && !exact && matches.length === 0);
@@ -568,7 +614,7 @@
         user: { username: username, avatarData: answers.avatarData || "" },
         auth: { username: username, email: "", passHash: await hashText(answers.password) },
         profile: profile,
-        messages: [], canonEvents: [], news: [], characters: [], seasons: [],
+        messages: [], chats: [], activeChatId: "", canonEvents: [], news: [], characters: [], seasons: [],
         finance: { initialized: false, currency: "BRL", balance: 0, transactions: [], pockets: [] },
         hall: { trophies: [], records: [], awards: [] }, calendar: [],
         offPitch: { currentCity: answers.currentCity || "", currentResidence: "", houses: [] },
@@ -665,7 +711,7 @@
     }
     el.authGate.hidden = true;
     el.appShell.hidden = false;
-    startHubSlideshow();
+    setupHubBackgrounds();
     renderAll();
     routeFromHash();
     startSpotifyPolling();
@@ -676,7 +722,6 @@
     localStorage.removeItem(PERSISTENT_SESSION_KEY);
     closeProfile();
     closeTools();
-    stopHubSlideshow();
     stopSpotifyPolling();
     showAuth();
     window.location.hash = "";
@@ -700,7 +745,11 @@
     document.querySelectorAll("[data-route]").forEach(function (button) { button.classList.toggle("is-active", button.dataset.route === route); });
     el.appShell.classList.toggle("is-page-open", route !== "home");
     el.appShell.dataset.route = route;
-    if (route !== "kick-off") closeTools();
+    if (route !== "kick-off") {
+      closeTools();
+      closeToolsMenu();
+      closeChatHistory();
+    }
     if (route !== "home") renderRoute(route);
     window.scrollTo({ top: 0, behavior: "instant" });
   }
@@ -715,48 +764,34 @@
     if (route === "off-the-pitch") renderResidence();
   }
 
-  function startHubSlideshow() {
-    stopHubSlideshow();
-    if (!el.hubBackgroundA || !el.hubBackgroundB || !HUB_BACKGROUNDS.length) return;
-    ui.backgroundIndex = 0;
-    ui.backgroundFront = "a";
-    el.hubBackgroundA.style.backgroundImage = 'url("' + HUB_BACKGROUNDS[0] + '")';
+  function setupHubBackgrounds() {
+    Object.keys(HUB_BACKGROUNDS).forEach(function (route) {
+      var image = new Image();
+      image.src = HUB_BACKGROUNDS[route];
+    });
+    previewHubBackground(DEFAULT_HUB_BACKGROUND);
+  }
+
+  function previewHubBackground(route) {
+    var source = HUB_BACKGROUNDS[route] || HUB_BACKGROUNDS[DEFAULT_HUB_BACKGROUND];
+    if (!el.hubBackgroundA || !source) return;
+    el.hubBackgroundA.style.backgroundImage = 'url("' + source + '")';
+    el.hubBackgroundA.dataset.preview = route in HUB_BACKGROUNDS ? route : DEFAULT_HUB_BACKGROUND;
     el.hubBackgroundA.classList.add("is-visible");
-    el.hubBackgroundB.classList.remove("is-visible");
-    HUB_BACKGROUNDS.slice(1).forEach(function (source) { var image = new Image(); image.src = source; });
-    if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    ui.backgroundTimer = window.setInterval(advanceHubBackground, 9000);
-  }
-
-  function advanceHubBackground() {
-    ui.backgroundIndex = (ui.backgroundIndex + 1) % HUB_BACKGROUNDS.length;
-    var incoming = ui.backgroundFront === "a" ? el.hubBackgroundB : el.hubBackgroundA;
-    var outgoing = ui.backgroundFront === "a" ? el.hubBackgroundA : el.hubBackgroundB;
-    incoming.style.backgroundImage = 'url("' + HUB_BACKGROUNDS[ui.backgroundIndex] + '")';
-    incoming.classList.add("is-visible");
-    outgoing.classList.remove("is-visible");
-    ui.backgroundFront = ui.backgroundFront === "a" ? "b" : "a";
-  }
-
-  function stopHubSlideshow() {
-    if (ui.backgroundTimer) window.clearInterval(ui.backgroundTimer);
-    ui.backgroundTimer = null;
   }
 
   function renderAvatar(career) {
     var avatar = clean(career.user && career.user.avatarData) || clean(career.profile && career.profile.avatarData);
     var initials = playerInitials(career.profile && career.profile.playerName);
-    [el.hubAvatarImage, el.profileAvatarImage].forEach(function (image) {
-      if (!image) return;
-      image.hidden = !avatar;
-      if (avatar) image.src = avatar;
-      else image.removeAttribute("src");
-    });
-    [el.hubAvatarFallback, el.profileAvatarFallback].forEach(function (fallback) {
-      if (!fallback) return;
-      fallback.hidden = Boolean(avatar);
-      fallback.textContent = initials;
-    });
+    if (el.profileAvatarImage) {
+      el.profileAvatarImage.hidden = !avatar;
+      if (avatar) el.profileAvatarImage.src = avatar;
+      else el.profileAvatarImage.removeAttribute("src");
+    }
+    if (el.profileAvatarFallback) {
+      el.profileAvatarFallback.hidden = Boolean(avatar);
+      el.profileAvatarFallback.textContent = initials;
+    }
     if (el.profileIdentityLine) el.profileIdentityLine.textContent = (career.user.username || "@jogador") + " · " + (career.profile.playerName || "Jogador");
   }
 
@@ -764,6 +799,43 @@
     var parts = clean(name).split(/\s+/).filter(Boolean);
     if (!parts.length) return "IX";
     return (parts[0].charAt(0) + (parts.length > 1 ? parts[parts.length - 1].charAt(0) : "")).toLocaleUpperCase("pt-BR");
+  }
+
+  function chatTitleFromContent(content, fallback) {
+    var title = clean(content).replace(/\s+/g, " ");
+    if (!title) return fallback || "Novo dia";
+    return title.length > 42 ? title.slice(0, 39).trimEnd() + "..." : title;
+  }
+
+  function getActiveChat(career, createIfMissing) {
+    if (!career) return null;
+    career.chats = Array.isArray(career.chats) ? career.chats : [];
+    var chat = career.chats.find(function (item) { return item.id === career.activeChatId; }) || null;
+    if (!chat && createIfMissing) chat = createCareerChat(career);
+    career.messages = chat ? chat.messages : [];
+    return chat;
+  }
+
+  function createCareerChat(career) {
+    career.sceneNumber = career.chats.length ? Number(career.sceneNumber || 0) + 1 : Math.max(1, Number(career.sceneNumber || 1));
+    var now = new Date().toISOString();
+    var chat = {
+      id: uid("chat"),
+      title: "Novo dia",
+      scene: career.sceneNumber,
+      messages: [],
+      createdAt: now,
+      updatedAt: now
+    };
+    career.chats.push(chat);
+    career.activeChatId = chat.id;
+    career.messages = chat.messages;
+    return chat;
+  }
+
+  function activeMessages(career) {
+    var chat = getActiveChat(career, false);
+    return chat ? chat.messages : [];
   }
 
   function renderAll() {
@@ -787,22 +859,42 @@
   function renderChat() {
     var career = activeCareer();
     if (!career) return;
-    if (!career.messages.length) {
-      el.chatMessages.innerHTML = '<div class="empty-state empty-state--chat" id="chatEmpty"><span class="empty-state__index">00</span><h2>Seu universo começa na primeira mensagem.</h2><p>Você controla somente o seu personagem. A IA interpreta o mundo e os NPCs sem decidir o que você fala, sente ou faz.</p></div>';
+    renderChatHistory(career);
+    var messages = activeMessages(career);
+    if (!messages.length) {
+      el.chatMessages.innerHTML = '<div class="kick-empty" id="chatEmpty"><span>Por onde começamos <strong>' + escapeHTML(career.profile.playerName || "jogador") + "</strong>?</span></div>";
       return;
     }
-    el.chatMessages.innerHTML = career.messages.map(function (message) {
+    el.chatMessages.innerHTML = messages.map(function (message) {
       var role = message.role === "assistant" ? "assistant" : "user";
-      var author = role === "assistant" ? "INYFFX" : (career.profile.playerName || "VOCÊ");
-      var label = role === "assistant" ? "NARRADOR" : "JOGADOR";
+      var isLongUserMessage = role === "user" && (clean(message.content).length > 420 || clean(message.content).split("\n").length > 7);
       return [
-        '<article class="chat-message chat-message--', role, '">',
-        '<div class="chat-message__meta"><strong>', escapeHTML(author), '</strong><span>', escapeHTML(label), ' · ', escapeHTML(formatTime(message.createdAt)), '</span></div>',
+        '<article class="chat-message chat-message--', role, isLongUserMessage ? " is-collapsed" : "", '" data-message-id="', escapeHTML(message.id || ""), '">',
         '<div class="chat-message__body">', escapeHTML(message.content), '</div>',
+        isLongUserMessage ? '<button class="chat-message__more" type="button" data-expand-message>Mostrar Mais <span>⌄</span></button>' : "",
         "</article>"
       ].join("");
     }).join("");
     requestAnimationFrame(function () { el.chatMessages.scrollTop = el.chatMessages.scrollHeight; });
+  }
+
+  function renderChatHistory(career) {
+    if (!el.chatHistoryList) return;
+    var chats = (career.chats || []).slice().reverse();
+    el.chatHistoryControl.classList.toggle("has-chats", chats.length > 0);
+    el.chatHistoryList.innerHTML = chats.map(function (chat) {
+      var selected = chat.id === career.activeChatId;
+      return '<button type="button" class="chat-history-item' + (selected ? " is-active" : "") + '" data-chat-id="' + escapeHTML(chat.id) + '"><span>' + escapeHTML(chat.title || "Novo dia") + '</span><small>' + escapeHTML(formatShortDate(chat.updatedAt || chat.createdAt)) + "</small></button>";
+    }).join("");
+  }
+
+  function handleChatMessageClick(event) {
+    var button = event.target.closest("[data-expand-message]");
+    if (!button) return;
+    var message = button.closest(".chat-message");
+    if (!message) return;
+    message.classList.remove("is-collapsed");
+    button.remove();
   }
 
   async function sendChatMessage(event) {
@@ -811,14 +903,18 @@
     var career = activeCareer();
     var content = clean(el.chatInput.value);
     if (!career || !content) return;
+    var chat = getActiveChat(career, true);
     var userMessage = {
       id: uid("message"),
       role: "user",
       content: content,
-      scene: career.sceneNumber,
+      scene: chat.scene,
       createdAt: new Date().toISOString()
     };
-    career.messages.push(userMessage);
+    chat.messages.push(userMessage);
+    if (chat.messages.filter(function (message) { return message.role === "user"; }).length === 1) chat.title = chatTitleFromContent(content, "Novo dia");
+    chat.updatedAt = userMessage.createdAt;
+    career.messages = chat.messages;
     career.updatedAt = userMessage.createdAt;
     var matchAdded = registerMatchFromMessage(career, userMessage);
     saveState();
@@ -859,14 +955,16 @@
       removePendingMessage();
       var reply = clean(payload.reply || (payload.message && payload.message.content));
       if (reply) {
-        career.messages.push({
+        chat.messages.push({
           id: (payload.message && payload.message.id) || uid("message"),
           role: "assistant",
           content: reply,
-          scene: career.sceneNumber,
+          scene: chat.scene,
           createdAt: (payload.message && payload.message.createdAt) || new Date().toISOString()
         });
       }
+      chat.updatedAt = new Date().toISOString();
+      career.messages = chat.messages;
       applyMemoryUpdates(career, payload.memoryUpdates || payload.updates || payload.memory || {});
       career.updatedAt = new Date().toISOString();
       saveState();
@@ -898,7 +996,7 @@
     var article = document.createElement("article");
     article.className = "chat-message chat-message--assistant is-pending";
     article.id = "pendingMessage";
-    article.innerHTML = '<div class="chat-message__meta"><strong>INYFFX</strong><span>NARRADOR</span></div><div class="chat-message__body">Construindo a próxima parte da cena</div>';
+    article.innerHTML = '<div class="chat-message__body">Construindo a próxima parte da cena</div>';
     el.chatMessages.appendChild(article);
     el.chatMessages.scrollTop = el.chatMessages.scrollHeight;
   }
@@ -914,7 +1012,7 @@
       profile: career.profile,
       profileRevision: career.profileRevision || null,
       scene: career.sceneNumber,
-      recentMessages: career.messages.slice(-12).map(function (message) {
+      recentMessages: activeMessages(career).slice(-12).map(function (message) {
         return { role: message.role, content: message.content, createdAt: message.createdAt };
       }),
       memory: {
@@ -989,11 +1087,42 @@
   function startNewScene() {
     var career = activeCareer();
     if (!career) return;
-    career.sceneNumber += 1;
+    var current = getActiveChat(career, false);
+    if (!current || current.messages.length) createCareerChat(career);
     career.updatedAt = new Date().toISOString();
-    el.sceneLabel.textContent = "Cena " + career.sceneNumber;
+    el.sceneLabel.textContent = "Novo dia";
     saveState();
-    toast("Cena " + career.sceneNumber + " iniciada. O cânone anterior foi preservado.");
+    closeChatHistory();
+    closeToolsMenu();
+    renderChat();
+    toast("Novo dia iniciado. As conversas e o cânone anteriores foram preservados.");
+    el.chatInput.focus();
+  }
+
+  function toggleChatHistory() {
+    ui.historyOpen = !ui.historyOpen;
+    el.chatHistoryControl.classList.toggle("is-open", ui.historyOpen);
+    el.toggleChatHistory.setAttribute("aria-expanded", String(ui.historyOpen));
+  }
+
+  function closeChatHistory() {
+    ui.historyOpen = false;
+    if (el.chatHistoryControl) el.chatHistoryControl.classList.remove("is-open");
+    if (el.toggleChatHistory) el.toggleChatHistory.setAttribute("aria-expanded", "false");
+  }
+
+  function selectChatFromHistory(event) {
+    var button = event.target.closest("[data-chat-id]");
+    var career = activeCareer();
+    if (!button || !career) return;
+    var chat = career.chats.find(function (item) { return item.id === button.dataset.chatId; });
+    if (!chat) return;
+    career.activeChatId = chat.id;
+    career.sceneNumber = Number(chat.scene || career.sceneNumber || 1);
+    career.messages = chat.messages;
+    saveState();
+    closeChatHistory();
+    renderChat();
     el.chatInput.focus();
   }
 
@@ -1003,6 +1132,7 @@
   }
 
   function openTool(tool) {
+    closeToolsMenu();
     selectTool(tool);
     el.toolDrawer.classList.add("is-open");
     el.toolDrawer.setAttribute("aria-hidden", "false");
@@ -1014,6 +1144,22 @@
     el.toolDrawer.setAttribute("aria-hidden", "true");
     var layout = document.querySelector(".kick-layout");
     if (layout) layout.classList.remove("has-tools");
+  }
+
+  function toggleToolsMenu() {
+    ui.toolsMenuOpen = !ui.toolsMenuOpen;
+    el.kickToolsMenu.classList.toggle("is-open", ui.toolsMenuOpen);
+    el.kickToolsMenu.setAttribute("aria-hidden", String(!ui.toolsMenuOpen));
+    el.toggleToolsMenu.setAttribute("aria-expanded", String(ui.toolsMenuOpen));
+  }
+
+  function closeToolsMenu() {
+    ui.toolsMenuOpen = false;
+    if (el.kickToolsMenu) {
+      el.kickToolsMenu.classList.remove("is-open");
+      el.kickToolsMenu.setAttribute("aria-hidden", "true");
+    }
+    if (el.toggleToolsMenu) el.toggleToolsMenu.setAttribute("aria-expanded", "false");
   }
 
   function selectTool(tool) {
@@ -1414,7 +1560,7 @@
       ["Nascimento", profile.birthDate ? formatDate(profile.birthDate) : ""], ["Idade", profile.birthDate ? calculateAge(profile.birthDate) + " anos" : ""], ["Nacionalidade", profile.nationality],
       ["Cidade natal", profile.birthCity], ["Onde vive", [profile.currentCity, profile.currentCountry].filter(Boolean).join(" · ")],
       ["Altura", profile.height ? profile.height + " cm" : ""], ["Peso", profile.weight ? profile.weight + " kg" : ""],
-      ["Jogo", profile.gameTitle], ["Plataforma", profile.platform], ["Clube atual", profile.currentClub],
+      ["Clube atual", profile.currentClub],
       ["Liga", profile.league], ["Temporada", profile.season], ["Camisa", profile.shirtNumber],
       ["Posição", [profile.position, profile.secondaryPosition].filter(Boolean).join(" / ")],
       ["Pé dominante", profile.dominantFoot], ["Estilo de jogo", profile.playStyle],
@@ -2180,6 +2326,12 @@
     var date = value ? new Date(value) : new Date();
     if (Number.isNaN(date.getTime())) return "";
     return new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" }).format(date);
+  }
+
+  function formatShortDate(value) {
+    var date = value ? new Date(value) : new Date();
+    if (Number.isNaN(date.getTime())) return "";
+    return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short" }).format(date).replace(".", "").toUpperCase();
   }
 
   function formatClock(value) {

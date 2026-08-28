@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#000000" />
     <meta name="description" content="InyffX — sua carreira de futebol como um universo vivo." />
     <title>InyffX — Player Career Universe</title>
-    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="mod/pics/favicon.ico" type="image/x-icon" />
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="stylesheet" href="styles.css" />
   </head>
@@ -47,21 +47,21 @@
     </section>
 
     <div class="app-shell" id="appShell" hidden>
-      <div class="hub-background" aria-hidden="true"><div class="hub-background__layer is-visible" id="hubBackgroundA"></div><div class="hub-background__layer" id="hubBackgroundB"></div><div class="hub-background__vignette"></div></div>
+      <div class="hub-background" aria-hidden="true"><div class="hub-background__layer is-visible" id="hubBackgroundA"></div><div class="hub-background__vignette"></div></div>
       <aside class="hub-sidebar" id="hubSidebar">
         <div class="hub-utility">
-          <button class="hub-utility__button" id="openSettings" type="button" aria-label="Abrir configurações" data-tooltip="Configurações"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8.4a3.6 3.6 0 1 0 0 7.2 3.6 3.6 0 0 0 0-7.2Zm8.2 4.9v-2.6l-2.1-.8a7 7 0 0 0-.5-1.2l.9-2-1.9-1.9-2 .9a7 7 0 0 0-1.2-.5L12.6 3H10l-.8 2.2a7 7 0 0 0-1.2.5l-2-.9-1.9 1.9.9 2a7 7 0 0 0-.5 1.2l-2.1.8v2.6l2.1.8c.1.4.3.8.5 1.2l-.9 2 1.9 1.9 2-.9c.4.2.8.4 1.2.5l.8 2.2h2.6l.8-2.2c.4-.1.8-.3 1.2-.5l2 .9 1.9-1.9-.9-2c.2-.4.4-.8.5-1.2l2.1-.8Z" /></svg></button>
-          <button class="hub-avatar" id="openProfile" type="button" aria-label="Abrir perfil do usuário e do jogador" data-tooltip="Meu perfil"><img id="hubAvatarImage" alt="Foto de perfil" hidden /><span id="hubAvatarFallback" aria-hidden="true">IX</span></button>
+          <button class="hub-utility__button" id="openSettings" type="button" aria-label="Abrir configurações" data-tooltip="Configurações"><img src="mod/pics/icons/engrenagem.svg" alt="" aria-hidden="true" /></button>
+          <button class="hub-avatar" id="openProfile" type="button" aria-label="Abrir perfil do usuário e do jogador" data-tooltip="Meu perfil"><img src="mod/pics/icons/profile.svg" alt="" aria-hidden="true" /></button>
         </div>
         <div class="hub-sidebar__content">
           <button class="hub-logo" type="button" data-route="home" aria-label="Página inicial"><img src="mod/pics/logo-inyffx.png" alt="InyffX" /></button>
           <nav class="hub-nav" aria-label="Navegação principal">
-            <button class="hub-nav__item" type="button" data-route="kick-off">KICK OFF</button>
-            <button class="hub-nav__item" type="button" data-route="fyx-news">FYX NEWS</button>
-            <button class="hub-nav__item" type="button" data-route="relationships">RELATIONSHIPS</button>
-            <button class="hub-nav__item" type="button" data-route="seasons">SEASONS</button>
-            <button class="hub-nav__item" type="button" data-route="player-career">PLAYER CAREER</button>
-            <button class="hub-nav__item" type="button" data-route="off-the-pitch">OFF THE PITCH</button>
+            <button class="hub-nav__item" type="button" data-route="kick-off" data-hub-preview="kick-off">KICK OFF</button>
+            <button class="hub-nav__item" type="button" data-route="fyx-news" data-hub-preview="fyx-news">FYX NEWS</button>
+            <button class="hub-nav__item" type="button" data-route="relationships" data-hub-preview="relationships">RELATIONSHIPS</button>
+            <button class="hub-nav__item" type="button" data-route="seasons" data-hub-preview="seasons">SEASONS</button>
+            <button class="hub-nav__item" type="button" data-route="player-career" data-hub-preview="player-career">PLAYER CAREER</button>
+            <button class="hub-nav__item" type="button" data-route="off-the-pitch" data-hub-preview="off-the-pitch">OFF THE PITCH</button>
           </nav>
           <button class="spotify-now" id="spotifyNow" type="button" aria-label="Conectar ou ver reprodução do Spotify"><span class="spotify-disc" id="spotifyDisc"><i></i></span><span class="spotify-copy"><small id="spotifyStatus">SPOTIFY</small><strong id="spotifyTrack">CONECTAR</strong><em id="spotifyArtist">seu Spotify</em></span></button>
         </div>
@@ -70,21 +70,34 @@
       <main class="app-main" id="appMain">
         <button class="page-back" id="pageBack" type="button" aria-label="Voltar para a página inicial">←</button>
         <section class="page page--kick-off" id="page-kick-off" data-page="kick-off" aria-labelledby="kickOffTitle">
-          <div class="page-topline"><div><span class="section-number">ROLEPLAY</span><h1 id="kickOffTitle">KICK OFF</h1></div><div class="status-chip" id="aiStatusChip"><i></i><span>VERIFICANDO IA</span></div></div>
+          <h1 class="sr-only" id="kickOffTitle">KICK OFF</h1>
+          <div class="kick-ai-status sr-only" id="aiStatusChip" aria-live="polite"><i></i><span>VERIFICANDO IA</span></div>
+          <span class="sr-only" id="sceneLabel">Roleplay livre</span>
+          <div class="chat-history-control" id="chatHistoryControl">
+            <button class="chat-history-toggle" id="toggleChatHistory" type="button" aria-label="Mostrar conversas anteriores" aria-expanded="false"><span></span><span></span><span></span></button>
+            <aside class="chat-history-panel" id="chatHistoryPanel" aria-label="Conversas anteriores"><header><span>SEUS DIAS</span><strong>CONVERSAS</strong></header><div class="chat-history-list" id="chatHistoryList"></div></aside>
+          </div>
+          <button class="kick-new-day" id="newScene" type="button"><img src="mod/pics/icons/novo%20dia.svg" alt="" aria-hidden="true" /><span>Novo Dia</span></button>
           <div class="kick-layout">
             <div class="chat-stage">
-              <div class="chat-context"><div><span>CENA ATUAL</span><strong id="sceneLabel">Roleplay livre</strong></div><button class="subtle-button" id="newScene" type="button">NOVA CENA</button></div>
               <div class="chat-messages" id="chatMessages" aria-live="polite"></div>
-              <form class="chat-composer" id="chatForm"><label class="sr-only" for="chatInput">Mensagem de roleplay</label><textarea id="chatInput" rows="1" placeholder="Escreva como seu personagem ou descreva o contexto..." required></textarea><div class="composer-actions"><div class="composer-tools" aria-label="Ferramentas do chat">
-                <button type="button" data-open-tool="match" aria-label="Abrir modelo de partida" data-tooltip="Modelo de partida"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm0 0 3.2 3.5-1.3 4.3H10L8.7 6.5 12 3Zm-8.2 7.1 4.5-.8 1.9 3.3-2.8 3.1-4.1-1.8m16.9-3.8-4.5-.8-1.9 3.3 2.8 3.1 4.1-1.8M8.6 20l.8-4.4h5.2l.8 4.4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" /></svg></button>
-                <button type="button" data-open-tool="wheel" aria-label="Abrir roleta" data-tooltip="Roleta"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M12 3.5v17M3.5 12h17M6 6l12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="1.2"/><circle cx="12" cy="12" r="1.8" /></svg></button>
-                <button type="button" data-open-tool="dice" aria-label="Abrir dados" data-tooltip="Dados"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="8" r="1.1"/><circle cx="16" cy="8" r="1.1"/><circle cx="12" cy="12" r="1.1"/><circle cx="8" cy="16" r="1.1"/><circle cx="16" cy="16" r="1.1"/></svg></button>
-              </div><span class="composer-hint">ENTER envia · SHIFT + ENTER quebra linha</span><button class="send-button" id="sendMessage" type="submit" aria-label="Enviar mensagem">↑</button></div></form>
+              <div class="kick-composer-dock">
+                <div class="kick-tools-menu" id="kickToolsMenu" aria-hidden="true">
+                  <button class="kick-tool-card" type="button" data-open-tool="match"><strong>Prompt<br />de Partida</strong><img src="mod/pics/icons/partida.svg" alt="" aria-hidden="true" /></button>
+                  <button class="kick-tool-card" type="button" data-open-tool="wheel"><strong>Roleta</strong><img src="mod/pics/icons/roleta.svg" alt="" aria-hidden="true" /></button>
+                  <button class="kick-tool-card" type="button" data-open-tool="dice"><strong>Dados</strong><img src="mod/pics/icons/dado.svg" alt="" aria-hidden="true" /></button>
+                </div>
+                <form class="chat-composer" id="chatForm">
+                  <button class="composer-plus" id="toggleToolsMenu" type="button" aria-label="Abrir ferramentas" aria-expanded="false"><img src="mod/pics/icons/mais.svg" alt="" aria-hidden="true" /></button>
+                  <label class="sr-only" for="chatInput">Mensagem de roleplay</label>
+                  <textarea id="chatInput" rows="1" placeholder="Comece seu dia" required></textarea>
+                  <button class="send-button" id="sendMessage" type="submit" aria-label="Enviar mensagem">↑</button>
+                </form>
+              </div>
             </div>
             <aside class="tool-drawer" id="toolDrawer" aria-hidden="true">
-              <div class="tool-drawer__header"><div><span class="section-number">FERRAMENTAS OPCIONAIS</span><h2 id="toolTitle">MODELO DE PARTIDA</h2></div><button class="icon-button" id="closeTools" type="button" aria-label="Fechar ferramentas">×</button></div>
-              <div class="tool-tabs" role="tablist" aria-label="Ferramentas de roleplay"><button class="is-active" type="button" data-tool-tab="match">PARTIDA</button><button type="button" data-tool-tab="wheel">ROLETA</button><button type="button" data-tool-tab="dice">DADOS</button></div>
-              <section class="tool-panel is-active" data-tool-panel="match"><p class="tool-intro">Copie o modelo, preencha com os fatos do jogo e envie no chat. O que você informar passa a orientar o cânone da carreira.</p><div id="matchTemplateForm" class="prompt-template-box"><pre id="matchPromptTemplate">Jogo:
+              <div class="tool-drawer__header"><div><span>FERRAMENTA</span><h2 id="toolTitle">PROMPT DE PARTIDA</h2></div><button class="icon-button" id="closeTools" type="button" aria-label="Fechar ferramentas">×</button></div>
+              <section class="tool-panel is-active" data-tool-panel="match"><p class="tool-intro">Copie o modelo, preencha apenas com o que realmente aconteceu e envie no chat. A partida passa a fazer parte do cânone.</p><div id="matchTemplateForm" class="prompt-template-box"><pre id="matchPromptTemplate">Jogo:
 Competição:
 Fase:
 Estádio:
@@ -119,7 +132,7 @@ Eventos importantes:</pre><div class="template-actions"><button class="text-acti
       <section class="profile-page" id="profilePage" hidden aria-labelledby="profilePageTitle"><button class="page-back profile-page__back" id="closeProfile" type="button" aria-label="Voltar para a página inicial">←</button><header class="profile-hero"><div class="profile-hero__avatar"><img id="profileAvatarImage" alt="Foto de perfil" hidden /><span id="profileAvatarFallback">IX</span></div><div><span>MEU UNIVERSO</span><h1 id="profilePageTitle">PERFIL</h1><p id="profileIdentityLine"></p></div></header><div class="profile-page__content" id="profileContent"></div><button class="profile-logout" id="logoutCareer" type="button">SAIR DA CARREIRA</button></section>
     </div>
 
-    <dialog class="modal settings-modal" id="settingsModal"><form method="dialog" class="modal__shell" id="settingsForm"><header class="modal__header"><div><span class="section-number">SISTEMA</span><h2>CONFIGURAÇÕES</h2></div><button class="icon-button" type="submit" value="cancel" aria-label="Fechar">×</button></header><div class="modal__content"><section class="settings-section"><div class="settings-section__heading"><span>01</span><div><h3>IA INYFFX</h3><p>A inteligência do site é conectada pelo próprio InyffX. Nenhum jogador precisa informar chave ou endpoint.</p></div></div><div class="integration-card"><div><span>PROVEDOR DO MVP</span><strong>Cloudflare Workers AI</strong></div><div><span>MODELO</span><strong>GLM-4.7-Flash</strong></div></div><div class="connection-row"><i id="backendStatusDot"></i><span id="backendStatusText">Verificando integração</span></div></section><section class="settings-section"><div class="settings-section__heading"><span>02</span><div><h3>SPOTIFY</h3><p>Mostra no disco a faixa reproduzida na sua conta.</p></div></div><label class="field"><span>SPOTIFY CLIENT ID</span><input id="spotifyClientId" type="text" autocomplete="off" placeholder="Client ID público do Spotify" /></label><label class="field"><span>REDIRECT URI</span><div class="copy-field"><input id="spotifyRedirectUri" type="text" readonly /><button id="copyRedirectUri" type="button">COPIAR</button></div></label><div class="button-row"><button class="secondary-action" id="disconnectSpotify" type="button">DESCONECTAR</button><button class="primary-action" id="connectSpotify" type="button">CONECTAR SPOTIFY <span>→</span></button></div></section></div><footer class="modal__footer"><button class="secondary-action" type="submit" value="cancel">CANCELAR</button><button class="primary-action" id="saveSettings" type="button">SALVAR CONFIGURAÇÕES <span>→</span></button></footer></form></dialog>
+    <dialog class="modal settings-modal" id="settingsModal"><form method="dialog" class="modal__shell" id="settingsForm"><header class="modal__header"><div><span class="section-number">SISTEMA</span><h2>CONFIGURAÇÕES</h2></div><button class="icon-button" type="submit" value="cancel" aria-label="Fechar">×</button></header><div class="modal__content"><section class="settings-section"><div class="settings-section__heading"><span>01</span><div><h3>IA INYFFX</h3><p>A inteligência do site é conectada pelo próprio InyffX. Nenhum jogador precisa informar chave ou endpoint.</p></div></div><div class="integration-card"><div><span>PROVEDOR DO MVP</span><strong>Cloudflare Workers AI</strong></div><div><span>MODELO</span><strong>Qwen3 30B A3B</strong></div></div><div class="connection-row"><i id="backendStatusDot"></i><span id="backendStatusText">Verificando integração</span></div></section><section class="settings-section"><div class="settings-section__heading"><span>02</span><div><h3>SPOTIFY</h3><p>Mostra no disco a faixa reproduzida na sua conta.</p></div></div><label class="field"><span>SPOTIFY CLIENT ID</span><input id="spotifyClientId" type="text" autocomplete="off" placeholder="Client ID público do Spotify" /></label><label class="field"><span>REDIRECT URI</span><div class="copy-field"><input id="spotifyRedirectUri" type="text" readonly /><button id="copyRedirectUri" type="button">COPIAR</button></div></label><div class="button-row"><button class="secondary-action" id="disconnectSpotify" type="button">DESCONECTAR</button><button class="primary-action" id="connectSpotify" type="button">CONECTAR SPOTIFY <span>→</span></button></div></section></div><footer class="modal__footer"><button class="secondary-action" type="submit" value="cancel">CANCELAR</button><button class="primary-action" id="saveSettings" type="button">SALVAR CONFIGURAÇÕES <span>→</span></button></footer></form></dialog>
     <script src="assets/config.js"></script>
     <script src="registration-data.js"></script>
     <script src="app.js"></script>
