@@ -26,6 +26,7 @@
     "ALLOWED_ORIGINS": "https://devlopsz.github.io,http://127.0.0.1:4173,http://localhost:4173",
     "MAX_INPUT_CHARS": "12000",
     "MAX_CONTEXT_CHARS": "32000",
-    "MAX_OUTPUT_TOKENS": "1100"
+    "MAX_OUTPUT_TOKENS": "1800",
+    "MAX_MEMORY_TOKENS": "900"
   }
 }

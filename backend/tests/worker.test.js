@@ -1,7 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import worker, { parseModelPayload, sanitizeMemoryUpdates } from "../src/index.js";
-import { ROLEPLAY_SYSTEM_PROMPT, buildModelMessages, sanitizeContext } from "../src/prompt.js";
+import worker, { buildVerifiedMatchPackage, narrativeNeedsRepair, parseMatchReport, parseModelPayload, sanitizeMemoryUpdates, trimLiveDialogue } from "../src/index.js";
+import {
+  ROLEPLAY_SYSTEM_PROMPT,
+  MEMORY_EXTRACTION_SYSTEM_PROMPT,
+  buildModelMessages,
+  buildMemoryMessages,
+  inferTurnContract,
+  sanitizeContext
+} from "../src/prompt.js";
 
 const origin = "https://devlopsz.github.io";
 
@@ -36,7 +43,7 @@ function validBody() {
   };
 }
 
-test("responde ao contrato do KICK OFF e normaliza memória", async () => {
+test("separa a narrativa da extração de memória e normaliza as duas", async () => {
   const calls = [];
   const env = {
     AI_MODEL: "@cf/zai-org/glm-4.7-flash",
@@ -45,15 +52,11 @@ test("responde ao contrato do KICK OFF e normaliza memória", async () => {
     AI: {
       run: async (model, options) => {
         calls.push({ model, options });
-        return {
-          response: JSON.stringify({
-            reply: "O **treinador** fecha o tablet e levanta os olhos. — Chegou cedo. Precisamos conversar sobre o próximo jogo.",
-            memoryUpdates: {
-              characters: [{ name: "Rui Costa", role: "Treinador", relationship: "Profissional", relationshipLevel: 55 }],
-              news: [{ type: "social", title: "Torcida comenta o treino", summary: "A expectativa aumentou.", source: "FYX Social" }]
-            }
-          })
-        };
+        if (!options.response_format) return { response: "O **treinador** fecha o tablet e levanta os olhos. — Chegou cedo. Precisamos conversar sobre o próximo jogo." };
+        return { response: JSON.stringify({
+          characters: [{ name: "Rui Costa", role: "Treinador", relationship: "Profissional", relationshipLevel: 55 }],
+          news: [{ type: "social", title: "Torcida comenta o treino", summary: "A expectativa aumentou.", source: "FYX Social" }]
+        }) };
       }
     }
   };
@@ -69,14 +72,87 @@ test("responde ao contrato do KICK OFF e normaliza memória", async () => {
   assert.equal(payload.memoryUpdates.characters[0].name, "Rui Costa");
   assert.match(payload.memoryUpdates.characters[0].id, /^character-/);
   assert.equal(payload.memoryUpdates.news[0].type, "social");
-  assert.equal(calls.length, 1);
+  assert.equal(payload.meta.memoryUpdated, true);
+  assert.equal(calls.length, 2);
   assert.equal(calls[0].model, "@cf/zai-org/glm-4.7-flash");
   assert.equal("reasoning_effort" in calls[0].options, false);
   assert.equal(calls[0].options.chat_template_kwargs.enable_thinking, false);
-  assert.equal(calls[0].options.max_completion_tokens, 1100);
+  assert.equal(calls[0].options.max_completion_tokens, 1800);
   assert.equal("max_tokens" in calls[0].options, false);
-  assert.equal(calls[0].options.response_format.type, "json_object");
+  assert.equal("response_format" in calls[0].options, false);
   assert.equal(calls[0].options.messages.at(-1).role, "user");
+  assert.equal(calls[1].options.max_completion_tokens, 900);
+  assert.equal(calls[1].options.response_format.type, "json_object");
+  assert.match(calls[1].options.messages[0].content, /registrador objetivo de memória/i);
+});
+
+test("gera pacote pós-jogo e memória somente com os fatos enviados", async () => {
+  const body = validBody();
+  body.context.profile.currentClub = "Chelsea";
+  body.context.profile.season = "2026/27";
+  body.message.content = "Jogo: Chelsea x Napoli\nCompetição: UEFA Champions League\nFase: Oitavas de final, ida\nEstádio: Stamford Bridge\nGols do Jogador QA: 2\nPartida: 22:27 - gol do Napoli\n35:46 - Jogador QA empata após passe de Palmer\n61:09 - Jogador QA finaliza de primeira e vira\nPlacar final: 2x1 Chelsea\nNota: 9.0";
+  let calls = 0;
+  const response = await worker.fetch(request(body), {
+    ALLOWED_ORIGINS: origin,
+    RATE_LIMITER: { limit: async () => ({ success: true }) },
+    AI: {
+      run: async (_model, options) => {
+        calls += 1;
+        assert.equal(options.response_format.type, "json_object");
+        return { response: '{"canonEvents":[],"news":[],"characters":[]}' };
+      }
+    }
+  });
+  const payload = await response.json();
+  const parsed = parseMatchReport(body);
+  const generated = buildVerifiedMatchPackage(body);
+
+  assert.equal(response.status, 200);
+  assert.equal(calls, 1);
+  assert.equal(payload.meta.mode, "MATCH_REPORT");
+  assert.equal(payload.meta.matchFactChecked, true);
+  assert.equal(parsed.scoreTitle, "Chelsea 2 x 1 Napoli");
+  assert.equal(parsed.events.length, 3);
+  assert.equal(payload.reply, generated);
+  assert.match(payload.reply, /Aos 22:27, Napoli marcou\./);
+  assert.match(payload.reply, /Primeira pergunta da coletiva/);
+  assert.doesNotMatch(payload.reply, /58%|posse de bola|chutes ao gol|Luis Alberto|Ospina|Potter|goleiro/i);
+  assert.equal(payload.memoryUpdates.news.length, 4);
+  assert.equal(payload.memoryUpdates.news[0].title, "Chelsea 2 x 1 Napoli");
+  assert.match(payload.memoryUpdates.news[0].summary, /Jogador QA marcou 2 gols/);
+  assert.equal(payload.memoryUpdates.seasons[0].label, "2026/27");
+  assert.equal(payload.memoryUpdates.seasons[0].matches[0].homeScore, 2);
+  assert.equal(payload.memoryUpdates.seasons[0].matches[0].goals, 2);
+  assert.equal(payload.memoryUpdates.canonEvents[0].certainty, "FATO_DO_JOGO");
+});
+
+test("detecta controle do protagonista e repara um diálogo antes de salvar a memória", async () => {
+  const body = validBody();
+  body.message.content = "Ligo para Iris Eva. Ainda falta uma hora para o jogo.";
+  const calls = [];
+  const response = await worker.fetch(request(body), {
+    ALLOWED_ORIGINS: origin,
+    RATE_LIMITER: { limit: async () => ({ success: true }) },
+    AI: {
+      run: async (_model, options) => {
+        calls.push(options);
+        if (calls.length === 1) return { response: "Você liga e Iris atende.\n— Oi, amor.\n— Estou bem.\nVocê desliga e sai de casa." };
+        if (calls.length === 2) return { response: "Iris atende após dois toques.\n— Oi, amor. Como você está antes do jogo?" };
+        return { response: '{"characters":[{"name":"Iris Eva","role":"Namorada"}],"news":[]}' };
+      }
+    }
+  });
+  const payload = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(calls.length, 3);
+  assert.equal(payload.meta.narrativeRepaired, true);
+  assert.equal(payload.reply, "Iris atende após dois toques.\n— Oi, amor. Como você está antes do jogo?");
+  assert.doesNotMatch(payload.reply, /você desliga|você sai/i);
+  assert.equal(payload.memoryUpdates.characters[0].name, "Iris Eva");
+
+  assert.equal(narrativeNeedsRepair("Você liga.\n— Oi.", body, "LIVE_DIALOGUE"), false);
+  assert.equal(narrativeNeedsRepair("— Oi.\n— Estou bem.", body, "LIVE_DIALOGUE"), true);
+  assert.equal(trimLiveDialogue("A chamada conecta.\n— Oi.\n— Estou bem."), "A chamada conecta.\n— Oi.");
 });
 
 test("recusa origens não autorizadas antes de consumir IA", async () => {
@@ -144,6 +220,8 @@ test("mantém o protagonista dentro do universo e ignora metadados de videogame"
   assert.match(ROLEPLAY_SYSTEM_PROMPT, /nunca trate o protagonista como alguém controlando um personagem/i);
   assert.match(ROLEPLAY_SYSTEM_PROMPT, /nunca abra uma cena com menu, tela azul/i);
   assert.match(ROLEPLAY_SYSTEM_PROMPT, /partida de futebol que realmente aconteceu/i);
+  assert.match(ROLEPLAY_SYSTEM_PROMPT, /o tempo permanece no mesmo momento narrativo/i);
+  assert.match(MEMORY_EXTRACTION_SYSTEM_PROMPT, /notícias existem apenas para acontecimentos públicos/i);
 
   const context = sanitizeContext({
     profile: {
@@ -163,9 +241,35 @@ test("mantém o protagonista dentro do universo e ignora metadados de videogame"
     context: { profile: context.profile, recentMessages: [], memory: {} }
   });
   assert.match(messages[2].content, /Caio Alexandre/);
-  assert.match(messages.at(-2).content, /cada ação.*atribuído ao protagonista precisa ter sido declarad[oa]/is);
-  assert.match(messages.at(-2).content, /primeira mensagem curta.*não crie local/is);
+  assert.match(messages.at(-2).content, /Modo: LIVE_DIALOGUE/);
+  assert.match(messages.at(-2).content, /O tempo pode avançar: não/);
+  assert.match(messages.at(-2).content, /O usuário controla o protagonista: sim/);
   assert.equal(messages.at(-1).content, "Oi, por onde começamos?");
+
+  const memoryMessages = buildMemoryMessages({
+    turnId: "turn-1",
+    message: { id: "message-1", content: "Conversei com o treinador." },
+    context: { profile: context.profile, recentMessages: [], memory: {} }
+  }, "O treinador fecha a pasta.");
+  assert.match(memoryMessages[0].content, /retorne somente JSON válido/i);
+  assert.equal(JSON.parse(memoryMessages.at(-1).content).turnId, "turn-1");
+});
+
+test("detecta pacote pós-jogo composto e conserva a partida anterior no contexto", () => {
+  const previousMatch = `Jogo: Chelsea x Napoli\nCompetição: Champions League\nPartida: 35:46 - gol de Cacá\nPlacar final: 2x1 Chelsea\nNota: 9.0`;
+  const requestText = "Mande a narração, manchetes, análises, redes sociais e siga com a coletiva.";
+  const contract = inferTurnContract(requestText, [{ role: "user", content: previousMatch }]);
+  assert.equal(contract.mode, "MATCH_REPORT");
+  assert.equal(contract.requestedOutputs.length, 9);
+  ["narração completa", "análise tática", "manchetes", "repercussão em redes sociais", "primeira pergunta da coletiva"]
+    .forEach((item) => assert.equal(contract.requestedOutputs.includes(item), true));
+
+  const messages = buildModelMessages({
+    message: { content: requestText },
+    context: { profile: { playerName: "Cacá" }, recentMessages: [{ role: "user", content: previousMatch }], memory: {} }
+  });
+  assert.equal(messages.some((message) => message.content.includes("35:46 - gol de Cacá")), true);
+  assert.match(messages.at(-2).content, /não substitua o pacote pedido por um resumo/i);
 });
 
 test("saudação inicial pede o ponto de partida sem inventar cena ou ação", async () => {
@@ -197,14 +301,21 @@ test("configura Qwen sem raciocínio exposto e com o limite de saída compatíve
     AI: {
       run: async (model, options) => {
         calls.push({ model, options });
-        return { choices: [{ message: { content: '{"reply":"O treinador fecha a pasta. — Pode falar.","memoryUpdates":{}}' } }] };
+        return options.response_format
+          ? { choices: [{ message: { content: '{"canonEvents":[],"news":[],"characters":[]}' } }] }
+          : { choices: [{ message: { content: "O treinador fecha a pasta. — Pode falar." } }] };
       }
     }
   });
   assert.equal(response.status, 200);
+  assert.equal(calls.length, 2);
   assert.equal(calls[0].model, "@cf/qwen/qwen3-30b-a3b-fp8");
-  assert.equal(calls[0].options.max_tokens, 1100);
+  assert.equal(calls[0].options.max_tokens, 1800);
   assert.equal("max_completion_tokens" in calls[0].options, false);
   assert.equal("chat_template_kwargs" in calls[0].options, false);
   assert.match(calls[0].options.messages.at(-2).content, /\/no_think$/);
+  assert.equal("response_format" in calls[0].options, false);
+  assert.equal(calls[1].options.max_tokens, 900);
+  assert.equal(calls[1].options.response_format.type, "json_object");
+  assert.match(calls[1].options.messages.at(-2).content, /\/no_think$/);
 });

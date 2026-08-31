@@ -19,7 +19,8 @@ O backend está em `backend/` e usa:
 - Cloudflare Workers no plano Free para o endpoint serverless;
 - Workers AI por binding, sem API key exposta nem chave para o jogador;
 - `@cf/qwen/qwen3-30b-a3b-fp8`, escolhido após teste de obediência às regras de roleplay, diálogo multilíngue e custo baixo;
-- JSON estruturado para separar a narração das atualizações de memória;
+- turnos livres usam duas passagens independentes: uma para a narração e outra, curta e em JSON, para registrar memória;
+- relatos enviados pelo modelo de partida usam um pacote factual determinístico e apenas a passagem de memória, impedindo que o modelo invente placar, estatísticas, nomes ou acontecimentos;
 - CORS restrito, validação de tamanho, timeout no navegador e rate limiting por carreira e IP;
 - adaptador isolado em `backend/src/provider.js`, ponto único para a futura troca por OpenAI ou outro provedor.
 
@@ -52,8 +53,9 @@ Content-Type: application/json
 
 ```json
 {
-  "schemaVersion": "1.0",
+  "schemaVersion": "1.1",
   "careerId": "career-uuid",
+  "turnId": "message-uuid",
   "message": {
     "id": "message-uuid",
     "content": "Entro na sala e cumprimento o treinador.",
@@ -74,12 +76,17 @@ Content-Type: application/json
 }
 ```
 
-No MVP, o backend valida a requisição, seleciona o contexto relevante, chama o modelo e devolve atualizações estruturadas. A persistência continua local até a fase de autenticação e banco multiusuário.
+No MVP, o backend valida a requisição, classifica o turno e seleciona o contexto relevante. Em roleplay livre, faz duas chamadas no mesmo Workers AI: a primeira gera somente a resposta narrativa; a segunda lê o turno concluído e extrai somente a memória estruturada. Assim, o texto de roleplay não disputa o mesmo limite de saída com notícias, relacionamentos, calendário e finanças. A persistência continua local até a fase de autenticação e banco multiusuário.
+
+Essa separação consome duas inferências por mensagem livre e, portanto, usa a franquia gratuita mais rapidamente. Se a segunda passagem falhar, a narração ainda é devolvida. No modo pós-jogo, o backend monta a narração, a análise, as manchetes, as reações, a coletiva e os registros de temporada diretamente dos campos enviados; somente a extração complementar de memória consome IA. Quatro notícias factuais são criadas de forma garantida para o FYX NEWS.
 
 ### Resposta aceita pelo front-end
 
 ```json
 {
+  "schemaVersion": "1.1",
+  "turnId": "message-uuid",
+  "reply": "O treinador fecha o tablet e olha para você...",
   "message": {
     "id": "message-uuid",
     "content": "O treinador fecha o tablet e olha para você...",
@@ -112,6 +119,10 @@ No MVP, o backend valida a requisição, seleciona o contexto relevante, chama o
       "currentResidence": "",
       "houses": []
     }
+  },
+  "meta": {
+    "mode": "LIVE_DIALOGUE",
+    "memoryUpdated": true
   }
 }
 ```

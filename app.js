@@ -19,8 +19,8 @@
   var DEFAULT_HUB_BACKGROUND = "kick-off";
   var REGISTRATION_QUESTIONS = Array.isArray(window.INYFFX_REGISTRATION_QUESTIONS) ? window.INYFFX_REGISTRATION_QUESTIONS : [];
   var REFERENCE_DATA = window.INYFFX_REFERENCE_DATA || {};
-  var TOOL_TITLES = { match: "MODELO DE PARTIDA", wheel: "ROLETA", dice: "ROLAGEM DE DADOS" };
-  var WHEEL_COLORS = ["#37484f", "#52636c", "#365c69", "#604e70", "#68704e", "#4b5d72", "#6a4f4f", "#38615c", "#5b536d", "#4f6261", "#5f6542", "#485078"];
+  var TOOL_TITLES = { match: "Prompt de Partida", wheel: "Roleta", dice: "Dados" };
+  var WHEEL_COLORS = ["#f4f4f4", "#262626", "#b8b8b8", "#454545", "#dedede", "#616161", "#a0a0a0", "#353535", "#c9c9c9", "#515151", "#ededed", "#747474"];
   var PUBLIC_CONFIG = Object.assign({}, window.INYFFX_CONFIG || {}, window.INYFFX_TEST_CONFIG || {});
   var state = loadState();
   var ui = {
@@ -42,7 +42,9 @@
     historyOpen: false,
     profileEdit: "",
     pendingAvatar: "",
-    sending: false
+    sending: false,
+    hubBackgroundVisible: "A",
+    hubBackgroundPreview: ""
   };
   var el = {};
 
@@ -69,6 +71,16 @@
     } catch (error) {
       return fallback;
     }
+  }
+
+  function normalizeWheelChoice(entry) {
+    if (entry && typeof entry === "object") {
+      return {
+        label: clean(entry.label || entry.text || entry.value),
+        weight: Math.min(999, Math.max(1, Math.round(Number(entry.weight) || 1)))
+      };
+    }
+    return { label: clean(entry), weight: 1 };
   }
 
   function normalizeCareer(career) {
@@ -127,9 +139,11 @@
     safe.calendar = Array.isArray(safe.calendar) ? safe.calendar : [];
     safe.offPitch = Object.assign({ currentCity: "", currentResidence: "", houses: [] }, safe.offPitch || {});
     safe.offPitch.houses = Array.isArray(safe.offPitch.houses) ? safe.offPitch.houses : [];
-    safe.tools = Object.assign({ wheelEntries: ["", ""], diceHistory: [] }, safe.tools || {});
-    safe.tools.wheelEntries = Array.isArray(safe.tools.wheelEntries) && safe.tools.wheelEntries.length ? safe.tools.wheelEntries.slice(0, 12) : ["", ""];
-    while (safe.tools.wheelEntries.length < 2) safe.tools.wheelEntries.push("");
+    safe.tools = Object.assign({ wheelEntries: [{ label: "", weight: 1 }, { label: "", weight: 1 }], diceHistory: [] }, safe.tools || {});
+    safe.tools.wheelEntries = Array.isArray(safe.tools.wheelEntries) && safe.tools.wheelEntries.length
+      ? safe.tools.wheelEntries.slice(0, 12).map(normalizeWheelChoice)
+      : [{ label: "", weight: 1 }, { label: "", weight: 1 }];
+    while (safe.tools.wheelEntries.length < 2) safe.tools.wheelEntries.push({ label: "", weight: 1 });
     safe.tools.diceHistory = Array.isArray(safe.tools.diceHistory) ? safe.tools.diceHistory.slice(0, 16) : [];
     safe.sceneNumber = Number(safe.sceneNumber || 1);
     return safe;
@@ -165,11 +179,11 @@
       "authGate", "appShell", "loginForm", "loginCareer", "loginPasscode", "rememberCareer", "loginHint", "loginError",
       "createForm", "createError", "registrationQuestion", "registrationSection", "registrationCount", "prevStep",
       "nextStep", "createCareer", "hubSidebar", "openSettings", "openProfile",
-      "hubBackgroundA", "pageBack", "appMain", "chatMessages", "chatForm", "chatInput", "sendMessage",
+      "hubBackgroundA", "hubBackgroundB", "pageBack", "appMain", "chatMessages", "chatForm", "chatInput", "sendMessage",
       "sceneLabel", "newScene", "aiStatusChip", "toolDrawer", "toolTitle", "closeTools", "matchTemplateForm",
       "chatHistoryControl", "toggleChatHistory", "chatHistoryPanel", "chatHistoryList", "kickToolsMenu", "toggleToolsMenu",
       "matchPromptTemplate", "copyMatchTemplate", "insertMatchTemplate", "wheel", "wheelResult", "wheelEntries", "addWheelEntry",
-      "spinWheel", "useWheelResult", "dicePicker", "diceResult", "rollDice", "useDiceResult", "diceHistory",
+      "spinWheel", "dicePicker", "diceResult", "rollDice",
       "newsFilters", "newsContent", "relationshipSearch", "relationshipCount", "relationshipsContent",
       "seasonSelect", "seasonsContent", "careerContent", "copyOffPitchTemplate", "insertOffPitchTemplate",
       "offPitchTemplate", "residenceContent", "spotifyNow", "spotifyDisc", "spotifyStatus", "spotifyTrack",
@@ -239,10 +253,8 @@
     el.wheelEntries.addEventListener("input", updateWheelEntry);
     el.wheelEntries.addEventListener("click", removeWheelEntry);
     el.spinWheel.addEventListener("click", spinWheel);
-    el.useWheelResult.addEventListener("click", useWheelResult);
     el.dicePicker.addEventListener("click", selectDie);
     el.rollDice.addEventListener("click", rollDice);
-    el.useDiceResult.addEventListener("click", useDiceResult);
     el.newsFilters.addEventListener("click", changeNewsFilter);
     el.relationshipSearch.addEventListener("input", renderRelationships);
     el.seasonSelect.addEventListener("change", renderSeasons);
@@ -618,7 +630,7 @@
         finance: { initialized: false, currency: "BRL", balance: 0, transactions: [], pockets: [] },
         hall: { trophies: [], records: [], awards: [] }, calendar: [],
         offPitch: { currentCity: answers.currentCity || "", currentResidence: "", houses: [] },
-        tools: { wheelEntries: ["", ""], diceHistory: [] }, sceneNumber: 1,
+        tools: { wheelEntries: [{ label: "", weight: 1 }, { label: "", weight: 1 }], diceHistory: [] }, sceneNumber: 1,
         createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
       });
       state.careers.push(career);
@@ -769,15 +781,30 @@
       var image = new Image();
       image.src = HUB_BACKGROUNDS[route];
     });
-    previewHubBackground(DEFAULT_HUB_BACKGROUND);
+    var initialSource = HUB_BACKGROUNDS[DEFAULT_HUB_BACKGROUND];
+    if (el.hubBackgroundA && initialSource) {
+      el.hubBackgroundA.style.backgroundImage = 'url("' + initialSource + '")';
+      el.hubBackgroundA.dataset.preview = DEFAULT_HUB_BACKGROUND;
+      el.hubBackgroundA.classList.add("is-visible");
+      if (el.hubBackgroundB) el.hubBackgroundB.classList.remove("is-visible");
+      ui.hubBackgroundVisible = "A";
+      ui.hubBackgroundPreview = DEFAULT_HUB_BACKGROUND;
+    }
   }
 
   function previewHubBackground(route) {
     var source = HUB_BACKGROUNDS[route] || HUB_BACKGROUNDS[DEFAULT_HUB_BACKGROUND];
-    if (!el.hubBackgroundA || !source) return;
-    el.hubBackgroundA.style.backgroundImage = 'url("' + source + '")';
-    el.hubBackgroundA.dataset.preview = route in HUB_BACKGROUNDS ? route : DEFAULT_HUB_BACKGROUND;
-    el.hubBackgroundA.classList.add("is-visible");
+    var targetRoute = route in HUB_BACKGROUNDS ? route : DEFAULT_HUB_BACKGROUND;
+    if (!el.hubBackgroundA || !el.hubBackgroundB || !source || ui.hubBackgroundPreview === targetRoute) return;
+    var current = ui.hubBackgroundVisible === "A" ? el.hubBackgroundA : el.hubBackgroundB;
+    var next = ui.hubBackgroundVisible === "A" ? el.hubBackgroundB : el.hubBackgroundA;
+    next.style.backgroundImage = 'url("' + source + '")';
+    next.dataset.preview = targetRoute;
+    void next.offsetWidth;
+    next.classList.add("is-visible");
+    current.classList.remove("is-visible");
+    ui.hubBackgroundVisible = ui.hubBackgroundVisible === "A" ? "B" : "A";
+    ui.hubBackgroundPreview = targetRoute;
   }
 
   function renderAvatar(career) {
@@ -851,7 +878,6 @@
     renderCareerPage();
     renderResidence();
     renderWheelEntries();
-    renderDiceHistory();
     renderProfile();
     updateBackendStatus();
   }
@@ -940,7 +966,8 @@
         headers: { "Content-Type": "application/json" },
         signal: controller.signal,
         body: JSON.stringify({
-          schemaVersion: "1.0",
+          schemaVersion: "1.1",
+          turnId: userMessage.id,
           careerId: career.id,
           message: { id: userMessage.id, content: userMessage.content, scene: userMessage.scene, createdAt: userMessage.createdAt },
           context: buildBackendContext(career)
@@ -1128,7 +1155,17 @@
 
   function autosizeComposer() {
     el.chatInput.style.height = "auto";
-    el.chatInput.style.height = Math.min(el.chatInput.scrollHeight, 190) + "px";
+    var computed = window.getComputedStyle(el.chatInput);
+    var lineHeight = parseFloat(computed.lineHeight) || 24;
+    var padding = (parseFloat(computed.paddingTop) || 0) + (parseFloat(computed.paddingBottom) || 0);
+    var contentHeight = Math.max(lineHeight, el.chatInput.scrollHeight - padding);
+    var lines = Math.max(1, Math.round(contentHeight / lineHeight));
+    var targetHeight = Math.min(el.chatInput.scrollHeight, 190);
+    var radius = lines <= 1 ? 999 : Math.max(16, 34 - (lines - 2) * 4);
+    el.chatInput.style.height = targetHeight + "px";
+    el.chatForm.style.setProperty("--composer-radius", radius + "px");
+    el.chatForm.classList.toggle("is-multiline", lines > 1);
+    el.chatMessages.style.setProperty("--composer-clearance", Math.max(160, targetHeight + 126) + "px");
   }
 
   function openTool(tool) {
@@ -1168,7 +1205,6 @@
     document.querySelectorAll("[data-tool-tab]").forEach(function (button) { button.classList.toggle("is-active", button.dataset.toolTab === target); });
     document.querySelectorAll("[data-tool-panel]").forEach(function (panel) { panel.classList.toggle("is-active", panel.dataset.toolPanel === target); });
     if (target === "wheel") renderWheelEntries();
-    if (target === "dice") renderDiceHistory();
   }
 
   function buildMatchTemplate() {
@@ -1738,20 +1774,51 @@
   function renderWheelEntries() {
     var career = activeCareer();
     if (!career) return;
+    var totalWeight = career.tools.wheelEntries.reduce(function (total, entry) { return total + normalizeWheelChoice(entry).weight; }, 0) || 1;
     el.wheelEntries.innerHTML = career.tools.wheelEntries.map(function (entry, index) {
-      return '<label class="wheel-entry" style="--entry-color:' + WHEEL_COLORS[index % WHEEL_COLORS.length] + '"><span></span><input type="text" maxlength="80" data-wheel-index="' + index + '" value="' + escapeHTML(entry) + '" placeholder="Possibilidade ' + (index + 1) + '" /><button type="button" data-remove-wheel="' + index + '" aria-label="Remover possibilidade">×</button></label>';
+      var choice = normalizeWheelChoice(entry);
+      var percentage = choice.weight / totalWeight * 100;
+      return '<div class="wheel-entry"><label class="wheel-weight"><span class="sr-only">Ponderação da possibilidade ' + (index + 1) + '</span><input type="number" min="1" max="999" inputmode="numeric" data-wheel-weight-index="' + index + '" value="' + choice.weight + '" aria-label="Ponderação da possibilidade ' + (index + 1) + '" /></label><label class="wheel-label"><span class="sr-only">Possibilidade ' + (index + 1) + '</span><input type="text" maxlength="80" data-wheel-label-index="' + index + '" value="' + escapeHTML(choice.label) + '" placeholder="Possibilidade ' + (index + 1) + '" /></label><output data-wheel-percentage="' + index + '">' + formatWheelPercentage(percentage) + '</output><button type="button" data-remove-wheel="' + index + '" aria-label="Remover possibilidade" data-tooltip="Remover"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 8v10m4-10v10m4-10v10M5 5h14M9 5V3.5h6V5m-8 0 1 16h8l1-16" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>';
     }).join("");
     updateWheelVisual();
+  }
+
+  function formatWheelPercentage(value) {
+    var rounded = Math.round(Number(value) * 10) / 10;
+    return (Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1).replace(".", ",")) + "%";
+  }
+
+  function wheelSegments(career) {
+    var choices = career.tools.wheelEntries.map(function (entry, index) {
+      var choice = normalizeWheelChoice(entry);
+      return { label: choice.label, weight: choice.weight, index: index };
+    });
+    var filled = choices.filter(function (choice) { return Boolean(choice.label); });
+    return filled.length >= 2 ? filled : choices;
   }
 
   function updateWheelVisual() {
     var career = activeCareer();
     if (!career) return;
-    var count = Math.max(2, career.tools.wheelEntries.length);
-    var step = 100 / count;
+    var segments = wheelSegments(career);
+    var totalWeight = segments.reduce(function (total, entry) { return total + entry.weight; }, 0) || 1;
+    var cursor = 0;
     var stops = [];
-    for (var i = 0; i < count; i += 1) stops.push(WHEEL_COLORS[i % WHEEL_COLORS.length] + " " + (i * step) + "% " + ((i + 1) * step) + "%");
+    segments.forEach(function (entry) {
+      var start = cursor / totalWeight * 100;
+      cursor += entry.weight;
+      var end = cursor / totalWeight * 100;
+      stops.push(WHEEL_COLORS[entry.index % WHEEL_COLORS.length] + " " + start + "% " + end + "%");
+    });
     el.wheel.style.background = "conic-gradient(" + stops.join(",") + ")";
+  }
+
+  function refreshWheelPercentages(career) {
+    var totalWeight = career.tools.wheelEntries.reduce(function (total, entry) { return total + normalizeWheelChoice(entry).weight; }, 0) || 1;
+    el.wheelEntries.querySelectorAll("[data-wheel-percentage]").forEach(function (output) {
+      var choice = normalizeWheelChoice(career.tools.wheelEntries[Number(output.dataset.wheelPercentage)]);
+      output.textContent = formatWheelPercentage(choice.weight / totalWeight * 100);
+    });
   }
 
   function addWheelEntry() {
@@ -1760,7 +1827,7 @@
       toast("A roleta aceita até 12 possibilidades.", "error");
       return;
     }
-    career.tools.wheelEntries.push("");
+    career.tools.wheelEntries.push({ label: "", weight: 1 });
     saveState();
     renderWheelEntries();
     var inputs = el.wheelEntries.querySelectorAll("input");
@@ -1768,11 +1835,21 @@
   }
 
   function updateWheelEntry(event) {
-    var input = event.target.closest("[data-wheel-index]");
+    var input = event.target.closest("[data-wheel-label-index], [data-wheel-weight-index]");
     var career = activeCareer();
     if (!input || !career) return;
-    career.tools.wheelEntries[Number(input.dataset.wheelIndex)] = input.value;
+    if (input.hasAttribute("data-wheel-label-index")) {
+      var labelIndex = Number(input.dataset.wheelLabelIndex);
+      career.tools.wheelEntries[labelIndex] = normalizeWheelChoice(career.tools.wheelEntries[labelIndex]);
+      career.tools.wheelEntries[labelIndex].label = input.value;
+    } else {
+      var weightIndex = Number(input.dataset.wheelWeightIndex);
+      career.tools.wheelEntries[weightIndex] = normalizeWheelChoice(career.tools.wheelEntries[weightIndex]);
+      career.tools.wheelEntries[weightIndex].weight = Math.min(999, Math.max(1, Math.round(Number(input.value) || 1)));
+    }
     saveState();
+    refreshWheelPercentages(career);
+    updateWheelVisual();
   }
 
   function removeWheelEntry(event) {
@@ -1791,33 +1868,36 @@
   function spinWheel() {
     var career = activeCareer();
     if (!career) return;
-    var options = career.tools.wheelEntries.map(clean).filter(Boolean);
+    var options = wheelSegments(career).filter(function (choice) { return Boolean(choice.label); });
     if (options.length < 2) {
       toast("Preencha pelo menos duas possibilidades.", "error");
       return;
     }
     el.spinWheel.disabled = true;
-    el.useWheelResult.disabled = true;
     ui.wheelResult = "";
     el.wheelResult.textContent = "…";
     el.wheelResult.style.transform = "";
-    var selected = options[randomInt(options.length)];
-    ui.wheelRotation += 1440 + randomInt(720);
+    var totalWeight = options.reduce(function (total, choice) { return total + choice.weight; }, 0);
+    var ticket = randomInt(totalWeight);
+    var selected = options[options.length - 1];
+    var cumulative = 0;
+    var selectedStart = 0;
+    for (var i = 0; i < options.length; i += 1) {
+      selectedStart = cumulative;
+      cumulative += options[i].weight;
+      if (ticket < cumulative) { selected = options[i]; break; }
+    }
+    var centerAngle = ((selectedStart + selected.weight / 2) / totalWeight) * 360;
+    var alignment = (90 - centerAngle - (ui.wheelRotation % 360) + 360) % 360;
+    ui.wheelRotation += 1440 + alignment;
     el.wheel.style.transform = "rotate(" + ui.wheelRotation + "deg)";
     window.setTimeout(function () {
-      ui.wheelResult = selected;
-      el.wheelResult.textContent = selected;
+      ui.wheelResult = selected.label;
+      el.wheelResult.textContent = selected.label;
       el.wheelResult.style.transform = "rotate(" + (-ui.wheelRotation) + "deg)";
       el.spinWheel.disabled = false;
-      el.useWheelResult.disabled = false;
-      toast("Resultado da roleta: " + selected);
+      toast("Resultado da roleta: " + selected.label);
     }, 3850);
-  }
-
-  function useWheelResult() {
-    if (!ui.wheelResult) return;
-    insertIntoChat("[ROLETA]\nResultado sorteado: " + ui.wheelResult + "\nInterprete este resultado somente se eu confirmar que ele vale para a cena.");
-    closeTools();
   }
 
   function selectDie(event) {
@@ -1825,11 +1905,8 @@
     if (!button) return;
     ui.dieSides = Number(button.dataset.die);
     document.querySelectorAll("[data-die]").forEach(function (item) { item.classList.toggle("is-active", item === button); });
-    el.diceResult.querySelector("span").textContent = "D" + ui.dieSides;
     el.diceResult.querySelector("strong").textContent = "—";
-    el.diceResult.querySelector("p").textContent = "Aguardando rolagem";
     ui.lastDice = null;
-    el.useDiceResult.disabled = true;
   }
 
   function rollDice() {
@@ -1837,34 +1914,7 @@
     if (!career) return;
     var result = randomInt(ui.dieSides) + 1;
     ui.lastDice = { sides: ui.dieSides, result: result, createdAt: new Date().toISOString() };
-    career.tools.diceHistory.unshift(ui.lastDice);
-    career.tools.diceHistory = career.tools.diceHistory.slice(0, 16);
     el.diceResult.querySelector("strong").textContent = String(result);
-    el.diceResult.querySelector("p").textContent = diceInterpretation(result, ui.dieSides);
-    el.useDiceResult.disabled = false;
-    saveState();
-    renderDiceHistory();
-  }
-
-  function renderDiceHistory() {
-    var career = activeCareer();
-    if (!career) return;
-    el.diceHistory.innerHTML = career.tools.diceHistory.map(function (roll) { return "<span>D" + Number(roll.sides) + " · " + Number(roll.result) + "</span>"; }).join("");
-  }
-
-  function useDiceResult() {
-    if (!ui.lastDice) return;
-    insertIntoChat("[ROLAGEM DE DADO]\nDado: D" + ui.lastDice.sides + "\nResultado: " + ui.lastDice.result + "\nInterprete o resultado dentro da cena sem controlar meu personagem.");
-    closeTools();
-  }
-
-  function diceInterpretation(result, sides) {
-    var ratio = result / sides;
-    if (ratio === 1) return "Resultado máximo";
-    if (ratio <= 0.15) return "Resultado muito baixo";
-    if (ratio <= 0.4) return "Resultado baixo";
-    if (ratio < 0.7) return "Resultado intermediário";
-    return "Resultado alto";
   }
 
   function insertIntoChat(text) {

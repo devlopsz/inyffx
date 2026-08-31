@@ -1,5 +1,5 @@
-import { generateRoleplay, DEFAULT_MODEL } from "./provider.js";
-import { buildModelMessages } from "./prompt.js";
+import { generateNarrative, generateMemoryUpdates, DEFAULT_MODEL } from "./provider.js";
+import { buildModelMessages, buildMemoryMessages, buildRepairMessages, inferTurnContract } from "./prompt.js";
 
 const ROLEPLAY_PATH = "/v1/roleplay/message";
 const MAX_BODY_CHARACTERS = 100000;
@@ -26,8 +26,14 @@ function cleanText(value, maximum = 1200) {
 
 function cleanNarrative(value) {
   return cleanText(value, MAX_REPLY_CHARACTERS)
+    .replace(/&#x20;|&nbsp;/gi, " ")
     .replace(/\*\*([^*]+)\*\*/g, "$1")
-    .replace(/__([^_]+)__/g, "$1");
+    .replace(/\*([^*\n]+)\*/g, "$1")
+    .replace(/__([^_]+)__/g, "$1")
+    .replace(/^#{1,6}\s*/gm, "")
+    .replace(/^\s*[-*_]{3,}\s*$/gm, "")
+    .replace(/[ \t]+$/gm, "")
+    .replace(/\n{4,}/g, "\n\n\n");
 }
 
 function cleanId(value) {
@@ -378,6 +384,7 @@ function normalizeRequest(body, env) {
   return {
     schemaVersion: cleanText(body.schemaVersion || "1.0", 20),
     careerId,
+    turnId: cleanId(body.turnId) || cleanId(body.message && body.message.id) || `turn-${crypto.randomUUID()}`,
     message: {
       id: cleanId(body.message && body.message.id) || `message-${crypto.randomUUID()}`,
       content,
@@ -426,6 +433,356 @@ function openingDirectionReply(payload) {
   return `Por onde começamos${vocative}? Diga onde você está agora, quem está com você e qual momento quer viver primeiro. Nada acontece até você escolher o ponto de partida.`;
 }
 
+function fallbackMatchNews(payload, now) {
+  const content = String(payload.message && payload.message.content || "");
+  const game = content.match(/^Jogo\s*:\s*(.+?)\s+(?:x|×|vs\.?|versus)\s+(.+)$/im);
+  const score = content.match(/^Placar final\s*:\s*(\d+)\s*(?:x|×|[-–])\s*(\d+)/im);
+  if (!game || !score) return [];
+  const homeTeam = cleanText(game[1], 120);
+  const awayTeam = cleanText(game[2], 120);
+  const homeScore = Number(score[1]);
+  const awayScore = Number(score[2]);
+  const goalsLine = content.match(/^Gols do [^:]+\s*:\s*(\d+)/im);
+  const goals = goalsLine ? Number(goalsLine[1]) : 0;
+  const protagonistName = cleanText(payload.context && payload.context.profile && payload.context.profile.playerName, 160);
+  const scoreTitle = `${homeTeam} ${homeScore} x ${awayScore} ${awayTeam}`;
+  const performance = goals > 0 && protagonistName
+    ? ` ${protagonistName} marcou ${goals} ${goals === 1 ? "gol" : "gols"}.`
+    : "";
+  return [{
+    id: `news-${stableHash(`${payload.careerId}|${payload.turnId}|${scoreTitle}`)}`,
+    type: "headline",
+    title: scoreTitle,
+    summary: `O resultado informado pelo protagonista foi confirmado como fato da carreira.${performance}`,
+    source: "FYX NEWS",
+    occurredAt: cleanText(payload.message && payload.message.createdAt, 40) || now,
+    createdAt: now,
+    sourceMessageId: cleanId(payload.message && payload.message.id)
+  }];
+}
+
+function matchSourceText(payload) {
+  const current = String(payload.message && payload.message.content || "");
+  if (/^\s*Jogo\s*:/im.test(current) && /^\s*Placar final\s*:/im.test(current)) return current;
+  const recent = payload.context && Array.isArray(payload.context.recentMessages)
+    ? payload.context.recentMessages
+    : [];
+  const previous = [...recent].reverse().find((message) => {
+    const content = String(message && message.content || "");
+    return /^\s*Jogo\s*:/im.test(content) && /^\s*Placar final\s*:/im.test(content);
+  });
+  return [previous && previous.content, current].filter(Boolean).join("\n");
+}
+
+function matchLabel(source, label, maximum = 1600) {
+  const escaped = label.replace(/[.*+?^$(){}|[\]\\]/g, "\\$&");
+  const match = new RegExp("^\\s*" + escaped + "\\s*:\\s*(.*?)\\s*$", "im").exec(source);
+  return cleanText(match && match[1], maximum);
+}
+
+function eventSentence(event) {
+  const match = /^(\d{1,3}(?::\d{2}|(?:\+\d+)?))\s*[-–—]\s*(.+)$/i.exec(event);
+  if (!match) return /[.!?]$/.test(event) ? event : event + ".";
+  const moment = match[1];
+  const detail = cleanText(match[2], 1000).replace(/[.!?]+$/, "");
+  const genericGoal = /^gol d[oa]\s+(.+)$/i.exec(detail);
+  if (genericGoal) return "Aos " + moment + ", " + genericGoal[1] + " marcou.";
+  return "Aos " + moment + ", " + detail + ".";
+}
+
+function goalPhrase(count) {
+  if (count === 1) return "1 gol";
+  return String(count) + " gols";
+}
+
+function canonicalClubName(value) {
+  return comparableText(value)
+    .replace(/\b(?:football club|futebol clube|association football club|fc|f c|cf|sc|afc)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function parseMatchReport(payload) {
+  const source = matchSourceText(payload);
+  const game = /^(.+?)\s+(?:x|×|vs\.?|versus)\s+(.+)$/i.exec(matchLabel(source, "Jogo", 300));
+  const score = /(\d+)\s*(?:x|×|[-–])\s*(\d+)/i.exec(matchLabel(source, "Placar final", 180));
+  if (!game || !score) return null;
+
+  const homeTeam = cleanText(game[1], 120);
+  const awayTeam = cleanText(game[2], 120);
+  const homeScore = Number(score[1]);
+  const awayScore = Number(score[2]);
+  const profile = payload.context && payload.context.profile && typeof payload.context.profile === "object"
+    ? payload.context.profile
+    : {};
+  const goalLine = /^\s*Gols do\s+([^:]+)\s*:\s*(\d+)/im.exec(source);
+  const protagonistName = cleanText(profile.playerName || (goalLine && goalLine[1]) || "Protagonista", 160);
+  const goals = goalLine ? Number(goalLine[2]) : 0;
+  const ratingText = matchLabel(source, "Nota", 40);
+  const ratingMatch = /(?:^|\s)(\d+(?:[.,]\d+)?)(?:\s|$)/.exec(ratingText);
+
+  const timelineStart = /^\s*Partida\s*:\s*/im.exec(source);
+  let timelineText = "";
+  if (timelineStart) {
+    const start = timelineStart.index + timelineStart[0].length;
+    const rest = source.slice(start);
+    const timelineEnd = /^\s*Placar final\s*:/im.exec(rest);
+    timelineText = rest.slice(0, timelineEnd ? timelineEnd.index : rest.length);
+  }
+  const events = timelineText
+    .split(/\r?\n/)
+    .map((line) => cleanText(line, 1200))
+    .filter((line) => line && !/^00:00\s*[-–—]?\s*$/.test(line));
+
+  const currentClub = cleanText(profile.currentClub || profile.club, 160);
+  const normalizedClub = canonicalClubName(currentClub);
+  const protagonistTeam = normalizedClub === canonicalClubName(homeTeam)
+    ? homeTeam
+    : normalizedClub === canonicalClubName(awayTeam) ? awayTeam : "";
+  const winner = homeScore === awayScore ? "" : homeScore > awayScore ? homeTeam : awayTeam;
+  const loser = !winner ? "" : winner === homeTeam ? awayTeam : homeTeam;
+  const scoreTitle = homeTeam + " " + homeScore + " x " + awayScore + " " + awayTeam;
+  const resultSentence = winner
+    ? winner + " venceu " + loser + " por " + (winner === homeTeam ? homeScore : awayScore) + " a " + (winner === homeTeam ? awayScore : homeScore)
+    : homeTeam + " e " + awayTeam + " empataram por " + homeScore + " a " + awayScore;
+
+  return {
+    source,
+    homeTeam,
+    awayTeam,
+    homeScore,
+    awayScore,
+    competition: matchLabel(source, "Competição", 180),
+    phase: matchLabel(source, "Fase", 180),
+    stadium: matchLabel(source, "Estádio", 180),
+    uniform: matchLabel(source, "Uniforme", 120),
+    formation: matchLabel(source, "Formação", 1600),
+    protagonistName,
+    protagonistTeam,
+    goals,
+    rating: ratingMatch ? Number(ratingMatch[1].replace(",", ".")) : null,
+    ratingText: ratingMatch ? ratingMatch[1] : "",
+    events,
+    winner,
+    loser,
+    scoreTitle,
+    resultSentence
+  };
+}
+
+export function buildVerifiedMatchPackage(payload) {
+  const match = parseMatchReport(payload);
+  if (!match) return "";
+
+  const phaseText = match.phase ? match.phase.charAt(0).toLocaleLowerCase("pt-BR") + match.phase.slice(1) : "";
+  const setting = [match.stadium ? "Em " + match.stadium : "", match.competition ? "pela " + match.competition : "", phaseText ? "na fase " + phaseText : ""]
+    .filter(Boolean)
+    .join(", ");
+  const eventNarrative = match.events.length
+    ? match.events.map(eventSentence).join(" ")
+    : "O relato enviado não detalhou os lances em ordem cronológica.";
+  const performance = match.goals > 0
+    ? match.protagonistName + " marcou " + goalPhrase(match.goals) + "."
+    : "O relato não registrou gols de " + match.protagonistName + ".";
+  const impact = match.goals > 0
+    ? "Os lances registrados mostram " + match.protagonistName + " como figura decisiva do confronto."
+    : "A leitura permanece limitada aos acontecimentos registrados no relato.";
+  const clubWon = Boolean(match.protagonistTeam && match.winner === match.protagonistTeam);
+  const collectiveContext = clubWon
+    ? "na vitória do " + match.protagonistTeam
+    : "no confronto entre " + match.homeTeam + " e " + match.awayTeam;
+  const collectiveQuestion = match.goals > 0
+    ? match.protagonistName + ", você marcou " + goalPhrase(match.goals) + " " + collectiveContext + ". Qual foi a sua leitura dos lances decisivos?"
+    : match.protagonistName + ", o jogo terminou em " + match.homeScore + " a " + match.awayScore + ". Qual foi a sua leitura dos momentos decisivos?";
+  const headlinePerformance = match.goals > 0
+    ? match.protagonistName + " marca " + goalPhrase(match.goals) + " em " + match.scoreTitle
+    : match.scoreTitle + ": resultado confirmado";
+  const socialPerformance = match.goals > 0
+    ? goalPhrase(match.goals) + " de " + match.protagonistName + " no placar de " + match.homeScore + " a " + match.awayScore + "."
+    : "Placar confirmado: " + match.scoreTitle + ".";
+
+  const dataLines = [
+    "- Placar final: " + match.scoreTitle,
+    match.competition ? "- Competição: " + match.competition : "",
+    match.phase ? "- Fase: " + match.phase : "",
+    match.stadium ? "- Estádio: " + match.stadium : "",
+    "- Gols de " + match.protagonistName + ": " + match.goals,
+    match.ratingText ? "- Nota informada: " + match.ratingText : ""
+  ].filter(Boolean);
+
+  return [
+    "Narração",
+    (setting ? setting + ", " : "") + match.homeTeam + " e " + match.awayTeam + " entraram em campo para um jogo que terminou em " + match.homeScore + " a " + match.awayScore + ". " + eventNarrative + " No apito final, " + match.resultSentence + ". " + performance,
+    "",
+    "Dados confirmados",
+    dataLines.join("\n"),
+    "",
+    "Análise da partida",
+    impact + (match.events.length ? " A sequência decisiva registrada foi: " + match.events.map(eventSentence).join(" ") : ""),
+    "",
+    "Manchetes",
+    "- " + headlinePerformance,
+    "- " + match.resultSentence + " em " + (match.stadium || "uma noite de futebol"),
+    "- " + match.scoreTitle + ": os lances que definiram a partida",
+    "",
+    "Comentários e redes sociais",
+    "- FYX Sports: \"" + socialPerformance + "\"",
+    "- @CentralDaTorcida: \"" + match.resultSentence + ". Noite de muita repercussão entre os torcedores.\"",
+    "- @AnaliseFYX: \"" + impact + "\"",
+    "",
+    "Primeira pergunta da coletiva",
+    "Jornalista: \"" + collectiveQuestion + "\""
+  ].join("\n");
+}
+
+function verifiedMatchNews(payload, match, now) {
+  if (!match) return [];
+  const occurredAt = cleanText(payload.message && payload.message.createdAt, 40) || now;
+  const sourceMessageId = cleanId(payload.message && payload.message.id);
+  const baseIdentity = payload.careerId + "|" + payload.turnId + "|" + match.scoreTitle;
+  const performance = match.goals > 0
+    ? match.protagonistName + " marcou " + goalPhrase(match.goals) + "."
+    : "O placar foi incorporado ao cânone da carreira.";
+  const items = [
+    {
+      type: "headline",
+      title: match.scoreTitle,
+      summary: match.resultSentence + ". " + performance,
+      source: "FYX NEWS"
+    },
+    {
+      type: "analysis",
+      title: "Os lances que decidiram " + match.homeTeam + " x " + match.awayTeam,
+      summary: match.events.length ? match.events.map(eventSentence).join(" ") : "A análise considera apenas o resultado informado.",
+      source: "FYX Análise"
+    },
+    {
+      type: "social",
+      title: "Torcedores repercutem " + match.scoreTitle,
+      summary: "A reação se concentra no resultado de " + match.homeScore + " a " + match.awayScore + (match.goals > 0 ? " e nos " + goalPhrase(match.goals) + " de " + match.protagonistName + "." : "."),
+      source: "FYX Social"
+    },
+    {
+      type: "comment",
+      title: "Pós-jogo",
+      summary: match.resultSentence + ". O resultado e os lances passam a integrar o registro oficial desta carreira.",
+      source: "FYX Sports"
+    }
+  ];
+  return items.map((item, index) => ({
+    id: "news-" + stableHash(baseIdentity + "|" + item.type + "|" + index),
+    ...item,
+    occurredAt,
+    createdAt: now,
+    sourceMessageId
+  }));
+}
+
+function applyVerifiedMatchMemory(memoryUpdates, payload, match, now) {
+  if (!match) return memoryUpdates;
+  const occurredAt = cleanText(payload.message && payload.message.createdAt, 40) || now;
+  const sourceMessageId = cleanId(payload.message && payload.message.id);
+  const seasonLabel = cleanText(
+    payload.context && payload.context.profile && payload.context.profile.season
+      || payload.context && payload.context.memory && payload.context.memory.currentSeason && payload.context.memory.currentSeason.label
+      || "Temporada atual",
+    80
+  );
+  memoryUpdates.news = verifiedMatchNews(payload, match, now);
+  memoryUpdates.canonEvents = [{
+    id: "canon-" + stableHash(payload.careerId + "|" + payload.turnId + "|" + match.scoreTitle),
+    title: match.scoreTitle,
+    description: match.resultSentence + ". " + (match.goals > 0 ? match.protagonistName + " marcou " + goalPhrase(match.goals) + "." : ""),
+    type: "partida",
+    certainty: "FATO_DO_JOGO",
+    occurredAt,
+    participants: [match.homeTeam, match.awayTeam, match.protagonistName].filter(Boolean),
+    sourceMessageId
+  }];
+  memoryUpdates.seasons = [{
+    id: "season-" + stableHash(payload.careerId + "|" + seasonLabel),
+    label: seasonLabel,
+    matches: [{
+      id: "match-" + stableHash(payload.careerId + "|" + occurredAt + "|" + match.scoreTitle),
+      date: occurredAt,
+      competition: match.competition,
+      homeTeam: match.homeTeam,
+      awayTeam: match.awayTeam,
+      homeScore: match.homeScore,
+      awayScore: match.awayScore,
+      minutes: 0,
+      goals: match.goals,
+      assists: 0,
+      rating: match.rating || 0,
+      highlights: match.events.join("\n"),
+      sourceMessageId
+    }]
+  }];
+  return memoryUpdates;
+}
+
+function normalizedLanguage(value, maximum = 16000) {
+  return cleanText(value, maximum).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR");
+}
+
+const CONTROLLED_PLAYER_ACTIONS = [
+  { reply: "liga", declared: /\b(?:ligo|liguei|telefon(?:o|ei)|faco uma ligacao)\b/ },
+  { reply: "desliga", declared: /\b(?:desligo|desliguei|encerro a ligacao)\b/ },
+  { reply: "entra", declared: /\b(?:entro|entrei)\b/ },
+  { reply: "sai", declared: /\b(?:saio|sai|deixo|deixei|vou embora)\b/ },
+  { reply: "vai", declared: /\b(?:vou|fui)\b/ },
+  { reply: "pega", declared: /\b(?:pego|peguei)\b/ },
+  { reply: "coloca", declared: /\b(?:coloco|coloquei)\b/ },
+  { reply: "manda", declared: /\b(?:mando|mandei|envio|enviei)\b/ },
+  { reply: "responde", declared: /\b(?:respondo|respondi)\b/ },
+  { reply: "diz", declared: /\b(?:digo|disse|falo|falei)\b/ },
+  { reply: "pergunta", declared: /\b(?:pergunto|perguntei)\b/ },
+  { reply: "sente", declared: /\b(?:sinto|senti|me sinto)\b/ },
+  { reply: "pensa", declared: /\b(?:penso|pensei)\b/ },
+  { reply: "decide", declared: /\b(?:decido|decidi)\b/ },
+  { reply: "sorri", declared: /\b(?:sorrio|sorri)\b/ },
+  { reply: "ri", declared: /\b(?:rio|ri)\b/ },
+  { reply: "abraca", declared: /\b(?:abraco|abracei)\b/ },
+  { reply: "beija", declared: /\b(?:beijo|beijei)\b/ },
+  { reply: "aceita", declared: /\b(?:aceito|aceitei)\b/ },
+  { reply: "recusa", declared: /\b(?:recuso|recusei)\b/ },
+  { reply: "comeca", declared: /\b(?:comeco|comecei)\b/ }
+];
+
+export function narrativeNeedsRepair(reply, payload, mode) {
+  if (mode !== "LIVE_DIALOGUE") return false;
+  const narrative = normalizedLanguage(reply);
+  const current = normalizedLanguage(payload.message && payload.message.content, 12000);
+  const dialogueLines = String(reply || "").split(/\r?\n/).filter((line) => /^\s*[—-]\s*\S/.test(line));
+  if (dialogueLines.length > 1) return true;
+  if (/\bvoce\s+(?:tem|tera)\s+\d+\s+minutos?\b/.test(narrative)) return true;
+  if (/\b(?:e hora de sair|a ligacao termina|a chamada termina)\b/.test(narrative)) return true;
+  return CONTROLLED_PLAYER_ACTIONS.some((action) => {
+    const used = new RegExp(`\\bvoce\\s+${action.reply}\\b`).test(narrative);
+    return used && !action.declared.test(current);
+  });
+}
+
+export function trimLiveDialogue(reply) {
+  const lines = String(reply || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const kept = [];
+  let dialogueSeen = false;
+  for (const line of lines) {
+    const isDialogue = /^[—-]\s*\S/.test(line);
+    if (isDialogue && dialogueSeen) break;
+    if (!isDialogue && dialogueSeen) break;
+    kept.push(line);
+    if (isDialogue) dialogueSeen = true;
+  }
+  return cleanNarrative(kept.join("\n"));
+}
+
+function strictLiveFallback(reply) {
+  const trimmed = trimLiveDialogue(reply);
+  const dialogue = String(trimmed || reply || "").split(/\r?\n/).find((line) => /^\s*[—-]\s*\S/.test(line));
+  return cleanNarrative(dialogue || trimmed || reply);
+}
+
 async function handleRoleplay(request, env, origin) {
   const rawBody = await request.text();
   if (rawBody.length > MAX_BODY_CHARACTERS) throw new ApiError(413, "PAYLOAD_TOO_LARGE", "A memória enviada ficou grande demais para o MVP.");
@@ -442,50 +799,98 @@ async function handleRoleplay(request, env, origin) {
     const now = new Date().toISOString();
     const reply = openingDirectionReply(payload);
     return jsonResponse({
-      schemaVersion: "1.0",
+      schemaVersion: "1.1",
+      turnId: payload.turnId,
       reply,
       message: { id: `message-${crypto.randomUUID()}`, content: reply, createdAt: now },
       memoryUpdates: sanitizeMemoryUpdates({}, payload.careerId, now),
       meta: {
         provider: String(env.AI_PROVIDER || "cloudflare-workers-ai"),
         model: String(env.AI_MODEL || DEFAULT_MODEL),
+        mode: "LIVE_DIALOGUE",
         freeTier: true,
         guardedOpening: true
       }
     }, 200, origin);
   }
-  const messages = buildModelMessages(payload, numberFromEnv(env.MAX_CONTEXT_CHARS, 32000, 60000));
+  const maximumContext = numberFromEnv(env.MAX_CONTEXT_CHARS, 32000, 60000);
+  const recentMessages = payload.context && Array.isArray(payload.context.recentMessages) ? payload.context.recentMessages : [];
+  const turnContract = inferTurnContract(payload.message.content, recentMessages);
+  const verifiedMatch = turnContract.mode === "MATCH_REPORT" ? parseMatchReport(payload) : null;
+  let rawModelResponse = null;
+  let reply = verifiedMatch ? cleanNarrative(buildVerifiedMatchPackage(payload)) : "";
+  let narrativeRepaired = false;
+  let matchFactChecked = Boolean(verifiedMatch && reply);
 
-  let rawModelResponse;
-  try {
-    rawModelResponse = await generateRoleplay(env, messages);
-  } catch (error) {
-    console.error("Workers AI request failed", error && error.message ? error.message : error);
-    throw providerFailure(error);
+  if (!reply) {
+    const messages = buildModelMessages(payload, maximumContext);
+    try {
+      rawModelResponse = await generateNarrative(env, messages, { mode: turnContract.mode });
+    } catch (error) {
+      console.error("Workers AI request failed", error && error.message ? error.message : error);
+      throw providerFailure(error);
+    }
+
+    const modelPayload = parseModelPayload(rawModelResponse);
+    reply = cleanNarrative(modelPayload && (modelPayload.reply || (modelPayload.message && modelPayload.message.content)));
+    if (!reply) throw new ApiError(502, "INVALID_AI_RESPONSE", "A IA respondeu sem uma cena utilizável. Tente novamente.");
+
+    if (narrativeNeedsRepair(reply, payload, turnContract.mode)) {
+      narrativeRepaired = true;
+      try {
+        const repairResponse = await generateNarrative(env, buildRepairMessages(payload, reply), { mode: "LIVE_DIALOGUE", maxTokens: 600 });
+        const repairPayload = parseModelPayload(repairResponse);
+        const repairedReply = cleanNarrative(repairPayload && (repairPayload.reply || (repairPayload.message && repairPayload.message.content)));
+        if (repairedReply) reply = repairedReply;
+      } catch (error) {
+        console.error("Workers AI narrative repair failed", error && error.message ? error.message : error);
+      }
+      reply = trimLiveDialogue(reply);
+      if (narrativeNeedsRepair(reply, payload, turnContract.mode)) reply = strictLiveFallback(reply);
+    }
   }
 
-  const modelPayload = parseModelPayload(rawModelResponse);
-  const reply = cleanNarrative(modelPayload && (modelPayload.reply || (modelPayload.message && modelPayload.message.content)));
-  if (!reply) throw new ApiError(502, "INVALID_AI_RESPONSE", "A IA respondeu sem uma cena utilizável. Tente novamente.");
-
   const now = new Date().toISOString();
+  let rawMemoryResponse = null;
+  let memorySource = {};
+  try {
+    const memoryMessages = buildMemoryMessages(payload, reply, maximumContext);
+    rawMemoryResponse = await generateMemoryUpdates(env, memoryMessages);
+    const parsedMemory = parseModelPayload(rawMemoryResponse);
+    memorySource = parsedMemory && (parsedMemory.memoryUpdates || parsedMemory.updates || parsedMemory) || {};
+  } catch (error) {
+    console.error("Workers AI memory extraction failed", error && error.message ? error.message : error);
+  }
+  let memoryUpdates = sanitizeMemoryUpdates(
+    memorySource,
+    payload.careerId,
+    now,
+    payload.context && payload.context.profile && payload.context.profile.playerName
+  );
+  if (verifiedMatch) {
+    memoryUpdates = applyVerifiedMatchMemory(memoryUpdates, payload, verifiedMatch, now);
+  } else if (!memoryUpdates.news.length) {
+    memoryUpdates.news.push(...fallbackMatchNews(payload, now));
+  }
+
   return jsonResponse({
-    schemaVersion: "1.0",
+    schemaVersion: "1.1",
+    turnId: payload.turnId,
     reply,
     message: {
       id: `message-${crypto.randomUUID()}`,
       content: reply,
       createdAt: now
     },
-    memoryUpdates: sanitizeMemoryUpdates(
-      modelPayload.memoryUpdates || modelPayload.updates || {},
-      payload.careerId,
-      now,
-      payload.context && payload.context.profile && payload.context.profile.playerName
-    ),
+    memoryUpdates,
     meta: {
       provider: String(env.AI_PROVIDER || "cloudflare-workers-ai"),
       model: String(env.AI_MODEL || DEFAULT_MODEL),
+      memoryModel: String(env.AI_MEMORY_MODEL || env.AI_MODEL || DEFAULT_MODEL),
+      mode: turnContract.mode,
+      narrativeRepaired,
+      matchFactChecked,
+      memoryUpdated: Boolean(rawMemoryResponse),
       freeTier: true
     }
   }, 200, origin);

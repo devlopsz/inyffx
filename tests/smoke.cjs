@@ -130,6 +130,14 @@ check(html.includes('id="chatHistoryList"') && app.includes("createCareerChat") 
 check(html.includes('id="kickToolsMenu"') && html.includes('data-open-tool="match"') && html.includes('data-open-tool="wheel"') && html.includes('data-open-tool="dice"'), "menu de ferramentas do KICK OFF contém os três cards");
 check(app.includes("data-expand-message") && app.includes("isLongUserMessage"), "mensagens longas do usuário oferecem Mostrar Mais");
 check(!app.includes("chat-message__meta"), "mensagens do KICK OFF não exibem nomes de autor");
+check(html.includes('id="hubBackgroundB"') && app.includes("hubBackgroundVisible") && /transition:\s*opacity\s+520ms/i.test(css), "fundos do hub usam duas camadas com transição fade");
+check(app.includes("--composer-radius") && app.includes("is-multiline") && css.includes(".kick-composer-dock::before"), "composer reduz a curvatura e cria fade antes da área de digitação");
+check(css.includes(".chat-messages::-webkit-scrollbar") && css.includes("overflow-x: hidden"), "KICK OFF usa rolagem minimalista sem barra horizontal");
+check(html.includes('class="tool-icon-action"') && html.includes('data-tooltip="Copiar modelo"') && html.includes('data-tooltip="Rolar dado"'), "ferramentas usam ações circulares com tooltips");
+check(html.includes('<h2 id="toolTitle">Prompt de Partida</h2>') && !html.includes("<span>FERRAMENTA</span>"), "drawer exibe somente o nome da ferramenta no topo");
+check(app.includes("data-wheel-weight-index") && app.includes("formatWheelPercentage") && app.includes("totalWeight"), "roleta aceita ponderação e calcula percentuais");
+check(!html.includes('id="useWheelResult"') && !html.includes('id="useDiceResult"'), "roleta e dados não oferecem envio automático do resultado ao chat");
+check(/--accent:\s*#ffffff/i.test(css) && !/216\s*,\s*255\s*,\s*79|#d8ff4f|#65e6a8/i.test(css), "destaques verdes foram removidos da interface");
 
 const matchPrompt = normalizePrompt(read("mod/prompt partidas para o usuario copiar.txt"));
 const matchTemplate = (html.match(/<pre id="matchPromptTemplate">([\s\S]*?)<\/pre>/) || [])[1];

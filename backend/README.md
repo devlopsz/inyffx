@@ -13,6 +13,8 @@ Worker serverless do MVP. Ele recebe o contrato já usado pelo `KICK OFF`, chama
 
 O nível gratuito possui franquia diária. Quando ela termina, o endpoint responde `FREE_TIER_UNAVAILABLE` e o frontend preserva a mensagem do jogador para tentar novamente depois.
 
+Cada turno livre usa duas inferências do mesmo modelo: uma para a cena e outra curta, em JSON, para extrair notícias, personagens, cânone, temporada, finanças, calendário e vida fora de campo. Se a extração de memória falhar, a narrativa continua sendo entregue. Relatos no formato de partida recebem um pacote pós-jogo determinístico, uma partida registrada na temporada e quatro notícias factuais; nesse modo, apenas a extração complementar de memória consome IA.
+
 ## Desenvolvimento
 
 ```powershell
