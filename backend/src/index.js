@@ -188,6 +188,15 @@ function cleanNews(item, index, careerId, now) {
     title: title || "Atualização da carreira",
     summary,
     source: cleanText(item.source || "FYX NEWS", 120),
+    handle: cleanText(item.handle, 100),
+    postCount: cleanText(item.postCount, 40),
+    trend: cleanText(item.trend || item.subject, 180),
+    subject: cleanText(item.subject, 180),
+    secondaryTitle: cleanText(item.secondaryTitle, 260),
+    imageCaption: cleanText(item.imageCaption, 600),
+    kicker: cleanText(item.kicker, 320),
+    image: cleanText(item.image, 220),
+    sentiment: cleanText(item.sentiment, 40),
     occurredAt: cleanText(item.occurredAt || item.createdAt || now, 40),
     createdAt: cleanText(item.createdAt || now, 40),
     sourceMessageId: cleanId(item.sourceMessageId)
@@ -643,24 +652,71 @@ function verifiedMatchNews(payload, match, now) {
   const performance = match.goals > 0
     ? match.protagonistName + " marcou " + goalPhrase(match.goals) + "."
     : "O placar foi incorporado ao cânone da carreira.";
+  const playerHighlight = [...match.events].reverse().find((event) => comparableText(event).includes(comparableText(match.protagonistName)))
+    || match.events[match.events.length - 1]
+    || "";
+  const leadTitle = match.goals > 0
+    ? match.protagonistName + " decide em " + match.scoreTitle
+    : match.scoreTitle;
+  const reactionBase = match.resultSentence + ". " + performance;
   const items = [
     {
       type: "headline",
-      title: match.scoreTitle,
+      title: leadTitle,
       summary: match.resultSentence + ". " + performance,
-      source: "FYX NEWS"
+      source: "FYX NEWS",
+      kicker: match.scoreTitle + " · " + match.protagonistName,
+      secondaryTitle: "Os lances que decidiram " + match.homeTeam + " x " + match.awayTeam,
+      imageCaption: playerHighlight ? eventSentence(playerHighlight) : reactionBase,
+      trend: match.protagonistName
     },
     {
       type: "analysis",
       title: "Os lances que decidiram " + match.homeTeam + " x " + match.awayTeam,
       summary: match.events.length ? match.events.map(eventSentence).join(" ") : "A análise considera apenas o resultado informado.",
-      source: "FYX Análise"
+      source: "FYX Análise",
+      secondaryTitle: "A história completa da partida",
+      imageCaption: playerHighlight ? eventSentence(playerHighlight) : reactionBase
     },
     {
       type: "social",
       title: "Torcedores repercutem " + match.scoreTitle,
-      summary: "A reação se concentra no resultado de " + match.homeScore + " a " + match.awayScore + (match.goals > 0 ? " e nos " + goalPhrase(match.goals) + " de " + match.protagonistName + "." : "."),
-      source: "FYX Social"
+      summary: reactionBase,
+      source: "FYX Social",
+      handle: "@CentralDaTorcida",
+      trend: match.scoreTitle,
+      sentiment: "repercussão"
+    },
+    {
+      type: "social",
+      title: match.protagonistName + " vira assunto após a partida",
+      summary: match.goals > 0
+        ? "Que noite de " + match.protagonistName + ": " + goalPhrase(match.goals) + " em um jogo que terminou " + match.homeScore + " a " + match.awayScore + "."
+        : "A atuação de " + match.protagonistName + " movimenta as discussões depois de " + match.scoreTitle + ".",
+      source: "FYX Matchday",
+      handle: "@FYXMatchday",
+      trend: match.protagonistName,
+      sentiment: "elogio"
+    },
+    {
+      type: "social",
+      title: "A noite em " + (match.stadium || match.competition || "campo"),
+      summary: "O apito final confirmou " + match.scoreTitle + ", e a repercussão segue crescendo entre os torcedores.",
+      source: "Bola em Jogo",
+      handle: "@BolaEmJogo",
+      trend: match.competition || match.scoreTitle,
+      sentiment: "comentário"
+    },
+    {
+      type: "social",
+      title: "Leitura rápida de " + match.scoreTitle,
+      summary: match.events.length
+        ? "Os lances registrados colocaram " + match.protagonistName + " no centro das conversas do pós-jogo."
+        : reactionBase,
+      source: "Análise FYX",
+      handle: "@AnaliseFYX",
+      trend: match.winner || match.scoreTitle,
+      sentiment: "análise"
     },
     {
       type: "comment",

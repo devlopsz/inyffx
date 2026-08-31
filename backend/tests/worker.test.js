@@ -117,9 +117,12 @@ test("gera pacote pós-jogo e memória somente com os fatos enviados", async () 
   assert.match(payload.reply, /Aos 22:27, Napoli marcou\./);
   assert.match(payload.reply, /Primeira pergunta da coletiva/);
   assert.doesNotMatch(payload.reply, /58%|posse de bola|chutes ao gol|Luis Alberto|Ospina|Potter|goleiro/i);
-  assert.equal(payload.memoryUpdates.news.length, 4);
-  assert.equal(payload.memoryUpdates.news[0].title, "Chelsea 2 x 1 Napoli");
+  assert.equal(payload.memoryUpdates.news.length, 7);
+  assert.match(payload.memoryUpdates.news[0].title, /Jogador QA decide/);
   assert.match(payload.memoryUpdates.news[0].summary, /Jogador QA marcou 2 gols/);
+  assert.equal(payload.memoryUpdates.news.filter((item) => item.type === "social").length, 4);
+  assert.equal(payload.memoryUpdates.news.find((item) => item.type === "social").handle, "@CentralDaTorcida");
+  assert.match(payload.memoryUpdates.news[0].imageCaption, /61:09/);
   assert.equal(payload.memoryUpdates.seasons[0].label, "2026/27");
   assert.equal(payload.memoryUpdates.seasons[0].matches[0].homeScore, 2);
   assert.equal(payload.memoryUpdates.seasons[0].matches[0].goals, 2);
@@ -196,6 +199,25 @@ test("aceita JSON cercado por markdown e produz ids estáveis", () => {
     ]
   }, "career-1", "2026-08-26T00:00:02.000Z", "Jogador QA");
   assert.deepEqual(filtered.characters.map((character) => character.name), ["Ana"]);
+
+  const media = sanitizeMemoryUpdates({
+    news: [{
+      type: "gossip",
+      title: "Rumor nos bastidores",
+      summary: "Torcedores especulam sem confirmação.",
+      source: "FYX Bastidores",
+      handle: "@arquibancada",
+      trend: "Bastidores",
+      sentiment: "especulação",
+      postCount: "8,4k posts",
+      secondaryTitle: "O assunto do dia",
+      imageCaption: "Registro público da chegada ao estádio."
+    }]
+  }, "career-1", "2026-08-26T00:00:03.000Z", "Jogador QA");
+  assert.equal(media.news[0].handle, "@arquibancada");
+  assert.equal(media.news[0].trend, "Bastidores");
+  assert.equal(media.news[0].postCount, "8,4k posts");
+  assert.equal(media.news[0].secondaryTitle, "O assunto do dia");
 });
 
 test("recupera a cena quando o JSON do modelo termina depois do campo reply", () => {
@@ -222,6 +244,8 @@ test("mantém o protagonista dentro do universo e ignora metadados de videogame"
   assert.match(ROLEPLAY_SYSTEM_PROMPT, /partida de futebol que realmente aconteceu/i);
   assert.match(ROLEPLAY_SYSTEM_PROMPT, /o tempo permanece no mesmo momento narrativo/i);
   assert.match(MEMORY_EXTRACTION_SYSTEM_PROMPT, /notícias existem apenas para acontecimentos públicos/i);
+  assert.match(MEMORY_EXTRACTION_SYSTEM_PROMPT, /gere de 4 a 8 itens news\.type social/i);
+  assert.match(MEMORY_EXTRACTION_SYSTEM_PROMPT, /gere de 4 a 8 itens news\.type gossip/i);
 
   const context = sanitizeContext({
     profile: {
@@ -245,6 +269,8 @@ test("mantém o protagonista dentro do universo e ignora metadados de videogame"
   assert.match(messages.at(-2).content, /O tempo pode avançar: não/);
   assert.match(messages.at(-2).content, /O usuário controla o protagonista: sim/);
   assert.equal(messages.at(-1).content, "Oi, por onde começamos?");
+
+  assert.equal(inferTurnContract("Quero olhar as fofocas e os rumores de hoje.", []).mode, "SOCIAL_MEDIA");
 
   const memoryMessages = buildMemoryMessages({
     turnId: "turn-1",

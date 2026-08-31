@@ -8,7 +8,7 @@
     <title>InyffX — Player Career Universe</title>
     <link rel="icon" href="mod/pics/favicon.ico" type="image/x-icon" />
     <link rel="manifest" href="manifest.webmanifest" />
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="styles.css?v=20260831-fyxnews" />
   </head>
   <body>
     <div class="toast-region" id="toastRegion" aria-live="polite" aria-atomic="true"></div>
@@ -91,7 +91,7 @@
                   <button class="composer-plus" id="toggleToolsMenu" type="button" aria-label="Abrir ferramentas" aria-expanded="false"><img src="mod/pics/icons/mais.svg" alt="" aria-hidden="true" /></button>
                   <label class="sr-only" for="chatInput">Mensagem de roleplay</label>
                   <textarea id="chatInput" rows="1" placeholder="Comece seu dia" required></textarea>
-                  <button class="send-button" id="sendMessage" type="submit" aria-label="Enviar mensagem">↑</button>
+                  <button class="send-button" id="sendMessage" type="submit" aria-label="Enviar mensagem"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5m-5 5 5-5 5 5" fill="none" stroke="currentColor" stroke-width="2.35" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
                 </form>
               </div>
             </div>
@@ -120,7 +120,15 @@ Mande a Narração, manchetes, comentários, análises, repercussão em redes so
           </div>
         </section>
 
-        <section class="page" id="page-fyx-news" data-page="fyx-news" aria-labelledby="newsTitle"><div class="page-topline"><div><span class="section-number">MÍDIA</span><h1 id="newsTitle">FYX NEWS</h1></div><span class="read-only-tag">CONSULTA · ATUALIZADA PELO RP</span></div><div class="filter-line" id="newsFilters"><button class="is-active" type="button" data-news-filter="all">TUDO</button><button type="button" data-news-filter="headline">MANCHETES</button><button type="button" data-news-filter="social">REDES SOCIAIS</button><button type="button" data-news-filter="analysis">ANÁLISES</button><button type="button" data-news-filter="gossip">FOFOCAS</button></div><div class="content-surface" id="newsContent"></div></section>
+        <section class="page page--fyx-news" id="page-fyx-news" data-page="fyx-news" aria-labelledby="newsTitle">
+          <h1 class="sr-only" id="newsTitle">FYX NEWS</h1>
+          <nav class="fyx-news-tabs" id="newsFilters" aria-label="Seções do FYX NEWS">
+            <button class="is-active" type="button" data-news-filter="headline">FYX NEWS</button>
+            <button type="button" data-news-filter="social">REDES SOCIAIS</button>
+            <button type="button" data-news-filter="gossip">FOFOCAS</button>
+          </nav>
+          <div class="fyx-news-surface" id="newsContent"></div>
+        </section>
         <section class="page" id="page-relationships" data-page="relationships" aria-labelledby="relationshipsTitle"><div class="page-topline"><div><span class="section-number">PERSONAGENS</span><h1 id="relationshipsTitle">RELATIONSHIPS</h1></div><span class="read-only-tag">MEMÓRIA INDIVIDUAL</span></div><div class="relationship-toolbar"><label class="search-field"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="m15.5 15.5 4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.5" /></svg><input id="relationshipSearch" type="search" placeholder="Buscar personagem" /></label><span id="relationshipCount">0 PERSONAGENS</span></div><div class="content-surface" id="relationshipsContent"></div></section>
         <section class="page" id="page-seasons" data-page="seasons" aria-labelledby="seasonsTitle"><div class="page-topline"><div><span class="section-number">FUTEBOL</span><h1 id="seasonsTitle">SEASONS</h1></div><label class="season-selector"><span>TEMPORADA</span><select id="seasonSelect"></select></label></div><div class="content-surface" id="seasonsContent"></div></section>
         <section class="page" id="page-player-career" data-page="player-career" aria-labelledby="careerTitle"><div class="page-topline"><div><span class="section-number">CARREIRA</span><h1 id="careerTitle">PLAYER CAREER</h1></div><span class="read-only-tag">CONSULTA</span></div><div class="career-tabs" role="tablist" aria-label="Áreas da carreira"><button class="is-active" type="button" data-career-tab="pay">FYX PAY</button><button type="button" data-career-tab="hall">HALL</button><button type="button" data-career-tab="calendar">CALENDÁRIO</button></div><div class="content-surface" id="careerContent"></div></section>
@@ -135,6 +143,6 @@ Eventos importantes:</pre><div class="template-actions"><button class="text-acti
     <dialog class="modal settings-modal" id="settingsModal"><form method="dialog" class="modal__shell" id="settingsForm"><header class="modal__header"><div><span class="section-number">SISTEMA</span><h2>CONFIGURAÇÕES</h2></div><button class="icon-button" type="submit" value="cancel" aria-label="Fechar">×</button></header><div class="modal__content"><section class="settings-section"><div class="settings-section__heading"><span>01</span><div><h3>IA INYFFX</h3><p>A inteligência do site é conectada pelo próprio InyffX. Nenhum jogador precisa informar chave ou endpoint.</p></div></div><div class="integration-card"><div><span>PROVEDOR DO MVP</span><strong>Cloudflare Workers AI</strong></div><div><span>MODELO</span><strong>Qwen3 30B A3B</strong></div></div><div class="connection-row"><i id="backendStatusDot"></i><span id="backendStatusText">Verificando integração</span></div></section><section class="settings-section"><div class="settings-section__heading"><span>02</span><div><h3>SPOTIFY</h3><p>Mostra no disco a faixa reproduzida na sua conta.</p></div></div><label class="field"><span>SPOTIFY CLIENT ID</span><input id="spotifyClientId" type="text" autocomplete="off" placeholder="Client ID público do Spotify" /></label><label class="field"><span>REDIRECT URI</span><div class="copy-field"><input id="spotifyRedirectUri" type="text" readonly /><button id="copyRedirectUri" type="button">COPIAR</button></div></label><div class="button-row"><button class="secondary-action" id="disconnectSpotify" type="button">DESCONECTAR</button><button class="primary-action" id="connectSpotify" type="button">CONECTAR SPOTIFY <span>→</span></button></div></section></div><footer class="modal__footer"><button class="secondary-action" type="submit" value="cancel">CANCELAR</button><button class="primary-action" id="saveSettings" type="button">SALVAR CONFIGURAÇÕES <span>→</span></button></footer></form></dialog>
     <script src="assets/config.js"></script>
     <script src="registration-data.js"></script>
-    <script src="app.js"></script>
+    <script src="app.js?v=20260831-fyxnews"></script>
   </body>
 </html>

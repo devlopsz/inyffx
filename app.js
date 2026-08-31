@@ -21,6 +21,14 @@
   var REFERENCE_DATA = window.INYFFX_REFERENCE_DATA || {};
   var TOOL_TITLES = { match: "Prompt de Partida", wheel: "Roleta", dice: "Dados" };
   var WHEEL_COLORS = ["#f4f4f4", "#262626", "#b8b8b8", "#454545", "#dedede", "#616161", "#a0a0a0", "#353535", "#c9c9c9", "#515151", "#ededed", "#747474"];
+  var FYX_NEWS_IMAGES = [
+    "mod/pics/fyxnews/manchete_1.jpg",
+    "mod/pics/fyxnews/manchete_2.jpg",
+    "mod/pics/fyxnews/manchete_3.jpg",
+    "mod/pics/fyxnews/manchete_4.jpg",
+    "mod/pics/fyxnews/manchete_5.jpg",
+    "mod/pics/fyxnews/manchete_6.jpg"
+  ];
   var PUBLIC_CONFIG = Object.assign({}, window.INYFFX_CONFIG || {}, window.INYFFX_TEST_CONFIG || {});
   var state = loadState();
   var ui = {
@@ -29,7 +37,7 @@
     registrationAnswers: {},
     registrationCustom: {},
     route: "home",
-    newsFilter: "all",
+    newsFilter: "headline",
     careerTab: "pay",
     dieSides: 20,
     lastDice: null,
@@ -1165,7 +1173,7 @@
     el.chatInput.style.height = targetHeight + "px";
     el.chatForm.style.setProperty("--composer-radius", radius + "px");
     el.chatForm.classList.toggle("is-multiline", lines > 1);
-    el.chatMessages.style.setProperty("--composer-clearance", Math.max(160, targetHeight + 126) + "px");
+    el.chatMessages.style.setProperty("--composer-clearance", Math.max(260, targetHeight + 220) + "px");
   }
 
   function openTool(tool) {
@@ -1173,6 +1181,7 @@
     selectTool(tool);
     el.toolDrawer.classList.add("is-open");
     el.toolDrawer.setAttribute("aria-hidden", "false");
+    el.toolDrawer.scrollTop = 0;
     document.querySelector(".kick-layout").classList.add("has-tools");
   }
 
@@ -1203,7 +1212,11 @@
     var target = TOOL_TITLES[tool] ? tool : "match";
     el.toolTitle.textContent = TOOL_TITLES[target];
     document.querySelectorAll("[data-tool-tab]").forEach(function (button) { button.classList.toggle("is-active", button.dataset.toolTab === target); });
-    document.querySelectorAll("[data-tool-panel]").forEach(function (panel) { panel.classList.toggle("is-active", panel.dataset.toolPanel === target); });
+    document.querySelectorAll("[data-tool-panel]").forEach(function (panel) {
+      var isActive = panel.dataset.toolPanel === target;
+      panel.classList.toggle("is-active", isActive);
+      if (isActive) panel.scrollTop = 0;
+    });
     if (target === "wheel") renderWheelEntries();
   }
 
@@ -1358,33 +1371,144 @@
   function renderNews() {
     var career = activeCareer();
     if (!career) return;
-    var items = career.news.filter(function (item) { return ui.newsFilter === "all" || item.type === ui.newsFilter; });
-    if (!items.length) {
-      el.newsContent.innerHTML = emptyMarkup(
-        "02",
-        ui.newsFilter === "all" ? "Nenhuma notícia publicada." : "Nenhum conteúdo nesta categoria.",
-        "Manchetes, comentários, redes sociais, fofocas e análises aparecerão somente quando forem gerados a partir do cânone do KICK OFF."
-      );
+    if (ui.newsFilter === "social" || ui.newsFilter === "gossip") {
+      renderNewsSocialBoard(career, ui.newsFilter);
       return;
     }
-    var lead = items[0];
-    var stream = items.slice(1);
+    renderNewsFrontPage(career);
+  }
+
+  function newsTime(item) {
+    var value = new Date(item && (item.occurredAt || item.createdAt) || 0).getTime();
+    return Number.isFinite(value) ? value : 0;
+  }
+
+  function orderedNews(career, types) {
+    var accepted = Array.isArray(types) ? types : [types];
+    return career.news.filter(function (item) { return accepted.indexOf(item.type) >= 0; }).slice().sort(function (a, b) {
+      return newsTime(b) - newsTime(a);
+    });
+  }
+
+  function stableNewsNumber(value) {
+    var source = String(value || "");
+    var result = 2166136261;
+    for (var index = 0; index < source.length; index += 1) {
+      result ^= source.charCodeAt(index);
+      result = Math.imul(result, 16777619);
+    }
+    return result >>> 0;
+  }
+
+  function newsImage(item) {
+    if (item && item.image && /^mod\/pics\/fyxnews\/manchete_[1-6]\.jpg$/i.test(item.image)) return item.image;
+    return FYX_NEWS_IMAGES[stableNewsNumber(item && (item.id || item.title)) % FYX_NEWS_IMAGES.length];
+  }
+
+  function firstSentence(value) {
+    var source = clean(value);
+    if (!source) return "";
+    var match = source.match(/^(.+?[.!?])(?:\s|$)/);
+    return clean(match ? match[1] : source).slice(0, 260);
+  }
+
+  function relatedNews(career, lead) {
+    var sourceId = clean(lead && lead.sourceMessageId);
+    var items = career.news.filter(function (item) {
+      if (!lead || item.id === lead.id) return false;
+      return sourceId ? clean(item.sourceMessageId) === sourceId : Math.abs(newsTime(item) - newsTime(lead)) < 180000;
+    });
+    return items.sort(function (a, b) { return newsTime(b) - newsTime(a); });
+  }
+
+  function renderNewsFrontPage(career) {
+    var headlines = orderedNews(career, "headline");
+    var lead = headlines[0] || orderedNews(career, ["analysis", "comment", "social"])[0];
+    if (!lead) {
+      el.newsContent.innerHTML = '<section class="fyx-news-empty"><strong>NENHUMA MANCHETE PUBLICADA</strong><p>Quando um acontecimento público for registrado no KICK OFF, a primeira página será montada aqui.</p></section>';
+      return;
+    }
+
+    var related = relatedNews(career, lead);
+    var analysis = related.find(function (item) { return item.type === "analysis"; }) || orderedNews(career, "analysis")[0];
+    var supporting = analysis || related.find(function (item) { return item.type === "comment"; }) || lead;
+    var protagonist = clean(career.profile && career.profile.playerName) || "Jogador em destaque";
+    var secondaryTitle = clean(lead.secondaryTitle || supporting.secondaryTitle || supporting.title) || "A partida em detalhes";
+    var story = clean(supporting.summary || lead.summary) || "A cobertura será ampliada conforme os acontecimentos públicos forem registrados no KICK OFF.";
+    var caption = clean(lead.imageCaption || supporting.imageCaption) || firstSentence(story) || lead.title;
+    var kicker = clean(lead.kicker) || [formatDate(lead.occurredAt || lead.createdAt), lead.title, protagonist].filter(Boolean).join(" · ");
+
     el.newsContent.innerHTML = [
-      '<div class="news-layout"><article class="news-feature">',
-      '<span class="news-feature__type">', escapeHTML(newsTypeLabel(lead.type)), "</span>",
-      "<h2>", escapeHTML(lead.title || "Atualização da carreira"), "</h2>",
-      "<p>", escapeHTML(lead.summary || ""), "</p>",
-      "<footer><span>", escapeHTML(lead.source || "FYX NEWS"), "</span><span>", escapeHTML(formatDate(lead.occurredAt || lead.createdAt)), "</span></footer>",
-      '</article><div class="news-stream">', stream.map(renderNewsItem).join(""), "</div></div>"
+      '<section class="fyx-paper">',
+      '<header class="fyx-paper__masthead"><div class="fyx-paper__brand">FYX NEWS</div><div class="fyx-paper__lead"><h2>', escapeHTML(lead.title || "FYX NEWS"), "</h2></div></header>",
+      '<div class="fyx-paper__kicker">', escapeHTML(kicker), "</div>",
+      '<div class="fyx-paper__story"><article class="fyx-paper__copy"><i aria-hidden="true"></i><h3>', escapeHTML(secondaryTitle), "</h3><p>", escapeHTML(story), "</p></article>",
+      '<figure class="fyx-paper__visual"><img src="', escapeHTML(newsImage(lead)), '" alt="Imagem da cobertura de ', escapeHTML(lead.title || "partida"), '" /><figcaption>', escapeHTML(caption), "</figcaption></figure></div>",
+      "</section>"
     ].join("");
   }
 
-  function renderNewsItem(item) {
+  function newsHandle(item, index, type) {
+    var explicit = clean(item && item.handle);
+    if (explicit) return explicit.charAt(0) === "@" ? explicit : "@" + explicit;
+    var source = normalizeKey(item && item.source || (type === "gossip" ? "fyx bastidores" : "fyx torcida")).replace(/[^a-z0-9]/g, "");
+    return "@" + (source || "fyxnews") + (index ? String(index + 1) : "");
+  }
+
+  function newsPostCount(item) {
+    var explicit = clean(item && item.postCount);
+    if (explicit) return explicit;
+    var number = stableNewsNumber(item && (item.id || item.title));
+    return (2 + number % 78) + "," + (number % 10) + "k posts";
+  }
+
+  function socialPostMarkup(item, index, type) {
+    if (!item) {
+      return '<article class="fyx-social-post is-empty"><strong>SEM NOVA PUBLICAÇÃO</strong><p>Novos comentários aparecerão quando forem criados a partir do KICK OFF.</p></article>';
+    }
     return [
-      '<article class="news-item"><span class="news-item__type">', escapeHTML(newsTypeLabel(item.type)), "</span>",
-      "<h3>", escapeHTML(item.title || "Atualização"), "</h3>",
-      "<p>", escapeHTML(item.summary || ""), "</p>",
-      "<footer><span>", escapeHTML(item.source || "FYX NEWS"), "</span><span>", escapeHTML(formatDate(item.occurredAt || item.createdAt)), "</span></footer></article>"
+      '<article class="fyx-social-post"><strong>', escapeHTML(newsHandle(item, index, type)), "</strong>",
+      "<p>", escapeHTML(item.summary || item.title || "Nova repercussão registrada."), "</p></article>"
+    ].join("");
+  }
+
+  function trendMarkup(item, index, type) {
+    if (!item) return "";
+    var category = type === "social" ? "Sports · Trending" : "Trending";
+    return [
+      '<article class="fyx-trend"><span>', index + 1, " · ", category, "</span><strong>",
+      escapeHTML(item.trend || item.title || item.subject || "Assunto em destaque"), "</strong></article>"
+    ].join("");
+  }
+
+  function renderNewsSocialBoard(career, type) {
+    var direct = orderedNews(career, type);
+    var supporting = type === "social" ? orderedNews(career, ["fanclub", "comment"]) : [];
+    var posts = direct.concat(supporting.filter(function (item) {
+      return !direct.some(function (existing) { return existing.id === item.id; });
+    })).slice(0, 4);
+    var headlineSource = direct.length ? direct : type === "social" ? orderedNews(career, "headline") : [];
+    var headlines = headlineSource.slice(0, 3);
+    var trends = direct.concat(type === "social" ? orderedNews(career, "headline") : []).filter(function (item, index, items) {
+      return items.findIndex(function (candidate) { return candidate.id === item.id; }) === index;
+    }).slice(0, 4);
+    var hasPosts = posts.length > 0;
+
+    while (posts.length < 4) posts.push(null);
+
+    el.newsContent.innerHTML = [
+      '<section class="fyx-social-board fyx-social-board--', type, '">',
+      '<div class="fyx-social-phone"><img src="mod/pics/fyxnews/sociais/iphone.png" alt="iPhone exibindo a identidade do FYX" /></div>',
+      '<div class="fyx-social-feed', hasPosts ? "" : " is-empty", '">',
+      hasPosts ? posts.map(function (item, index) { return socialPostMarkup(item, index, type); }).join("") : '<div class="fyx-social-feed-empty"><strong>NENHUMA PUBLICAÇÃO</strong><p>O conteúdo será criado a partir dos acontecimentos e pedidos feitos no KICK OFF.</p></div>',
+      "</div>",
+      '<aside class="fyx-social-side"><section class="fyx-today"><h2>Today’s News</h2>',
+      headlines.length ? headlines.map(function (item) {
+        return '<article><strong>' + escapeHTML(item.title || "Assunto em destaque") + '</strong><span>' + escapeHTML(newsPostCount(item)) + "</span></article>";
+      }).join("") : '<p class="fyx-social-empty-copy">Nenhuma repercussão pública registrada.</p>',
+      '</section><section class="fyx-trending">',
+      trends.length ? trends.map(function (item, index) { return trendMarkup(item, index, type); }).join("") : '<p class="fyx-social-empty-copy">Nenhum assunto em alta.</p>',
+      "</section></aside></section>"
     ].join("");
   }
 

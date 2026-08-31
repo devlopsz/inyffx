@@ -40,6 +40,12 @@ const requiredFiles = [
   "mod/pics/icons/partida.svg",
   "mod/pics/icons/roleta.svg",
   "mod/pics/icons/dado.svg",
+  "mod/pics/fyxnews/manchete_1.jpg",
+  "mod/pics/fyxnews/manchete_6.jpg",
+  "mod/pics/fyxnews/sociais/iphone.png",
+  "assets/fonts/fyxnews/news-701-bt.ttf",
+  "assets/fonts/fyxnews/SourceSansPro-Regular.ttf",
+  "assets/fonts/fyxnews/SourceSansPro-Black.ttf",
   "mod/prompt partidas para o usuario copiar.txt",
   "mod/prompt the sims para o usuario copiar.txt",
   "mod/prompt the sims EXEMPLO.txt"
@@ -133,11 +139,18 @@ check(!app.includes("chat-message__meta"), "mensagens do KICK OFF não exibem no
 check(html.includes('id="hubBackgroundB"') && app.includes("hubBackgroundVisible") && /transition:\s*opacity\s+520ms/i.test(css), "fundos do hub usam duas camadas com transição fade");
 check(app.includes("--composer-radius") && app.includes("is-multiline") && css.includes(".kick-composer-dock::before"), "composer reduz a curvatura e cria fade antes da área de digitação");
 check(css.includes(".chat-messages::-webkit-scrollbar") && css.includes("overflow-x: hidden"), "KICK OFF usa rolagem minimalista sem barra horizontal");
+check(css.includes("width: 100vw") && css.includes("--composer-clearance: 280px"), "rolagem fica no canto da tela e preserva espaço antes do composer");
+check(css.includes(".kick-composer-dock::after") && /height:\s*clamp\(170px,\s*25vh,\s*280px\)/i.test(css), "área sob o composer fica opaca e o fade de leitura é gradual");
+check(css.includes("@keyframes kick-new-day-shine"), "Novo Dia recebe animação de brilho no hover");
 check(html.includes('class="tool-icon-action"') && html.includes('data-tooltip="Copiar modelo"') && html.includes('data-tooltip="Rolar dado"'), "ferramentas usam ações circulares com tooltips");
 check(html.includes('<h2 id="toolTitle">Prompt de Partida</h2>') && !html.includes("<span>FERRAMENTA</span>"), "drawer exibe somente o nome da ferramenta no topo");
 check(app.includes("data-wheel-weight-index") && app.includes("formatWheelPercentage") && app.includes("totalWeight"), "roleta aceita ponderação e calcula percentuais");
 check(!html.includes('id="useWheelResult"') && !html.includes('id="useDiceResult"'), "roleta e dados não oferecem envio automático do resultado ao chat");
 check(/--accent:\s*#ffffff/i.test(css) && !/216\s*,\s*255\s*,\s*79|#d8ff4f|#65e6a8/i.test(css), "destaques verdes foram removidos da interface");
+check(html.includes('data-news-filter="headline">FYX NEWS') && html.includes('data-news-filter="social">REDES SOCIAIS') && html.includes('data-news-filter="gossip">FOFOCAS'), "FYX NEWS usa as três seções do layout de referência");
+check(app.includes("renderNewsFrontPage") && app.includes("renderNewsSocialBoard") && app.includes("FYX_NEWS_IMAGES"), "FYX NEWS possui capa editorial, redes sociais, fofocas e imagens alternadas");
+check(css.includes('"FYX News 701"') && css.includes('"FYX Source Sans"') && css.includes(".fyx-paper__masthead") && css.includes(".fyx-social-board"), "fontes e estruturas visuais exclusivas do FYX NEWS foram aplicadas");
+check(/\.fyx-paper,\s*\.fyx-paper \*\s*\{[^}]*FYX Source Sans/s.test(css) && !/\.page--fyx-news,\s*\.page--fyx-news \*\s*\{[^}]*FYX Source Sans/s.test(css), "fontes editoriais ficam restritas ao jornal; redes sociais e fofocas mantêm Cruyff Sans");
 
 const matchPrompt = normalizePrompt(read("mod/prompt partidas para o usuario copiar.txt"));
 const matchTemplate = (html.match(/<pre id="matchPromptTemplate">([\s\S]*?)<\/pre>/) || [])[1];
@@ -147,7 +160,7 @@ const offPitchTemplate = (html.match(/<pre id="offPitchTemplate">([\s\S]*?)<\/pr
 check(Boolean(offPitchTemplate) && normalizePrompt(offPitchTemplate) === offPitchPrompt, "modelo OFF THE PITCH usa exatamente o arquivo fornecido");
 check(html.includes("prompt%20the%20sims%20EXEMPLO.txt") && html.includes("BAIXAR EXEMPLO"), "exemplo OFF THE PITCH está disponível para download");
 
-check(html.indexOf('src="registration-data.js"') < html.indexOf('src="app.js"'), "dados do cadastro carregam antes da aplicação");
+check(html.indexOf('src="registration-data.js"') < html.indexOf('src="app.js'), "dados do cadastro carregam antes da aplicação");
 check(app.includes("Cloudflare Workers AI") && html.includes("Qwen3 30B A3B"), "integração gratuita de IA continua configurada");
 
 new Function(app);
