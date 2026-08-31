@@ -218,6 +218,28 @@ test("aceita JSON cercado por markdown e produz ids estáveis", () => {
   assert.equal(media.news[0].trend, "Bastidores");
   assert.equal(media.news[0].postCount, "8,4k posts");
   assert.equal(media.news[0].secondaryTitle, "O assunto do dia");
+
+  const detailed = sanitizeMemoryUpdates({
+    characters: [{
+      name: "Maya Patel",
+      category: "romance",
+      role: "Namorada",
+      unknownFacts: ["A proposta secreta"],
+      characterRules: "Nunca revela um segredo espontaneamente.",
+      details: {
+        currentGoal: "Concluir a faculdade.",
+        openInformation: "Identidade dos pais",
+        importantEvents: [{ title: "Primeiro encontro", importance: "Alta" }]
+      }
+    }]
+  }, "career-1", "2026-08-26T00:00:04.000Z", "Jogador QA");
+  assert.equal(detailed.characters[0].category, "romance");
+  assert.deepEqual(detailed.characters[0].unknownFacts, ["A proposta secreta"]);
+  assert.equal(detailed.characters[0].details.currentGoal, "Concluir a faculdade.");
+  assert.equal(detailed.characters[0].details.importantEvents[0].importance, "Alta");
+  const sparse = sanitizeMemoryUpdates({ characters: [{ name: "Maya Patel", role: "Namorada" }] }, "career-1", "2026-08-26T00:00:05.000Z", "Jogador QA");
+  assert.equal(Object.prototype.hasOwnProperty.call(sparse.characters[0], "knownFacts"), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(sparse.characters[0], "details"), false);
 });
 
 test("recupera a cena quando o JSON do modelo termina depois do campo reply", () => {
@@ -243,7 +265,9 @@ test("mantém o protagonista dentro do universo e ignora metadados de videogame"
   assert.match(ROLEPLAY_SYSTEM_PROMPT, /nunca abra uma cena com menu, tela azul/i);
   assert.match(ROLEPLAY_SYSTEM_PROMPT, /partida de futebol que realmente aconteceu/i);
   assert.match(ROLEPLAY_SYSTEM_PROMPT, /o tempo permanece no mesmo momento narrativo/i);
+  assert.match(ROLEPLAY_SYSTEM_PROMPT, /nunca dê ao NPC um knownFact que esteja em unknownFacts/i);
   assert.match(MEMORY_EXTRACTION_SYSTEM_PROMPT, /notícias existem apenas para acontecimentos públicos/i);
+  assert.match(MEMORY_EXTRACTION_SYSTEM_PROMPT, /fichas manuais em details são cânone de alta prioridade/i);
   assert.match(MEMORY_EXTRACTION_SYSTEM_PROMPT, /gere de 4 a 8 itens news\.type social/i);
   assert.match(MEMORY_EXTRACTION_SYSTEM_PROMPT, /gere de 4 a 8 itens news\.type gossip/i);
 

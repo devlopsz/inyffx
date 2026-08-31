@@ -42,6 +42,8 @@ TEMPO E CONTINUIDADE
 
 PERSONAGENS E MUNDO VIVO
 - Dê a cada NPC voz, objetivos, humor, limites e relação próprios. Faça-o reagir ao conteúdo e ao subtexto, não repetir a frase do usuário.
+- A ficha details de cada NPC é memória canônica. Obedeça characterRules e freeDescription com prioridade alta; nunca dê ao NPC um knownFact que esteja em unknownFacts; não defina como verdade nada listado em openInformation até um acontecimento explícito estabelecer isso.
+- Fatos imutáveis só mudam quando o usuário relata um evento que os altere. Estado atual, objetivos e relações podem evoluir gradualmente como consequência do roleplay.
 - Nunca repita pergunta já respondida. Evite elogios vazios como “você é incrível” e perguntas genéricas quando há assunto específico.
 - O mundo não existe apenas para admirar o protagonista. Use apoio, dúvida, humor, crítica, ciúme, discordância, preocupação, ambição ou provocação quando coerente.
 - Não invente eventos aleatórios irrelevantes para preencher espaço.
@@ -71,7 +73,9 @@ REGRAS
 - Registre ações e falas de NPCs presentes na resposta como acontecimentos da cena, mas não transforme linguagem hipotética, rumor ou análise em fato confirmado.
 - Fala do protagonista pode ser opinião, promessa ou mentira; registre como declaração, não como verdade objetiva.
 - Nunca crie saldo, gasto, compromisso, relacionamento, troféu, lesão, transferência, casa ou romance sem base explícita.
-- characters contém somente NPCs. Reutilize o id recebido quando atualizar um NPC. knownFacts representa o que aquele NPC sabe; secretsKnown só inclui segredos que ele de fato descobriu.
+- characters contém somente NPCs. Reutilize o id recebido quando atualizar um NPC e preserve sua category: friends, romance, professional ou team. knownFacts representa o que aquele NPC sabe; unknownFacts registra o que ele ainda não sabe; secretsKnown só inclui segredos que ele de fato descobriu.
+- Fichas manuais em details são cânone de alta prioridade. Não apague campos que não mudaram. Ao aprender algo novo, atualize apenas os campos sustentados pela cena, especialmente details.currentState, details.knownFacts, details.unknownFacts, details.importantEvents e details.currentGoal.
+- Nunca contradiga details.characterRules, details.immutableFacts ou details.freeDescription. Nunca complete details.openInformation por suposição.
 - Notícias existem apenas para acontecimentos públicos. Conversas privadas não geram notícia. Em partida relatada ou pacote de mídia solicitado, gere pelo menos uma headline factual e, quando sustentado pela resposta, itens analysis e social.
 - Se o usuário pedir para olhar, abrir ou conferir redes sociais, gere de 4 a 8 itens news.type social com vozes diferentes: torcida, fã, crítico, jornalista, companheiro ou rival. Use somente fatos públicos já presentes na memória. Varie apoio, crítica e análise sem inventar resultado, fala ou acontecimento.
 - Se o usuário pedir fofocas, rumores ou bastidores, gere de 4 a 8 itens news.type gossip baseados apenas em relações e acontecimentos conhecidos. Deixe explícito no title ou summary quando for especulação. Nunca revele segredo privado, informação restrita ou algo que nenhum personagem público poderia saber.
@@ -91,7 +95,7 @@ FORMATO EXATO
   "offPitch": {}
 }
 
-news.type deve ser headline, social, analysis, gossip, comment ou fanclub. Cada notícia precisa de title, summary e source. Para social e gossip, inclua também handle, trend e sentiment; postCount é opcional. Para headline e analysis, secondaryTitle, imageCaption e kicker são opcionais e devem vir somente de fatos conhecidos. Cada personagem deve usar name, role, relationship, relationshipLevel de 0 a 100, summary, knownFacts e secretsKnown quando houver dados.`;
+news.type deve ser headline, social, analysis, gossip, comment ou fanclub. Cada notícia precisa de title, summary e source. Para social e gossip, inclua também handle, trend e sentiment; postCount é opcional. Para headline e analysis, secondaryTitle, imageCaption e kicker são opcionais e devem vir somente de fatos conhecidos. Cada personagem deve usar id existente quando disponível, name, category, role, relationship, relationshipLevel de 0 a 100, summary, knownFacts, unknownFacts e secretsKnown. Use details somente para mudanças comprovadas na ficha avançada.`;
 
 function clamp(value, minimum, maximum) {
   return Math.min(maximum, Math.max(minimum, value));
@@ -113,7 +117,7 @@ function compactUnknown(value, depth = 0) {
   if (Array.isArray(value)) return value.slice(-30).map((item) => compactUnknown(item, depth + 1)).filter((item) => item != null);
   if (typeof value !== "object") return null;
   const result = {};
-  Object.entries(value).slice(0, 40).forEach(([key, item]) => {
+  Object.entries(value).slice(0, 120).forEach(([key, item]) => {
     if (BLOCKED_KEYS.has(key)) return;
     const compacted = compactUnknown(item, depth + 1);
     if (compacted != null) result[key] = compacted;
@@ -176,7 +180,7 @@ function fitContext(context, maximumCharacters) {
   while (jsonLength(context) > maximum) {
     if (context.recentMessages.length > 6) context.recentMessages.shift();
     else if (context.memory.canonEvents.length > 8) context.memory.canonEvents.shift();
-    else if (context.memory.characters.length > 12) context.memory.characters.pop();
+    else if (context.memory.characters.length > 12) context.memory.characters.shift();
     else if (context.memory.recentNews.length > 3) context.memory.recentNews.shift();
     else if (context.memory.calendar.length > 6) context.memory.calendar.pop();
     else break;

@@ -19,6 +19,7 @@
   var DEFAULT_HUB_BACKGROUND = "kick-off";
   var REGISTRATION_QUESTIONS = Array.isArray(window.INYFFX_REGISTRATION_QUESTIONS) ? window.INYFFX_REGISTRATION_QUESTIONS : [];
   var REFERENCE_DATA = window.INYFFX_REFERENCE_DATA || {};
+  var CHARACTER_SCHEMA = window.INYFFX_CHARACTER_SCHEMA || { categories: [], commonSections: [], categorySections: {}, quickKeys: [] };
   var TOOL_TITLES = { match: "Prompt de Partida", wheel: "Roleta", dice: "Dados" };
   var WHEEL_COLORS = ["#f4f4f4", "#262626", "#b8b8b8", "#454545", "#dedede", "#616161", "#a0a0a0", "#353535", "#c9c9c9", "#515151", "#ededed", "#747474"];
   var FYX_NEWS_IMAGES = [
@@ -38,6 +39,10 @@
     registrationCustom: {},
     route: "home",
     newsFilter: "headline",
+    relationshipCategory: "friends",
+    editingCharacterId: "",
+    characterMode: "quick",
+    characterDraft: null,
     careerTab: "pay",
     dieSides: 20,
     lastDice: null,
@@ -91,6 +96,45 @@
     return { label: clean(entry), weight: 1 };
   }
 
+  function inferCharacterCategory(character) {
+    var source = normalizeKey([character && character.category, character && character.role, character && character.relationship].filter(Boolean).join(" "));
+    if (/namor|romance|esposa|marido|noiv|ficante|amor/.test(source)) return "romance";
+    if (/time|elenco|companheir|jogador|goleiro|zagueiro|lateral|atacante|meio-campista/.test(source)) return "team";
+    if (/profissional|empres|agente|tecnico|treinador|medico|fisioter|assessor|diretor|jornalista|advog|contador|preparador|psicolog|nutricionista|seguranca|motorista/.test(source)) return "professional";
+    return "friends";
+  }
+
+  function normalizeCharacter(character) {
+    var safe = character && typeof character === "object" ? character : {};
+    var details = safe.details && typeof safe.details === "object" && !Array.isArray(safe.details) ? Object.assign({}, safe.details) : {};
+    ["knownFacts", "unknownFacts", "immutableFacts", "currentState", "characterRules", "openInformation", "currentGoal", "speechStyle", "personalityTraits", "freeDescription"].forEach(function (key) {
+      if (details[key] == null && safe[key] != null) details[key] = safe[key];
+    });
+    if (!Array.isArray(details.knownFacts)) details.knownFacts = Array.isArray(safe.knownFacts) ? safe.knownFacts.slice() : splitList(details.knownFacts);
+    if (!Array.isArray(details.unknownFacts)) details.unknownFacts = splitList(details.unknownFacts);
+    if (!Array.isArray(details.importantEvents)) details.importantEvents = [];
+    safe.id = safe.id || uid("character");
+    safe.name = clean(safe.name || details.fullName) || "Personagem sem nome";
+    safe.category = ["friends", "romance", "professional", "team"].indexOf(safe.category) >= 0 ? safe.category : inferCharacterCategory(safe);
+    safe.role = clean(safe.role) || characterCategoryMeta(safe.category).singular;
+    safe.relationship = clean(safe.relationship) || "Não avaliada";
+    safe.relationshipLevel = Number.isFinite(Number(safe.relationshipLevel)) ? Math.max(0, Math.min(100, Math.round(Number(safe.relationshipLevel)))) : null;
+    safe.summary = clean(safe.summary || details.finalAISummary || details.freeDescription);
+    safe.knownFacts = details.knownFacts.slice();
+    safe.unknownFacts = details.unknownFacts.slice();
+    safe.secretsKnown = Array.isArray(safe.secretsKnown) ? safe.secretsKnown : [];
+    safe.avatarData = typeof safe.avatarData === "string" ? safe.avatarData : "";
+    safe.bannerData = typeof safe.bannerData === "string" ? safe.bannerData : "";
+    safe.details = details;
+    safe.createdAt = safe.createdAt || safe.lastUpdated || new Date().toISOString();
+    safe.lastUpdated = safe.lastUpdated || safe.createdAt;
+    return safe;
+  }
+
+  function characterCategoryMeta(key) {
+    return CHARACTER_SCHEMA.categories.find(function (category) { return category.key === key; }) || { key: "friends", label: "AMIGOS", singular: "Amigo(a)" };
+  }
+
   function normalizeCareer(career) {
     var safe = career && typeof career === "object" ? career : {};
     safe.id = safe.id || uid("career");
@@ -135,7 +179,7 @@
     safe.messages = normalizedActiveChat ? normalizedActiveChat.messages : [];
     safe.canonEvents = Array.isArray(safe.canonEvents) ? safe.canonEvents : [];
     safe.news = Array.isArray(safe.news) ? safe.news : [];
-    safe.characters = Array.isArray(safe.characters) ? safe.characters : [];
+    safe.characters = Array.isArray(safe.characters) ? safe.characters.map(normalizeCharacter) : [];
     safe.seasons = Array.isArray(safe.seasons) ? safe.seasons : [];
     safe.finance = Object.assign({ initialized: false, currency: "BRL", balance: 0, transactions: [], pockets: [] }, safe.finance || {});
     safe.finance.transactions = Array.isArray(safe.finance.transactions) ? safe.finance.transactions : [];
@@ -192,7 +236,10 @@
       "chatHistoryControl", "toggleChatHistory", "chatHistoryPanel", "chatHistoryList", "kickToolsMenu", "toggleToolsMenu",
       "matchPromptTemplate", "copyMatchTemplate", "insertMatchTemplate", "wheel", "wheelResult", "wheelEntries", "addWheelEntry",
       "spinWheel", "dicePicker", "diceResult", "rollDice",
-      "newsFilters", "newsContent", "relationshipSearch", "relationshipCount", "relationshipsContent",
+      "newsFilters", "newsContent", "relationshipSearch", "relationshipTabs", "relationshipsContent", "addCharacter",
+      "characterEditor", "characterForm", "characterEditorTitle", "closeCharacterEditor", "deleteCharacter", "saveCharacter",
+      "characterModeTabs", "characterFields", "characterAvatarInput", "characterBannerInput", "characterAvatarPreview",
+      "characterBannerPreview", "characterPreviewName", "characterPreviewCategory",
       "seasonSelect", "seasonsContent", "careerContent", "copyOffPitchTemplate", "insertOffPitchTemplate",
       "offPitchTemplate", "residenceContent", "spotifyNow", "spotifyDisc", "spotifyStatus", "spotifyTrack",
       "spotifyArtist", "settingsModal", "settingsForm", "backendStatusDot", "backendStatusText",
@@ -265,6 +312,18 @@
     el.rollDice.addEventListener("click", rollDice);
     el.newsFilters.addEventListener("click", changeNewsFilter);
     el.relationshipSearch.addEventListener("input", renderRelationships);
+    el.relationshipTabs.addEventListener("click", changeRelationshipCategory);
+    el.relationshipsContent.addEventListener("click", handleRelationshipCardClick);
+    el.addCharacter.addEventListener("click", function () { openCharacterEditor(); });
+    el.closeCharacterEditor.addEventListener("click", closeCharacterEditor);
+    el.characterModeTabs.addEventListener("click", changeCharacterMode);
+    el.characterFields.addEventListener("input", handleCharacterFieldInput);
+    el.characterFields.addEventListener("change", handleCharacterFieldChange);
+    el.characterFields.addEventListener("click", handleCharacterFieldClick);
+    el.characterAvatarInput.addEventListener("change", handleCharacterImageChange);
+    el.characterBannerInput.addEventListener("change", handleCharacterImageChange);
+    el.characterForm.addEventListener("submit", saveCharacterForm);
+    el.deleteCharacter.addEventListener("click", deleteCurrentCharacter);
     el.seasonSelect.addEventListener("change", renderSeasons);
     document.querySelectorAll("[data-career-tab]").forEach(function (button) {
       button.addEventListener("click", function () {
@@ -955,7 +1014,10 @@
     el.chatInput.value = "";
     autosizeComposer();
     renderAll();
-    if (matchAdded) toast("Partida registrada em SEASONS e repercussão factual criada em FYX NEWS.");
+    if (matchAdded) {
+      var importedSuffix = Number(userMessage.teamImportedCount) > 0 ? " " + plural(userMessage.teamImportedCount, "integrante do elenco foi atualizado", "integrantes do elenco foram atualizados") + " em TIME." : "";
+      toast("Partida registrada em SEASONS e repercussão factual criada em FYX NEWS." + importedSuffix);
+    }
     var apiBaseUrl = clean(state.settings.apiBaseUrl);
     if (!apiBaseUrl) {
       toast("Mensagem salva localmente. Conecte o backend para receber a resposta da IA.");
@@ -1052,7 +1114,7 @@
       }),
       memory: {
         canonEvents: career.canonEvents.slice(-18),
-        characters: career.characters.slice(-24),
+        characters: career.characters.slice(-24).map(characterContextRecord),
         recentNews: career.news.slice(-8),
         currentSeason: currentSeason ? Object.assign({}, currentSeason, { matches: (currentSeason.matches || []).slice(-10) }) : null,
         finance: Object.assign({}, career.finance, { transactions: career.finance.transactions.slice(-12), pockets: career.finance.pockets.slice(-12) }),
@@ -1069,10 +1131,28 @@
     };
   }
 
+  function characterContextRecord(character) {
+    var normalized = normalizeCharacter(character);
+    return {
+      id: normalized.id,
+      name: normalized.name,
+      category: normalized.category,
+      role: normalized.role,
+      relationship: normalized.relationship,
+      relationshipLevel: normalized.relationshipLevel,
+      summary: normalized.summary,
+      knownFacts: normalized.knownFacts,
+      unknownFacts: normalized.unknownFacts,
+      secretsKnown: normalized.secretsKnown,
+      details: normalized.details,
+      lastUpdated: normalized.lastUpdated
+    };
+  }
+
   function applyMemoryUpdates(career, updates) {
     if (!updates || typeof updates !== "object") return;
     upsertMany(career.news, updates.news);
-    upsertMany(career.characters, updates.characters);
+    upsertCharacters(career.characters, updates.characters);
     upsertMany(career.canonEvents, updates.canonEvents);
     upsertMany(career.calendar, updates.calendar);
     if (Array.isArray(updates.seasons)) {
@@ -1116,6 +1196,28 @@
       var index = target.findIndex(function (existing) { return existing.id === normalized.id; });
       if (index >= 0) target[index] = Object.assign({}, target[index], normalized);
       else target.push(normalized);
+    });
+  }
+
+  function upsertCharacters(target, incoming) {
+    if (!Array.isArray(target) || !Array.isArray(incoming)) return;
+    incoming.forEach(function (item) {
+      if (!item || typeof item !== "object" || !clean(item.name)) return;
+      var itemName = normalizeKey(item.name);
+      var index = target.findIndex(function (existing) {
+        return existing.id === item.id || normalizeKey(existing.name) === itemName;
+      });
+      if (index < 0) {
+        target.push(normalizeCharacter(item));
+        return;
+      }
+      var existing = normalizeCharacter(target[index]);
+      var merged = Object.assign({}, existing, item, { id: existing.id });
+      merged.details = Object.assign({}, existing.details, item.details || {});
+      ["knownFacts", "unknownFacts", "immutableFacts", "currentState", "characterRules", "openInformation", "currentGoal", "speechStyle", "personalityTraits", "freeDescription"].forEach(function (key) {
+        if (item[key] != null) merged.details[key] = item[key];
+      });
+      target[index] = normalizeCharacter(merged);
     });
   }
 
@@ -1246,6 +1348,7 @@
       if (gameMatch) { homeTeam = clean(gameMatch[1]); awayTeam = clean(gameMatch[2]); }
       if (scoreMatch) { homeScore = Number(scoreMatch[1]); awayScore = Number(scoreMatch[2]); }
     }
+    message.teamImportedCount = importTeamFromLineup(career, fields, message.content, homeTeam, awayTeam);
     if (!homeTeam || !awayTeam || homeScore === null || awayScore === null) {
       toast("O modelo foi enviado, mas mandante, visitante e placar precisam estar preenchidos para atualizar SEASONS.", "error");
       return false;
@@ -1291,6 +1394,62 @@
       certainty: "fact"
     });
     return true;
+  }
+
+  function importTeamFromLineup(career, fields, rawMessage, homeTeam, awayTeam) {
+    var formationKeys = Object.keys(fields || {}).filter(function (key) { return /formacao|escalacao|elenco/.test(normalizeKey(key)); });
+    var source = formationKeys.map(function (key) { return fields[key]; }).join("\n");
+    if (!source) source = String(rawMessage || "");
+    else source = "Formação: " + source;
+    var lineup = typeof CHARACTER_SCHEMA.parseLineup === "function" ? CHARACTER_SCHEMA.parseLineup(source) : [];
+    var protagonist = normalizeKey(career.profile.playerName || "");
+    var currentClub = clean(career.profile.currentClub || "");
+    var club = currentClub || clean(homeTeam || awayTeam || "");
+    var imported = 0;
+    lineup.forEach(function (lineupPlayer) {
+      var abbreviation = lineupPlayer.abbreviation;
+      var name = clean(lineupPlayer.name);
+      var normalizedName = normalizeKey(name);
+      if (!normalizedName || normalizedName === protagonist) return;
+      var existing = career.characters.find(function (character) { return normalizeKey(character.name) === normalizedName; });
+      var now = new Date().toISOString();
+      if (!existing) {
+        var details = {
+          teamClub: club,
+          position: lineupPlayer.position || abbreviation,
+          immutableFacts: [name + " integra o elenco de " + (club || "seu clube") + "."],
+          currentState: ["Companheiro de equipe atual do protagonista."],
+          knownFacts: [],
+          unknownFacts: [],
+          importantEvents: [],
+          finalAISummary: name + " é " + (lineupPlayer.position || "jogador") + " do elenco de " + (club || "seu clube") + ". A relação ainda será desenvolvida no roleplay."
+        };
+        career.characters.push(normalizeCharacter({
+          id: uid("character"),
+          name: name,
+          category: "team",
+          role: "Companheiro de time · " + (lineupPlayer.position || abbreviation),
+          relationship: "Não avaliada",
+          relationshipLevel: null,
+          summary: details.finalAISummary,
+          details: details,
+          source: "match-lineup",
+          createdAt: now,
+          lastUpdated: now
+        }));
+      } else {
+        existing = normalizeCharacter(existing);
+        existing.category = "team";
+        existing.details.teamClub = club || existing.details.teamClub || "";
+        existing.details.position = lineupPlayer.position || existing.details.position || abbreviation;
+        existing.role = clean(existing.details.squadRole) || "Companheiro de time · " + existing.details.position;
+        existing.lastUpdated = now;
+        var existingIndex = career.characters.findIndex(function (character) { return character.id === existing.id; });
+        if (existingIndex >= 0) career.characters[existingIndex] = existing;
+      }
+      imported += 1;
+    });
+    return imported;
   }
 
   function parseLooseFields(text) {
@@ -1528,30 +1687,468 @@
     var career = activeCareer();
     if (!career) return;
     var query = normalizeKey(el.relationshipSearch.value || "");
-    var characters = career.characters.filter(function (character) {
-      return !query || normalizeKey([character.name, character.role, character.relationship].join(" ")).indexOf(query) >= 0;
+    var category = ui.relationshipCategory || "friends";
+    el.relationshipTabs.querySelectorAll("[data-relationship-category]").forEach(function (button) {
+      var active = button.dataset.relationshipCategory === category;
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-selected", String(active));
     });
-    el.relationshipCount.textContent = career.characters.length + (career.characters.length === 1 ? " PERSONAGEM" : " PERSONAGENS");
+    var characters = career.characters.map(normalizeCharacter).filter(function (character) {
+      if (character.category !== category) return false;
+      var haystack = normalizeKey([character.name, character.role, character.relationship, character.summary, JSON.stringify(character.details || {})].join(" "));
+      return !query || haystack.indexOf(query) >= 0;
+    }).sort(function (a, b) { return a.name.localeCompare(b.name, "pt-BR"); });
     if (!characters.length) {
-      el.relationshipsContent.innerHTML = emptyMarkup(
-        "03",
-        query ? "Nenhum personagem encontrado." : "Nenhum personagem registrado.",
-        query ? "Tente outro nome ou função." : "Cada pessoa citada e confirmada no roleplay terá uma ficha própria, fatos conhecidos, segredos e o motivo do estado atual da relação."
-      );
+      var categoryMeta = characterCategoryMeta(category);
+      el.relationshipsContent.innerHTML = [
+        '<div class="relationships-empty"><div><span>', escapeHTML(categoryMeta.label), '</span><h2>', query ? "Nenhum personagem encontrado." : "Nenhum personagem nesta categoria.", '</h2><p>',
+        query ? "Tente outro nome ou limpe a busca." : (category === "team" ? "Preencha os nomes do elenco no modelo de partida do KICK OFF ou cadastre alguém manualmente." : "Crie uma ficha agora ou deixe a IA registrar esta pessoa gradualmente durante o roleplay."),
+        '</p><button class="relationship-add" type="button" data-empty-add-character><span aria-hidden="true">+</span> NOVO PERSONAGEM</button></div></div>'
+      ].join("");
       return;
     }
     el.relationshipsContent.innerHTML = '<div class="relationship-grid">' + characters.map(function (character) {
-      var initials = clean(character.name).split(/\s+/).slice(0, 2).map(function (part) { return part.charAt(0); }).join("").toUpperCase();
-      var relationshipLabel = character.relationship || "Não avaliada";
-      var level = Number.isFinite(Number(character.relationshipLevel)) ? Math.round(Number(character.relationshipLevel)) + "/100" : "SEM NÍVEL";
+      var initials = characterInitials(character.name);
+      var details = character.details || {};
+      var relationshipLabel = character.relationship || relationshipScaleLabel(details.relationshipCurrent);
+      var level = Number.isFinite(Number(details.relationshipCurrent)) ? Math.round(Number(details.relationshipCurrent)) + "/7" : "EM CONSTRUÇÃO";
       var summary = character.summary || "A ficha será aprofundada conforme este personagem viver cenas no KICK OFF.";
       return [
-        '<article class="relationship-card"><div class="relationship-card__top"><span class="relationship-avatar">', escapeHTML(initials || "?"), '</span><span class="relationship-level">', escapeHTML(level), "</span></div>",
-        "<h3>", escapeHTML(character.name || "Sem nome"), "</h3>",
-        "<span>", escapeHTML(character.role || "Personagem"), " · ", escapeHTML(relationshipLabel), "</span>",
-        "<p>", escapeHTML(summary), "</p></article>"
+        '<button class="relationship-card" type="button" data-edit-character="', escapeHTML(character.id), '" aria-label="Editar ficha de ', escapeHTML(character.name), '">',
+        '<div class="relationship-card__banner">', character.bannerData ? '<img src="' + escapeHTML(character.bannerData) + '" alt="" />' : "", '</div>',
+        '<div class="relationship-card__body"><span class="relationship-avatar">', character.avatarData ? '<img src="' + escapeHTML(character.avatarData) + '" alt="" />' : escapeHTML(initials || "?"), '</span>',
+        '<div class="relationship-card__meta"><h2>', escapeHTML(character.name || "Sem nome"), '</h2><span>', escapeHTML(level), '</span></div>',
+        '<span class="relationship-card__role">', escapeHTML(character.role || characterCategoryMeta(character.category).singular), ' · ', escapeHTML(relationshipLabel), '</span>',
+        '<p>', escapeHTML(summary), '</p><span class="relationship-card__edit">EDITAR FICHA →</span></div></button>'
       ].join("");
     }).join("") + "</div>";
+  }
+
+  function changeRelationshipCategory(event) {
+    var button = event.target.closest("[data-relationship-category]");
+    if (!button) return;
+    ui.relationshipCategory = button.dataset.relationshipCategory;
+    renderRelationships();
+  }
+
+  function handleRelationshipCardClick(event) {
+    var emptyButton = event.target.closest("[data-empty-add-character]");
+    if (emptyButton) return openCharacterEditor();
+    var card = event.target.closest("[data-edit-character]");
+    if (card) openCharacterEditor(card.dataset.editCharacter);
+  }
+
+  function characterInitials(name) {
+    return clean(name).split(/\s+/).slice(0, 2).map(function (part) { return part.charAt(0); }).join("").toUpperCase();
+  }
+
+  function blankCharacter(category) {
+    var character = normalizeCharacter({
+      id: uid("character"),
+      name: "",
+      category: category || ui.relationshipCategory || "friends",
+      details: {
+        approximateAge: "",
+        relationshipCurrent: 4,
+        personalityTraits: [],
+        speechStyle: [],
+        knownFacts: [],
+        unknownFacts: [],
+        importantEvents: []
+      },
+      createdAt: new Date().toISOString(),
+      lastUpdated: new Date().toISOString()
+    });
+    character.name = "";
+    return character;
+  }
+
+  function openCharacterEditor(characterId) {
+    var career = activeCareer();
+    if (!career) return;
+    var existing = characterId ? career.characters.find(function (character) { return character.id === characterId; }) : null;
+    ui.editingCharacterId = existing ? existing.id : "";
+    ui.characterMode = existing ? "complete" : "quick";
+    ui.characterDraft = existing ? JSON.parse(JSON.stringify(normalizeCharacter(existing))) : blankCharacter(ui.relationshipCategory);
+    el.characterEditor.hidden = false;
+    document.body.classList.add("is-character-editor-open");
+    renderCharacterEditor();
+    el.characterEditor.scrollTop = 0;
+    window.setTimeout(function () {
+      var nameInput = el.characterFields.querySelector('[data-character-core="name"]');
+      if (nameInput) nameInput.focus();
+    }, 70);
+  }
+
+  function closeCharacterEditor() {
+    el.characterEditor.hidden = true;
+    document.body.classList.remove("is-character-editor-open");
+    ui.editingCharacterId = "";
+    ui.characterDraft = null;
+  }
+
+  function changeCharacterMode(event) {
+    var button = event.target.closest("[data-character-mode]");
+    if (!button || !ui.characterDraft) return;
+    captureCharacterDraft();
+    ui.characterMode = button.dataset.characterMode === "complete" ? "complete" : "quick";
+    renderCharacterEditor();
+  }
+
+  function renderCharacterEditor() {
+    var draft = ui.characterDraft;
+    if (!draft) return;
+    var meta = characterCategoryMeta(draft.category);
+    el.characterEditorTitle.textContent = ui.editingCharacterId ? clean(draft.name || "EDITAR PERSONAGEM").toUpperCase() : "NOVO PERSONAGEM";
+    el.deleteCharacter.hidden = !ui.editingCharacterId;
+    el.characterModeTabs.querySelectorAll("[data-character-mode]").forEach(function (button) {
+      var active = button.dataset.characterMode === ui.characterMode;
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-selected", String(active));
+    });
+    var sections = CHARACTER_SCHEMA.commonSections.slice();
+    if (ui.characterMode === "complete") {
+      var specific = CHARACTER_SCHEMA.categorySections[draft.category] || [];
+      var insertion = sections.findIndex(function (section) { return section.id === "appearance"; });
+      sections.splice.apply(sections, [insertion < 0 ? sections.length : insertion, 0].concat(specific));
+    }
+    if (ui.characterMode === "quick") {
+      sections = sections.map(function (section) {
+        return Object.assign({}, section, { fields: section.fields.filter(function (field) { return field.quick; }) });
+      }).filter(function (section) { return section.fields.length; });
+    }
+    el.characterFields.innerHTML = renderCharacterIdentity(draft) + sections.map(function (section, index) {
+      return renderCharacterFormSection(section, draft, ui.characterMode === "quick" || index === 0);
+    }).join("");
+    updateCharacterMediaPreview();
+    el.characterPreviewCategory.textContent = meta.label;
+  }
+
+  function renderCharacterIdentity(draft) {
+    return [
+      '<details class="character-form-section" open><summary><div><strong>Identidade</strong><small>A relação define em qual categoria a ficha aparece.</small></div></summary>',
+      '<div class="character-section-fields">',
+      '<label class="character-field"><span>Qual é a relação deste personagem com o seu jogador? <em>*</em></span><select data-character-core="category">',
+      CHARACTER_SCHEMA.categories.map(function (category) { return '<option value="' + escapeHTML(category.key) + '"' + (category.key === draft.category ? " selected" : "") + '>' + escapeHTML(category.label) + "</option>"; }).join(""),
+      '</select></label>',
+      '<label class="character-field"><span>Qual é o nome completo do personagem? <em>*</em></span><input data-character-core="name" type="text" maxlength="160" value="', escapeHTML(draft.name === "Personagem sem nome" ? "" : draft.name), '" autocomplete="off" /></label>',
+      '</div></details>'
+    ].join("");
+  }
+
+  function renderCharacterFormSection(section, draft, open) {
+    var visible = section.fields.filter(function (field) { return characterFieldVisible(field, draft.details); });
+    if (!visible.length) return "";
+    return [
+      '<details class="character-form-section"', open ? " open" : "", '><summary><div><strong>', escapeHTML(section.title), '</strong><small>', escapeHTML(section.description || ""), '</small></div></summary><div class="character-section-fields">',
+      visible.map(function (field) { return renderCharacterField(field, draft); }).join(""),
+      '</div></details>'
+    ].join("");
+  }
+
+  function characterFieldVisible(field, details) {
+    if (!field.when) return true;
+    var value = details[field.when.key];
+    if (Object.prototype.hasOwnProperty.call(field.when, "equals")) return value === field.when.equals;
+    if (Array.isArray(field.when.oneOf)) return field.when.oneOf.indexOf(value) >= 0;
+    return true;
+  }
+
+  function characterFieldOptions(field) {
+    if (field.source && Array.isArray(REFERENCE_DATA[field.source])) return REFERENCE_DATA[field.source];
+    return Array.isArray(field.options) ? field.options : [];
+  }
+
+  function renderCharacterField(field, draft) {
+    var details = draft.details || {};
+    var value = details[field.key];
+    var required = field.required ? " <em>*</em>" : "";
+    var wide = field.type === "textarea" || field.type === "tags" || field.type === "multi" || field.type === "events" || field.type === "summary" || field.large;
+    var className = "character-field character-field--" + field.type + (wide ? " is-wide" : "");
+    var help = field.help ? '<small>' + escapeHTML(field.help) + "</small>" : "";
+    var placeholder = field.placeholder ? ' placeholder="' + escapeHTML(field.placeholder) + '"' : "";
+    if (field.type === "checkbox") {
+      return '<label class="character-field is-wide"><span class="character-check"><input type="checkbox" data-character-field="' + escapeHTML(field.key) + '"' + (value ? " checked" : "") + ' />' + escapeHTML(field.label) + "</span>" + help + "</label>";
+    }
+    if (field.type === "textarea" || field.type === "tags") {
+      var textValue = Array.isArray(value) ? value.join("\n") : clean(value || "");
+      return '<label class="' + className + '"><span>' + escapeHTML(field.label) + required + '</span><textarea class="' + (field.large ? "is-large" : "") + '" data-character-field="' + escapeHTML(field.key) + '"' + placeholder + '>' + escapeHTML(textValue) + "</textarea>" + help + "</label>";
+    }
+    if (field.type === "select") {
+      return '<label class="' + className + '"><span>' + escapeHTML(field.label) + required + '</span><select data-character-field="' + escapeHTML(field.key) + '"><option value="">Selecione</option>' + characterFieldOptions(field).map(function (option) { return '<option value="' + escapeHTML(option) + '"' + (option === value ? " selected" : "") + '>' + escapeHTML(option) + "</option>"; }).join("") + "</select>" + help + "</label>";
+    }
+    if (field.type === "combo") {
+      var listId = "character-options-" + field.key;
+      return '<label class="' + className + '"><span>' + escapeHTML(field.label) + required + '</span><input type="text" list="' + escapeHTML(listId) + '" data-character-field="' + escapeHTML(field.key) + '" value="' + escapeHTML(value || "") + '"' + placeholder + ' /><datalist id="' + escapeHTML(listId) + '">' + characterFieldOptions(field).map(function (option) { return '<option value="' + escapeHTML(option) + '"></option>'; }).join("") + "</datalist>" + help + "</label>";
+    }
+    if (field.type === "multi") {
+      var selected = Array.isArray(value) ? value : splitList(value);
+      var options = characterFieldOptions(field);
+      var custom = selected.filter(function (item) { return options.indexOf(item) < 0; });
+      return '<fieldset class="' + className + '"><legend>' + escapeHTML(field.label) + required + '</legend><div class="character-multi-options">' + options.map(function (option) { return '<label><input type="checkbox" data-character-field="' + escapeHTML(field.key) + '" value="' + escapeHTML(option) + '"' + (selected.indexOf(option) >= 0 ? " checked" : "") + ' />' + escapeHTML(option) + "</label>"; }).join("") + '</div>' + (field.custom ? '<input class="character-multi-custom" type="text" data-character-multi-custom="' + escapeHTML(field.key) + '" value="' + escapeHTML(custom.join(", ")) + '" placeholder="Outra característica ou opção" />' : "") + (field.max ? '<small>Escolha até ' + Number(field.max) + " opções.</small>" : "") + help + "</fieldset>";
+    }
+    if (field.type === "range") {
+      var rangeValue = Number.isFinite(Number(value)) ? Number(value) : Number(field.min || 0);
+      return '<label class="' + className + '"><span>' + escapeHTML(field.label) + required + '</span><div class="character-range-row"><input type="range" data-character-field="' + escapeHTML(field.key) + '" min="' + Number(field.min || 0) + '" max="' + Number(field.max || 100) + '" value="' + rangeValue + '" /><output data-character-range-output="' + escapeHTML(field.key) + '">' + escapeHTML(characterRangeLabel(field, rangeValue)) + "</output></div>" + help + "</label>";
+    }
+    if (field.type === "events") return renderCharacterEvents(field, value);
+    if (field.type === "summary") return '<div class="' + className + '"><span>' + escapeHTML(field.label) + '</span><div class="character-summary-box">' + escapeHTML(buildCharacterSummary(draft)) + "</div></div>";
+    var inputType = field.type === "date" || field.type === "number" ? field.type : "text";
+    var min = field.min != null ? ' min="' + Number(field.min) + '"' : "";
+    var max = field.max != null ? ' max="' + Number(field.max) + '"' : "";
+    return '<label class="' + className + '"><span>' + escapeHTML(field.label) + required + '</span><input type="' + inputType + '" data-character-field="' + escapeHTML(field.key) + '" value="' + escapeHTML(value == null ? "" : value) + '"' + min + max + placeholder + ' />' + help + "</label>";
+  }
+
+  function renderCharacterEvents(field, value) {
+    var events = Array.isArray(value) ? value : [];
+    return '<div class="character-field character-field--events is-wide"><span>' + escapeHTML(field.label) + '</span><div class="character-events">' + events.map(function (item, index) {
+      return '<div class="character-event-row" data-character-event-row="' + index + '"><input type="text" data-character-event-key="title" value="' + escapeHTML(item.title || "") + '" placeholder="Título do acontecimento" /><input type="text" data-character-event-key="date" value="' + escapeHTML(item.date || "") + '" placeholder="Data aproximada" /><select data-character-event-key="importance"><option value="">Importância</option>' + ["Baixa", "Média", "Alta", "Decisiva"].map(function (option) { return '<option value="' + option + '"' + (item.importance === option ? " selected" : "") + '>' + option + "</option>"; }).join("") + '</select><textarea data-character-event-key="description" placeholder="O que aconteceu e por que isso foi importante?">' + escapeHTML(item.description || "") + '</textarea><button class="character-event-remove" type="button" data-remove-character-event="' + index + '" aria-label="Remover acontecimento">×</button></div>';
+    }).join("") + '</div><button class="character-event-add" type="button" data-add-character-event>+ ADICIONAR ACONTECIMENTO</button></div>';
+  }
+
+  function characterRangeLabel(field, value) {
+    var index = Number(value) - Number(field.min || 0);
+    var label = Array.isArray(field.labels) ? field.labels[index] : "";
+    return String(value) + (label ? " — " + label : "");
+  }
+
+  function allCharacterFields() {
+    var sections = CHARACTER_SCHEMA.commonSections.slice();
+    Object.keys(CHARACTER_SCHEMA.categorySections || {}).forEach(function (category) {
+      sections = sections.concat(CHARACTER_SCHEMA.categorySections[category] || []);
+    });
+    var seen = {};
+    return sections.reduce(function (items, section) {
+      section.fields.forEach(function (field) { if (!seen[field.key]) { seen[field.key] = true; items.push(field); } });
+      return items;
+    }, []);
+  }
+
+  function characterFieldByKey(key) {
+    return allCharacterFields().find(function (field) { return field.key === key; }) || null;
+  }
+
+  function captureCharacterDraft() {
+    var draft = ui.characterDraft;
+    if (!draft || !el.characterFields) return draft;
+    var categoryInput = el.characterFields.querySelector('[data-character-core="category"]');
+    var nameInput = el.characterFields.querySelector('[data-character-core="name"]');
+    if (categoryInput) draft.category = categoryInput.value;
+    if (nameInput) draft.name = clean(nameInput.value);
+    var details = draft.details || {};
+    allCharacterFields().forEach(function (field) {
+      if (field.type === "summary" || field.type === "events") return;
+      var inputs = Array.from(el.characterFields.querySelectorAll('[data-character-field="' + field.key + '"]'));
+      if (!inputs.length) return;
+      if (field.type === "multi") {
+        var values = inputs.filter(function (input) { return input.checked; }).map(function (input) { return input.value; });
+        var customInput = el.characterFields.querySelector('[data-character-multi-custom="' + field.key + '"]');
+        if (customInput) values = values.concat(splitList(customInput.value));
+        details[field.key] = Array.from(new Set(values)).slice(0, Number(field.max || 99));
+      } else if (field.type === "checkbox") details[field.key] = Boolean(inputs[0].checked);
+      else if (field.type === "tags") details[field.key] = splitList(inputs[0].value).slice(0, Number(field.max || 99));
+      else if (field.type === "number" || field.type === "range") details[field.key] = inputs[0].value === "" ? "" : Number(inputs[0].value);
+      else details[field.key] = clean(inputs[0].value);
+    });
+    var eventRows = Array.from(el.characterFields.querySelectorAll("[data-character-event-row]"));
+    if (eventRows.length || el.characterFields.querySelector("[data-add-character-event]")) {
+      details.importantEvents = eventRows.map(function (row) {
+        var record = {};
+        row.querySelectorAll("[data-character-event-key]").forEach(function (input) { record[input.dataset.characterEventKey] = clean(input.value); });
+        return record;
+      }).filter(function (record) { return record.title || record.description || record.date; });
+    }
+    draft.details = details;
+    ui.characterDraft = draft;
+    return draft;
+  }
+
+  function handleCharacterFieldInput(event) {
+    if (!ui.characterDraft) return;
+    if (event.target.matches('[data-character-core="name"]')) {
+      ui.characterDraft.name = event.target.value;
+      el.characterPreviewName.textContent = clean(event.target.value || "NOVO PERSONAGEM").toUpperCase();
+      el.characterEditorTitle.textContent = ui.editingCharacterId ? clean(event.target.value || "EDITAR PERSONAGEM").toUpperCase() : "NOVO PERSONAGEM";
+    }
+    if (event.target.matches('input[type="range"][data-character-field]')) {
+      var field = characterFieldByKey(event.target.dataset.characterField);
+      var output = el.characterFields.querySelector('[data-character-range-output="' + event.target.dataset.characterField + '"]');
+      if (field && output) output.textContent = characterRangeLabel(field, Number(event.target.value));
+    }
+  }
+
+  function handleCharacterFieldChange(event) {
+    if (!ui.characterDraft) return;
+    if (event.target.matches('[data-character-core="category"]')) {
+      captureCharacterDraft();
+      ui.relationshipCategory = ui.characterDraft.category;
+      renderCharacterEditor();
+      return;
+    }
+    var key = event.target.dataset.characterField;
+    var field = key ? characterFieldByKey(key) : null;
+    if (field && field.type === "multi" && event.target.checked && field.max) {
+      var checked = el.characterFields.querySelectorAll('[data-character-field="' + key + '"]:checked');
+      if (checked.length > Number(field.max)) {
+        event.target.checked = false;
+        toast("Escolha até " + field.max + " opções neste campo.", "error");
+        return;
+      }
+    }
+    if (key === "birthDate" && event.target.value) {
+      captureCharacterDraft();
+      ui.characterDraft.details.approximateAge = calculateAge(event.target.value);
+      renderCharacterEditor();
+      return;
+    }
+    if (key === "noExactBirthDate" && event.target.checked) {
+      captureCharacterDraft();
+      ui.characterDraft.details.birthDate = "";
+      renderCharacterEditor();
+      return;
+    }
+    if (key && allCharacterFields().some(function (candidate) { return candidate.when && candidate.when.key === key; })) {
+      captureCharacterDraft();
+      renderCharacterEditor();
+    }
+  }
+
+  function handleCharacterFieldClick(event) {
+    var add = event.target.closest("[data-add-character-event]");
+    var remove = event.target.closest("[data-remove-character-event]");
+    if (!add && !remove) return;
+    captureCharacterDraft();
+    var events = ui.characterDraft.details.importantEvents || [];
+    if (add) events.push({ title: "", date: "", importance: "", description: "" });
+    else events.splice(Number(remove.dataset.removeCharacterEvent), 1);
+    ui.characterDraft.details.importantEvents = events;
+    renderCharacterEditor();
+  }
+
+  async function handleCharacterImageChange(event) {
+    var file = event.target.files && event.target.files[0];
+    if (!file || !ui.characterDraft) return;
+    try {
+      if (event.target === el.characterAvatarInput) ui.characterDraft.avatarData = await optimizeImage(file, 640, 640, 0.78);
+      else ui.characterDraft.bannerData = await optimizeImage(file, 1440, 630, 0.76);
+      updateCharacterMediaPreview();
+      toast(event.target === el.characterAvatarInput ? "Foto de perfil adicionada." : "Banner adicionado.");
+    } catch (error) {
+      toast("Não foi possível processar essa imagem.", "error");
+    }
+    event.target.value = "";
+  }
+
+  function updateCharacterMediaPreview() {
+    var draft = ui.characterDraft;
+    if (!draft) return;
+    var initials = characterInitials(draft.name) || "?";
+    el.characterPreviewName.textContent = clean(draft.name || "NOVO PERSONAGEM").toUpperCase();
+    el.characterPreviewCategory.textContent = characterCategoryMeta(draft.category).label;
+    el.characterAvatarPreview.innerHTML = draft.avatarData ? '<img src="' + escapeHTML(draft.avatarData) + '" alt="" />' : "<span>" + escapeHTML(initials) + "</span>";
+    el.characterBannerPreview.style.backgroundImage = draft.bannerData ? 'url("' + draft.bannerData + '")' : "";
+    el.characterBannerPreview.innerHTML = draft.bannerData ? "" : "<span>IMAGEM DE BANNER</span>";
+  }
+
+  function saveCharacterForm(event) {
+    event.preventDefault();
+    var career = activeCareer();
+    var draft = captureCharacterDraft();
+    if (!career || !draft) return;
+    if (!clean(draft.name)) {
+      toast("Informe o nome completo do personagem.", "error");
+      var nameInput = el.characterFields.querySelector('[data-character-core="name"]');
+      if (nameInput) nameInput.focus();
+      return;
+    }
+    if (!ui.editingCharacterId) {
+      var missing = CHARACTER_SCHEMA.quickKeys.filter(function (key) { return !characterValueFilled(draft.details[key]); });
+      if (missing.length) {
+        var firstField = characterFieldByKey(missing[0]);
+        toast("Complete o cadastro rápido: " + (firstField ? firstField.label : missing[0]) + ".", "error");
+        return;
+      }
+    }
+    var now = new Date().toISOString();
+    if (draft.details.birthDate && !draft.details.noExactBirthDate) draft.details.approximateAge = calculateAge(draft.details.birthDate);
+    draft.details.finalAISummary = buildCharacterSummary(draft);
+    draft.summary = buildCharacterCardSummary(draft);
+    draft.relationship = relationshipScaleLabel(draft.details.relationshipCurrent);
+    draft.relationshipLevel = Number.isFinite(Number(draft.details.relationshipCurrent)) ? Math.round((Number(draft.details.relationshipCurrent) - 1) / 6 * 100) : null;
+    draft.role = characterRoleFromDetails(draft);
+    draft.knownFacts = Array.isArray(draft.details.knownFacts) ? draft.details.knownFacts.slice() : [];
+    draft.unknownFacts = Array.isArray(draft.details.unknownFacts) ? draft.details.unknownFacts.slice() : [];
+    draft.lastUpdated = now;
+    draft.userEditedAt = now;
+    var index = career.characters.findIndex(function (character) { return character.id === ui.editingCharacterId; });
+    if (index >= 0) {
+      draft.id = career.characters[index].id;
+      draft.createdAt = career.characters[index].createdAt || draft.createdAt;
+      career.characters[index] = normalizeCharacter(draft);
+    } else career.characters.push(normalizeCharacter(draft));
+    career.updatedAt = now;
+    ui.relationshipCategory = draft.category;
+    saveState();
+    closeCharacterEditor();
+    renderRelationships();
+    toast(index >= 0 ? "Ficha atualizada e enviada para a memória da IA." : "Personagem criado. Você pode abrir a ficha e adicionar mais detalhes quando quiser.");
+  }
+
+  function deleteCurrentCharacter() {
+    var career = activeCareer();
+    if (!career || !ui.editingCharacterId) return;
+    var character = career.characters.find(function (item) { return item.id === ui.editingCharacterId; });
+    if (!character || !window.confirm("Excluir a ficha de " + character.name + "? Esta ação não pode ser desfeita.")) return;
+    career.characters = career.characters.filter(function (item) { return item.id !== ui.editingCharacterId; });
+    career.updatedAt = new Date().toISOString();
+    saveState();
+    closeCharacterEditor();
+    renderRelationships();
+    toast("A ficha de " + character.name + " foi excluída e não pode ser recuperada.");
+  }
+
+  function characterValueFilled(value) {
+    if (Array.isArray(value)) return value.length > 0;
+    if (typeof value === "number") return Number.isFinite(value);
+    return Boolean(clean(value));
+  }
+
+  function relationshipScaleLabel(value) {
+    return ["", "Péssima", "Ruim", "Distante", "Neutra", "Boa", "Muito próxima", "Extremamente próxima"][Number(value)] || "Não avaliada";
+  }
+
+  function characterRoleFromDetails(character) {
+    var details = character.details || {};
+    if (character.category === "romance") return clean(details.romanceStatus) || "Relacionamento";
+    if (character.category === "professional") return clean(details.professionRole) || "Profissional";
+    if (character.category === "team") return clean(details.squadRole) || (details.position ? "Companheiro de time · " + details.position : "Companheiro de time");
+    return clean(details.friendshipType) || "Amigo(a)";
+  }
+
+  function buildCharacterSummary(character) {
+    var details = character.details || {};
+    var lines = [
+      "Nome: " + (clean(character.name) || "Não informado"),
+      "Categoria: " + characterCategoryMeta(character.category).label,
+      "Relação atual: " + relationshipScaleLabel(details.relationshipCurrent),
+      "Personalidade: " + (Array.isArray(details.personalityTraits) && details.personalityTraits.length ? details.personalityTraits.join(", ") : clean(details.personalityDescription) || "Em aberto"),
+      "Forma de falar: " + (Array.isArray(details.speechStyle) && details.speechStyle.length ? details.speechStyle.join(", ") : "Em aberto"),
+      "Objetivo atual: " + (clean(details.currentGoal) || "Em aberto"),
+      "O que sabe: " + (Array.isArray(details.knownFacts) && details.knownFacts.length ? details.knownFacts.join("; ") : "Nada definido"),
+      "O que não sabe: " + (Array.isArray(details.unknownFacts) && details.unknownFacts.length ? details.unknownFacts.join("; ") : "Nada definido"),
+      "Regras fixas: " + (clean(details.characterRules) || "Nenhuma regra adicional"),
+      "Informações em aberto: " + (clean(details.openInformation) || "Nenhuma")
+    ];
+    if (clean(details.freeDescription)) lines.push("Descrição livre: " + clean(details.freeDescription));
+    return lines.join("\n");
+  }
+
+  function buildCharacterCardSummary(character) {
+    var details = character.details || {};
+    return clean(details.freeDescription)
+      || clean(details.personalityDescription)
+      || [clean(details.viewOfPlayer), clean(details.currentGoal)].filter(Boolean).join(" ")
+      || "A ficha será aprofundada conforme este personagem viver cenas no KICK OFF.";
   }
 
   function populateSeasonSelect() {
@@ -2448,6 +3045,13 @@
 
   function splitCommaList(value) {
     return clean(value).split(",").map(clean).filter(Boolean);
+  }
+
+  function splitList(value) {
+    if (Array.isArray(value)) return value.map(clean).filter(Boolean);
+    var source = String(value == null ? "" : value);
+    var parts = /\r?\n/.test(source) ? source.split(/\r?\n/) : source.split(",");
+    return parts.map(clean).filter(Boolean);
   }
 
   function numberOrZero(value) {

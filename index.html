@@ -8,7 +8,7 @@
     <title>InyffX</title>
     <link rel="icon" href="mod/pics/favicon.ico" type="image/x-icon" />
     <link rel="manifest" href="manifest.webmanifest" />
-    <link rel="stylesheet" href="styles.css?v=20260831-fyxfit" />
+    <link rel="stylesheet" href="styles.css?v=20260831-relationships" />
   </head>
   <body>
     <div class="toast-region" id="toastRegion" aria-live="polite" aria-atomic="true"></div>
@@ -129,7 +129,23 @@ Mande a Narração, manchetes, comentários, análises, repercussão em redes so
           </nav>
           <div class="fyx-news-surface" id="newsContent"></div>
         </section>
-        <section class="page" id="page-relationships" data-page="relationships" aria-labelledby="relationshipsTitle"><div class="page-topline"><div><span class="section-number">PERSONAGENS</span><h1 id="relationshipsTitle">RELATIONSHIPS</h1></div><span class="read-only-tag">MEMÓRIA INDIVIDUAL</span></div><div class="relationship-toolbar"><label class="search-field"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="m15.5 15.5 4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.5" /></svg><input id="relationshipSearch" type="search" placeholder="Buscar personagem" /></label><span id="relationshipCount">0 PERSONAGENS</span></div><div class="content-surface" id="relationshipsContent"></div></section>
+        <section class="page page--relationships" id="page-relationships" data-page="relationships" aria-labelledby="relationshipsTitle">
+          <h1 class="sr-only" id="relationshipsTitle">Relationships</h1>
+          <div class="relationships-controls">
+            <label class="search-field relationships-search">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="m15.5 15.5 4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.5" /></svg>
+              <input id="relationshipSearch" type="search" placeholder="Buscar personagem" aria-label="Buscar personagem" autocomplete="off" />
+            </label>
+            <button class="relationship-add" id="addCharacter" type="button"><span aria-hidden="true">+</span> NOVO PERSONAGEM</button>
+          </div>
+          <nav class="relationship-tabs" id="relationshipTabs" aria-label="Categorias de personagens" role="tablist">
+            <button class="is-active" type="button" role="tab" aria-selected="true" data-relationship-category="friends">AMIGOS</button>
+            <button type="button" role="tab" aria-selected="false" data-relationship-category="romance">NAMORADAS</button>
+            <button type="button" role="tab" aria-selected="false" data-relationship-category="professional">PROFISSIONAL</button>
+            <button type="button" role="tab" aria-selected="false" data-relationship-category="team">TIME</button>
+          </nav>
+          <div class="relationships-surface" id="relationshipsContent"></div>
+        </section>
         <section class="page" id="page-seasons" data-page="seasons" aria-labelledby="seasonsTitle"><div class="page-topline"><div><span class="section-number">FUTEBOL</span><h1 id="seasonsTitle">SEASONS</h1></div><label class="season-selector"><span>TEMPORADA</span><select id="seasonSelect"></select></label></div><div class="content-surface" id="seasonsContent"></div></section>
         <section class="page" id="page-player-career" data-page="player-career" aria-labelledby="careerTitle"><div class="page-topline"><div><span class="section-number">CARREIRA</span><h1 id="careerTitle">PLAYER CAREER</h1></div><span class="read-only-tag">CONSULTA</span></div><div class="career-tabs" role="tablist" aria-label="Áreas da carreira"><button class="is-active" type="button" data-career-tab="pay">FYX PAY</button><button type="button" data-career-tab="hall">HALL</button><button type="button" data-career-tab="calendar">CALENDÁRIO</button></div><div class="content-surface" id="careerContent"></div></section>
         <section class="page" id="page-off-the-pitch" data-page="off-the-pitch" aria-labelledby="offPitchTitle"><div class="page-topline"><div><span class="section-number">VIDA</span><h1 id="offPitchTitle">OFF THE PITCH</h1></div><span class="optional-tag">MODO OPCIONAL</span></div><div class="offpitch-layout"><article class="offpitch-intro"><span class="giant-index">SIMS / 04</span><h2>Use o The Sims 4 como simulador da vida fora de campo.</h2><p>O site não controla o The Sims. Você joga, registra o que realmente aconteceu e envia o relatório ao KICK OFF. A IA classifica o conteúdo e incorpora ao cânone apenas o que for válido.</p><ol><li><span>01</span>Receba ou escolha objetivos para o dia.</li><li><span>02</span>Jogue a rotina no The Sims 4.</li><li><span>03</span>Envie fatos e screenshots no KICK OFF.</li><li><span>04</span>Confirme o que passa a ser cânone.</li></ol></article><div class="offpitch-side"><section class="template-box"><div class="template-box__heading"><div><span class="section-number">MODELO COPIÁVEL</span><h3>RELATÓRIO OFF THE PITCH</h3></div><button class="secondary-action" id="copyOffPitchTemplate" type="button">COPIAR</button></div><pre id="offPitchTemplate">Objetivos iniciais:
@@ -138,11 +154,43 @@ Eventos importantes:</pre><div class="template-actions"><button class="text-acti
       </main>
 
       <section class="profile-page" id="profilePage" hidden aria-labelledby="profilePageTitle"><button class="page-back profile-page__back" id="closeProfile" type="button" aria-label="Voltar para a página inicial">←</button><header class="profile-hero"><div class="profile-hero__avatar"><img id="profileAvatarImage" alt="Foto de perfil" hidden /><span id="profileAvatarFallback">IX</span></div><div><span>MEU UNIVERSO</span><h1 id="profilePageTitle">PERFIL</h1><p id="profileIdentityLine"></p></div></header><div class="profile-page__content" id="profileContent"></div><button class="profile-logout" id="logoutCareer" type="button">SAIR DA CARREIRA</button></section>
+
+      <section class="character-editor" id="characterEditor" hidden aria-labelledby="characterEditorTitle">
+        <form class="character-editor__shell" id="characterForm">
+          <header class="character-editor__header">
+            <button class="character-editor__back" id="closeCharacterEditor" type="button" aria-label="Voltar para Relationships">←</button>
+            <div><span>MEMÓRIA INDIVIDUAL</span><h1 id="characterEditorTitle">NOVO PERSONAGEM</h1></div>
+            <div class="character-editor__actions"><button class="character-delete" id="deleteCharacter" type="button" hidden>EXCLUIR</button><button class="character-save" id="saveCharacter" type="submit">SALVAR PERSONAGEM <span>→</span></button></div>
+          </header>
+          <div class="character-editor__body">
+            <section class="character-media">
+              <div class="character-banner" id="characterBannerPreview"><span>IMAGEM DE BANNER</span></div>
+              <div class="character-media__identity">
+                <div class="character-avatar character-avatar--editor" id="characterAvatarPreview"><span>?</span></div>
+                <div><strong id="characterPreviewName">NOVO PERSONAGEM</strong><span id="characterPreviewCategory">AMIGOS</span></div>
+              </div>
+              <div class="character-media__buttons">
+                <label><input id="characterAvatarInput" type="file" accept="image/*" />FOTO DE PERFIL</label>
+                <label><input id="characterBannerInput" type="file" accept="image/*" />FOTO DE BANNER</label>
+              </div>
+            </section>
+            <section class="character-form-area">
+              <div class="character-mode" id="characterModeTabs" role="tablist" aria-label="Profundidade do cadastro">
+                <button class="is-active" type="button" data-character-mode="quick" role="tab" aria-selected="true"><strong>CADASTRO RÁPIDO</strong><span>12 informações essenciais</span></button>
+                <button type="button" data-character-mode="complete" role="tab" aria-selected="false"><strong>CADASTRO COMPLETO</strong><span>Ficha inteira e regras da IA</span></button>
+              </div>
+              <div class="character-fields" id="characterFields"></div>
+            </section>
+          </div>
+          <footer class="character-editor__footer"><p>As alterações passam a integrar a memória objetiva da carreira e estarão disponíveis para a IA no próximo turno.</p><button class="character-save" type="submit">SALVAR PERSONAGEM <span>→</span></button></footer>
+        </form>
+      </section>
     </div>
 
     <dialog class="modal settings-modal" id="settingsModal"><form method="dialog" class="modal__shell" id="settingsForm"><header class="modal__header"><div><span class="section-number">SISTEMA</span><h2>CONFIGURAÇÕES</h2></div><button class="icon-button" type="submit" value="cancel" aria-label="Fechar">×</button></header><div class="modal__content"><section class="settings-section"><div class="settings-section__heading"><span>01</span><div><h3>IA INYFFX</h3><p>A inteligência do site é conectada pelo próprio InyffX. Nenhum jogador precisa informar chave ou endpoint.</p></div></div><div class="integration-card"><div><span>PROVEDOR DO MVP</span><strong>Cloudflare Workers AI</strong></div><div><span>MODELO</span><strong>Qwen3 30B A3B</strong></div></div><div class="connection-row"><i id="backendStatusDot"></i><span id="backendStatusText">Verificando integração</span></div></section><section class="settings-section"><div class="settings-section__heading"><span>02</span><div><h3>SPOTIFY</h3><p>Mostra no disco a faixa reproduzida na sua conta.</p></div></div><label class="field"><span>SPOTIFY CLIENT ID</span><input id="spotifyClientId" type="text" autocomplete="off" placeholder="Client ID público do Spotify" /></label><label class="field"><span>REDIRECT URI</span><div class="copy-field"><input id="spotifyRedirectUri" type="text" readonly /><button id="copyRedirectUri" type="button">COPIAR</button></div></label><div class="button-row"><button class="secondary-action" id="disconnectSpotify" type="button">DESCONECTAR</button><button class="primary-action" id="connectSpotify" type="button">CONECTAR SPOTIFY <span>→</span></button></div></section></div><footer class="modal__footer"><button class="secondary-action" type="submit" value="cancel">CANCELAR</button><button class="primary-action" id="saveSettings" type="button">SALVAR CONFIGURAÇÕES <span>→</span></button></footer></form></dialog>
     <script src="assets/config.js"></script>
     <script src="registration-data.js"></script>
-    <script src="app.js?v=20260831-fyxfit"></script>
+    <script src="character-data.js?v=20260831-relationships"></script>
+    <script src="app.js?v=20260831-relationships"></script>
   </body>
 </html>

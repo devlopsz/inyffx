@@ -5,6 +5,8 @@ const ROLEPLAY_PATH = "/v1/roleplay/message";
 const MAX_BODY_CHARACTERS = 100000;
 const MAX_REPLY_CHARACTERS = 16000;
 const NEWS_TYPES = new Set(["headline", "social", "analysis", "gossip", "comment", "fanclub"]);
+const CHARACTER_CATEGORIES = new Set(["friends", "romance", "professional", "team"]);
+const BLOCKED_OBJECT_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 
 class ApiError extends Error {
   constructor(status, code, message) {
@@ -156,6 +158,22 @@ function cleanList(value, limit, mapper) {
   return value.slice(0, limit).map(mapper).filter(Boolean);
 }
 
+function cleanCharacterDetails(value, depth = 0) {
+  if (value == null || depth > 4) return null;
+  if (typeof value === "string") return cleanText(value, 2400);
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value === "boolean") return value;
+  if (Array.isArray(value)) return value.slice(0, 40).map((item) => cleanCharacterDetails(item, depth + 1)).filter((item) => item != null);
+  if (typeof value !== "object") return null;
+  const result = {};
+  Object.entries(value).slice(0, 120).forEach(([key, item]) => {
+    if (BLOCKED_OBJECT_KEYS.has(key) || !/^[a-zA-Z][a-zA-Z0-9_-]{0,79}$/.test(key)) return;
+    const cleaned = cleanCharacterDetails(item, depth + 1);
+    if (cleaned != null) result[key] = cleaned;
+  });
+  return result;
+}
+
 function cleanCanon(item, index, careerId, now) {
   if (!item || typeof item !== "object") return null;
   const title = cleanText(item.title || item.name, 240);
@@ -209,17 +227,35 @@ function cleanCharacter(item, index, careerId, now) {
   if (!name) return null;
   const numericLevel = Number(item.relationshipLevel);
   const identity = `${careerId}|character|${name.toLocaleLowerCase("pt-BR")}`;
-  return {
+  const requestedCategory = cleanText(item.category, 30).toLowerCase();
+  const categorySource = comparableText(`${item.role || ""} ${item.relationship || ""}`);
+  const category = CHARACTER_CATEGORIES.has(requestedCategory) ? requestedCategory
+    : /namor|romance|esposa|marido|noiv|ficante|amor/.test(categorySource) ? "romance"
+      : /companheir|elenco|jogador|goleiro|zagueiro|lateral|atacante|meio-campista/.test(categorySource) ? "team"
+        : /empres|agente|tecnico|treinador|medico|fisioter|assessor|diretor|jornalista|advog|contador|preparador|psicolog|nutricionista/.test(categorySource) ? "professional"
+          : "friends";
+  const result = {
     id: itemId(item, "character", identity),
     name,
-    role: cleanText(item.role || "Personagem", 140),
-    relationship: cleanText(item.relationship || "Não avaliada", 120),
-    relationshipLevel: Number.isFinite(numericLevel) ? Math.min(100, Math.max(0, Math.round(numericLevel))) : null,
-    summary: cleanText(item.summary, 1800),
-    knownFacts: stringArray(item.knownFacts, 30, 500),
-    secretsKnown: stringArray(item.secretsKnown, 20, 500),
+    category,
     lastUpdated: cleanText(item.lastUpdated || now, 40)
   };
+  if (cleanText(item.displayName, 160)) result.displayName = cleanText(item.displayName, 160);
+  if (cleanText(item.role, 140)) result.role = cleanText(item.role, 140);
+  if (cleanText(item.relationship, 120)) result.relationship = cleanText(item.relationship, 120);
+  if (Number.isFinite(numericLevel)) result.relationshipLevel = Math.min(100, Math.max(0, Math.round(numericLevel)));
+  if (cleanText(item.summary, 1800)) result.summary = cleanText(item.summary, 1800);
+  if (Object.prototype.hasOwnProperty.call(item, "knownFacts")) result.knownFacts = stringArray(item.knownFacts, 30, 500);
+  if (Object.prototype.hasOwnProperty.call(item, "unknownFacts")) result.unknownFacts = stringArray(item.unknownFacts, 30, 500);
+  if (Object.prototype.hasOwnProperty.call(item, "secretsKnown")) result.secretsKnown = stringArray(item.secretsKnown, 20, 500);
+  if (Object.prototype.hasOwnProperty.call(item, "immutableFacts")) result.immutableFacts = stringArray(item.immutableFacts, 30, 500);
+  if (Object.prototype.hasOwnProperty.call(item, "currentState")) result.currentState = stringArray(item.currentState, 30, 500);
+  if (cleanText(item.characterRules, 2400)) result.characterRules = cleanText(item.characterRules, 2400);
+  if (cleanText(item.openInformation, 2400)) result.openInformation = cleanText(item.openInformation, 2400);
+  if (cleanText(item.currentGoal, 1200)) result.currentGoal = cleanText(item.currentGoal, 1200);
+  const details = cleanCharacterDetails(item.details);
+  if (details && Object.keys(details).length) result.details = details;
+  return result;
 }
 
 function comparableText(value) {

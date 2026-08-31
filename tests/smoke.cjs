@@ -28,6 +28,7 @@ const requiredFiles = [
   "styles.css",
   "app.js",
   "registration-data.js",
+  "character-data.js",
   "assets/config.js",
   "mod/pics/logo-inyffx.png",
   "mod/pics/login/inyffx-background-initial.png",
@@ -58,7 +59,8 @@ const manifest = JSON.parse(read("manifest.webmanifest"));
 const css = read("styles.css");
 const app = read("app.js");
 const registrationSource = read("registration-data.js");
-const combinedSource = [html, css, app, registrationSource].join("\n");
+const characterSource = read("character-data.js");
+const combinedSource = [html, css, app, registrationSource, characterSource].join("\n");
 
 check(!/Cruyff Sans Mono|font-family\s*:\s*[^;]*\bmono\b/i.test(combinedSource), "nenhuma fonte mono é usada na interface");
 check(/font-family:\s*"Cruyff Sans"/i.test(css), "Cruyff Sans é a família visual da interface");
@@ -133,6 +135,35 @@ check(app.includes("Seguir mesmo assim"), "fallback Seguir mesmo assim foi imple
 check(app.includes("calculateAge"), "idade é calculada automaticamente pela data de nascimento");
 check(app.includes("is-ultra-dense") && css.includes("overflow: hidden"), "cadastro adapta alternativas densas sem rolagem da página");
 
+vm.runInNewContext(characterSource, sandbox, { filename: "character-data.js" });
+const characterSchema = sandbox.window.INYFFX_CHARACTER_SCHEMA;
+const characterFields = [
+  ...characterSchema.commonSections.flatMap((section) => section.fields),
+  ...Object.values(characterSchema.categorySections).flatMap((sections) => sections.flatMap((section) => section.fields))
+];
+const characterFieldKeys = new Set(characterFields.map((field) => field.key));
+check(characterSchema.categories.map((category) => category.key).join(",") === "friends,romance,professional,team", "Relationships separa AMIGOS, NAMORADAS, PROFISSIONAL e TIME");
+[
+  "displayName", "birthDate", "noExactBirthDate", "approximateAge", "nationality", "birthCountry", "birthCity", "currentCountry", "currentCity", "gender", "languages",
+  "personalityTraits", "personalityDescription", "greatestQuality", "greatestFlaw", "likes", "dislikes", "angerTriggers", "happinessTriggers", "insecurities", "fears", "angerReaction", "affectionStyle", "concernReaction",
+  "speechStyle", "accentSlang", "samplePhrases", "frequentExpressions", "speechNoGos", "howMet", "knownDuration", "relationshipCurrent", "viewOfPlayer", "admiresPlayer", "botheredByPlayer", "wantsPlayerToChange", "neverDoToPlayer",
+  "knowledgeLevel", "knownFacts", "unknownFacts", "hasSecret", "secret", "secretKnownBy", "playerSecretKnowledge", "currentGoal", "longTermGoal", "independentLife", "importantPeople", "characterLinks",
+  "importantEvents", "bestRelationshipMoment", "worstRelationshipMoment", "hasUnresolvedConflict", "unresolvedConflictDescription", "appearanceDescription", "height", "build", "hair", "eyes", "clothingStyle", "tattoos", "accessories", "distinctiveFeatures",
+  "immutableFacts", "currentState", "secrets", "individualKnowledge", "characterRules", "openInformation", "freeDescription", "finalAISummary",
+  "friendshipType", "initiatesContact", "supportMethods", "confrontationFrequency", "competitionLevel", "envyLevel", "envyDescription", "successReaction", "badPhaseReaction", "traditions", "conversationTopics",
+  "romanceStatus", "firstInterest", "romanceBeginning", "loveExpression", "jealousyLevel", "jealousyTriggers", "jealousyBehavior", "reassuranceNeed", "ignoredReaction", "footballScheduleReaction", "fameHandling", "publicRelationship", "publicBehavior", "privateBehavior", "relationshipConflicts", "breakupCause", "unforgivable", "futureTogether", "futureDescription", "relationshipThreat", "relationshipSecret",
+  "professionRole", "organization", "careerFunction", "workingDuration", "professionalBeginning", "trustLevel", "decisionAuthority", "adviceTopics", "ignoredAdviceReaction", "playerVsResults", "honestyFrequency", "conflictOfInterest", "conflictOfInterestDescription", "confidentialProfessionalInfo", "professionalGoal",
+  "teamClub", "position", "shirtNumber", "squadRole", "onFieldRelationship", "offFieldRelationship", "competePosition", "spotlightCompetition", "mediaAttentionReaction", "poorPerformanceReaction", "decisivePerformanceReaction", "onFieldCombination", "decisiveTrust", "lockerRoomBehavior", "closeTeammates", "teamConflicts", "seasonGoal"
+].forEach((key) => check(characterFieldKeys.has(key), `campo completo de personagem: ${key}`));
+check(characterSchema.quickKeys.length === 10 && characterSchema.quickKeys.every((key) => characterFieldKeys.has(key)), "cadastro rápido cobre as 12 informações essenciais com nome e categoria");
+check(html.includes('id="relationshipTabs"') && (html.match(/data-relationship-category=/g) || []).length === 4, "Relationships usa quatro abas no padrão visual do FYX NEWS");
+check(html.includes('id="characterAvatarInput"') && html.includes('id="characterBannerInput"') && html.includes('id="characterModeTabs"'), "fichas permitem avatar, banner e cadastro rápido ou completo");
+check(app.includes("importTeamFromLineup") && app.includes('category: "team"') && characterSource.includes("positionLabels"), "elenco do modelo de partida alimenta automaticamente a categoria TIME");
+const parsedLineup = characterSchema.parseLineup("Formação: GO - Robert Sánchez\nLD - Reece James, ZC - Colwill, ZC - Fofana, LE - Cucurella\nVOL - Moisés Caicedo\nMAT - Palmer\nPD - Pedro Neto, CA - Caio QA, PE - Estêvão");
+check(parsedLineup.length === 10 && parsedLineup[0].position === "Goleiro" && parsedLineup.at(-1).name === "Estêvão", "parser do elenco reconhece nomes, posições e linhas agrupadas do modelo de partida");
+check(app.includes("characterContextRecord") && !/characterContextRecord[\s\S]{0,900}avatarData/.test(app), "memória envia a ficha para a IA sem incluir imagens em base64");
+check(css.includes(".relationship-tabs") && css.includes(".character-editor") && css.includes(".character-card") === false, "Relationships possui layout clean próprio e editor em tela inteira");
+
 check(html.includes('id="chatHistoryList"') && app.includes("createCareerChat") && app.includes("selectChatFromHistory"), "KICK OFF mantém conversas separadas por Novo Dia");
 check(html.includes('id="kickToolsMenu"') && html.includes('data-open-tool="match"') && html.includes('data-open-tool="wheel"') && html.includes('data-open-tool="dice"'), "menu de ferramentas do KICK OFF contém os três cards");
 check(app.includes("data-expand-message") && app.includes("isLongUserMessage"), "mensagens longas do usuário oferecem Mostrar Mais");
@@ -165,11 +196,13 @@ check(Boolean(offPitchTemplate) && normalizePrompt(offPitchTemplate) === offPitc
 check(html.includes("prompt%20the%20sims%20EXEMPLO.txt") && html.includes("BAIXAR EXEMPLO"), "exemplo OFF THE PITCH está disponível para download");
 
 check(html.indexOf('src="registration-data.js"') < html.indexOf('src="app.js'), "dados do cadastro carregam antes da aplicação");
+check(html.indexOf('src="character-data.js"') < html.indexOf('src="app.js'), "ficha completa de personagens carrega antes da aplicação");
 check(app.includes("Cloudflare Workers AI") && html.includes("Qwen3 30B A3B"), "integração gratuita de IA continua configurada");
 
 new Function(app);
 new Function(registrationSource);
-check(true, "JavaScript principal e cadastro compilam sem erro de sintaxe");
+new Function(characterSource);
+check(true, "JavaScript principal, cadastro e fichas de personagem compilam sem erro de sintaxe");
 
 const report = {
   passed: checks.length - failures.length,
