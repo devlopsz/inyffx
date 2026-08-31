@@ -5250,20 +5250,20 @@ input[type="range"] {
 
 .fyx-paper__masthead {
   display: grid;
-  min-height: clamp(180px, 21vh, 250px);
-  grid-template-columns: minmax(0, 57%) minmax(0, 43%);
+  min-height: clamp(150px, 18vh, 205px);
+  grid-template-columns: minmax(0, 59%) minmax(0, 41%);
   border-bottom: 2px solid #fff;
 }
 
 .fyx-paper__brand {
   display: grid;
-  padding: 18px 42px 9px;
+  padding: 16px 34px 10px;
   place-content: center;
   overflow: hidden;
   color: #000;
   background: #fff;
   font-family: "FYX News 701", Georgia, serif !important;
-  font-size: clamp(5.8rem, 10.2vw, 12rem);
+  font-size: clamp(4.6rem, 8vw, 8.5rem);
   font-weight: 400;
   letter-spacing: -0.055em;
   line-height: 0.8;
@@ -5272,29 +5272,31 @@ input[type="range"] {
 
 .fyx-paper__lead {
   display: flex;
-  padding: clamp(24px, 3vw, 50px);
+  padding: clamp(22px, 2.5vw, 40px);
   align-items: center;
 }
 
 .fyx-paper__lead h2 {
-  max-width: 15ch;
+  max-width: 19ch;
   margin: 0;
   color: #fff;
-  font-size: clamp(2.3rem, 4.3vw, 5.3rem);
+  font-size: clamp(2rem, 3.25vw, 3.9rem);
   font-weight: 900;
   letter-spacing: -0.045em;
   line-height: 0.98;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
 }
 
 .fyx-paper__kicker {
-  min-height: 44px;
+  min-height: 40px;
   margin-left: 0;
   padding: 8px 24px;
   overflow: hidden;
   border-bottom: 2px solid #fff;
   color: #050505;
   background: #fff;
-  font-size: clamp(0.78rem, 1.15vw, 1.15rem);
+  font-size: clamp(0.72rem, 0.9vw, 0.98rem);
   font-weight: 700;
   line-height: 1.2;
   text-align: center;
@@ -5305,37 +5307,39 @@ input[type="range"] {
 
 .fyx-paper__story {
   display: grid;
-  min-height: clamp(420px, 55vh, 660px);
+  min-height: clamp(360px, 48vh, 540px);
   grid-template-columns: minmax(0, 48%) minmax(0, 52%);
 }
 
 .fyx-paper__copy {
-  padding: clamp(30px, 4.5vw, 72px) clamp(28px, 3vw, 56px);
+  padding: clamp(28px, 3.4vw, 50px) clamp(26px, 2.7vw, 44px);
 }
 
 .fyx-paper__copy i {
   display: block;
   width: 96%;
-  height: 11px;
-  margin-bottom: clamp(30px, 4vh, 52px);
+  height: 8px;
+  margin-bottom: clamp(24px, 3vh, 36px);
   background: #565656;
 }
 
 .fyx-paper__copy h3 {
   margin: 0 0 22px;
   color: #fff;
-  font-size: clamp(2rem, 3.35vw, 4.35rem);
+  font-size: clamp(1.8rem, 2.4vw, 3rem);
   font-weight: 900;
   letter-spacing: -0.035em;
   line-height: 1;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
 }
 
 .fyx-paper__copy p {
-  max-width: 42ch;
+  max-width: 48ch;
   margin: 0;
   color: #fff;
-  font-size: clamp(1rem, 1.42vw, 1.65rem);
-  line-height: 1.38;
+  font-size: clamp(0.95rem, 1.08vw, 1.22rem);
+  line-height: 1.42;
 }
 
 .fyx-paper__visual {
@@ -5349,7 +5353,7 @@ input[type="range"] {
 .fyx-paper__visual img {
   width: 100%;
   height: 100%;
-  min-height: 330px;
+  min-height: 280px;
   object-fit: cover;
   filter: saturate(0.94) contrast(1.03);
 }
@@ -5357,24 +5361,24 @@ input[type="range"] {
 .fyx-paper__visual figcaption {
   padding: 12px 0 0;
   color: #fff;
-  font-size: clamp(0.92rem, 1.2vw, 1.35rem);
+  font-size: clamp(0.82rem, 0.98vw, 1.05rem);
   line-height: 1.25;
 }
 
 .fyx-social-board {
   display: grid;
   width: 100%;
-  min-height: min(67vh, 710px);
-  margin-top: clamp(70px, 10vh, 140px);
-  grid-template-columns: minmax(250px, 22%) minmax(380px, 39%) minmax(420px, 39%);
+  min-height: clamp(560px, 65vh, 650px);
+  margin-top: clamp(42px, 6vh, 72px);
+  grid-template-columns: minmax(240px, 25%) minmax(0, 37%) minmax(0, 38%);
   color: #050505;
 }
 
 .fyx-social-phone {
   position: relative;
-  z-index: 2;
+  z-index: 1;
   min-width: 0;
-  margin: -18px -13% -18px 0;
+  margin: -14px 22px -14px 0;
   pointer-events: none;
 }
 
@@ -5418,7 +5422,7 @@ input[type="range"] {
 .fyx-social-post {
   display: flex;
   min-height: 0;
-  padding: clamp(18px, 2vw, 34px);
+  padding: clamp(18px, 1.65vw, 28px);
   flex-direction: column;
   justify-content: center;
   border-bottom: 1px solid #c7c7c7;
@@ -5430,15 +5434,16 @@ input[type="range"] {
 
 .fyx-social-post strong {
   margin-bottom: 7px;
-  font-size: clamp(0.95rem, 1.2vw, 1.35rem);
+  font-size: clamp(0.92rem, 1vw, 1.12rem);
   font-weight: 700;
 }
 
 .fyx-social-post p {
   margin: 0;
   color: #080808;
-  font-size: clamp(0.88rem, 1.05vw, 1.18rem);
-  line-height: 1.32;
+  font-size: clamp(0.84rem, 0.92vw, 1rem);
+  line-height: 1.38;
+  overflow-wrap: anywhere;
 }
 
 .fyx-social-post.is-empty {
@@ -5461,7 +5466,7 @@ input[type="range"] {
 
 .fyx-today,
 .fyx-trending {
-  padding: clamp(22px, 2.2vw, 38px);
+  padding: clamp(20px, 1.8vw, 30px);
 }
 
 .fyx-today {
@@ -5472,7 +5477,7 @@ input[type="range"] {
 .fyx-today h2 {
   margin: 0 0 20px;
   color: #050505;
-  font-size: clamp(1.9rem, 2.6vw, 3.2rem);
+  font-size: clamp(1.7rem, 2.1vw, 2.6rem);
   font-weight: 900;
   letter-spacing: -0.035em;
 }
@@ -5483,18 +5488,20 @@ input[type="range"] {
 }
 
 .fyx-today article strong {
+  display: -webkit-box;
   overflow: hidden;
   color: #050505;
-  font-size: clamp(1rem, 1.35vw, 1.55rem);
+  font-size: clamp(0.94rem, 1.08vw, 1.2rem);
   font-weight: 900;
   line-height: 1.05;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .fyx-today article span {
   color: #111;
-  font-size: clamp(0.82rem, 1vw, 1.08rem);
+  font-size: clamp(0.76rem, 0.88vw, 0.94rem);
 }
 
 .fyx-trending {
@@ -5512,17 +5519,19 @@ input[type="range"] {
 
 .fyx-trend span {
   color: #171717;
-  font-size: clamp(0.78rem, 0.94vw, 1rem);
+  font-size: clamp(0.74rem, 0.82vw, 0.9rem);
 }
 
 .fyx-trend strong {
+  display: -webkit-box;
   overflow: hidden;
   color: #050505;
-  font-size: clamp(1rem, 1.35vw, 1.55rem);
+  font-size: clamp(0.94rem, 1.08vw, 1.2rem);
   font-weight: 900;
   line-height: 1.08;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .fyx-social-empty-copy {
@@ -5533,11 +5542,20 @@ input[type="range"] {
   .fyx-news-surface { width: min(88vw, 1100px); }
   .fyx-paper__brand { font-size: clamp(4.6rem, 9.5vw, 7.4rem); }
   .fyx-social-board {
-    grid-template-columns: 22% 39% 39%;
-    min-height: 610px;
+    grid-template-columns: minmax(220px, 25%) minmax(0, 37%) minmax(0, 38%);
+    min-height: 570px;
   }
   .fyx-social-post { padding: 18px; }
   .fyx-today, .fyx-trending { padding: 22px; }
+}
+
+@media (max-width: 1040px) and (min-width: 821px) {
+  .fyx-social-board {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .fyx-social-phone {
+    display: none;
+  }
 }
 
 @media (max-width: 820px) {

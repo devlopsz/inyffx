@@ -54,6 +54,7 @@ const requiredFiles = [
 requiredFiles.forEach((file) => check(fileExists(file), `arquivo obrigatório presente: ${file}`));
 
 const html = read("index.html");
+const manifest = JSON.parse(read("manifest.webmanifest"));
 const css = read("styles.css");
 const app = read("app.js");
 const registrationSource = read("registration-data.js");
@@ -151,6 +152,9 @@ check(html.includes('data-news-filter="headline">FYX NEWS') && html.includes('da
 check(app.includes("renderNewsFrontPage") && app.includes("renderNewsSocialBoard") && app.includes("FYX_NEWS_IMAGES"), "FYX NEWS possui capa editorial, redes sociais, fofocas e imagens alternadas");
 check(css.includes('"FYX News 701"') && css.includes('"FYX Source Sans"') && css.includes(".fyx-paper__masthead") && css.includes(".fyx-social-board"), "fontes e estruturas visuais exclusivas do FYX NEWS foram aplicadas");
 check(/\.fyx-paper,\s*\.fyx-paper \*\s*\{[^}]*FYX Source Sans/s.test(css) && !/\.page--fyx-news,\s*\.page--fyx-news \*\s*\{[^}]*FYX Source Sans/s.test(css), "fontes editoriais ficam restritas ao jornal; redes sociais e fofocas mantêm Cruyff Sans");
+check(html.includes("<title>InyffX</title>") && manifest.name === "InyffX" && manifest.short_name === "InyffX", "nome público do site é somente InyffX");
+check(/\.fyx-social-phone\s*\{[^}]*margin:\s*-14px 22px -14px 0;/s.test(css) && !css.includes("margin: -18px -13% -18px 0"), "celular possui espaço próprio e não invade o feed social");
+check(css.includes("@media (max-width: 1040px) and (min-width: 821px)") && /\.fyx-today article strong\s*\{[^}]*-webkit-line-clamp:\s*2;/s.test(css), "painel social preserva largura e leitura em telas menores");
 
 const matchPrompt = normalizePrompt(read("mod/prompt partidas para o usuario copiar.txt"));
 const matchTemplate = (html.match(/<pre id="matchPromptTemplate">([\s\S]*?)<\/pre>/) || [])[1];
