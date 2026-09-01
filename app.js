@@ -170,7 +170,7 @@
     var type = normalizeKey(safe.type || safe.category || "personal");
     if (/partida|jogo|match/.test(type)) type = "match";
     else if (/treino|training/.test(type)) type = "training";
-    else if (/encontro|romance|date/.test(type)) type = "romantic";
+    else if (/encontro|romance|romantic|date/.test(type)) type = "romantic";
     else if (/festa|party|amigos/.test(type)) type = "party";
     else if (/descanso|folga|rest|casa/.test(type)) type = "rest";
     else if (/anivers/.test(type)) type = "birthday";
@@ -185,6 +185,11 @@
     safe.status = safe.status === "completed" ? "completed" : "scheduled";
     safe.homeTeam = clean(safe.homeTeam);
     safe.awayTeam = clean(safe.awayTeam);
+    safe.uniform = clean(safe.uniform || safe.kit);
+    var uniformKey = normalizeKey(safe.uniform);
+    if (/\b(third|terceir[oa]?|3o|3a)\b/.test(uniformKey)) safe.uniform = "Third";
+    else if (/\b(away|fora|visitante)\b/.test(uniformKey)) safe.uniform = "Away";
+    else if (/\b(home|casa|mandante)\b/.test(uniformKey)) safe.uniform = "Home";
     safe.competition = clean(safe.competition);
     safe.phase = clean(safe.phase);
     safe.stadium = clean(safe.stadium || safe.location);
@@ -429,7 +434,12 @@
     el.calendarEventForm.addEventListener("submit", saveCalendarEvent);
     el.calendarEventFields.addEventListener("change", function (event) {
       if (event.target.name !== "type") return;
+      var previousType = ui.calendarDraft && ui.calendarDraft.type;
+      var previousTitle = ui.calendarDraft && clean(ui.calendarDraft.title);
       captureCalendarDraft();
+      if (ui.calendarDraft && CALENDAR_EVENT_META[previousType] && previousTitle === CALENDAR_EVENT_META[previousType].title) {
+        ui.calendarDraft.title = CALENDAR_EVENT_META[ui.calendarDraft.type].title;
+      }
       renderCalendarEventFields();
     });
     el.closeCalendarEvent.addEventListener("click", closeCalendarEventDialog);
@@ -1737,6 +1747,7 @@
       "Competição:",
       "Fase:",
       "Estádio:",
+      "Uniforme:",
       "Mandante:",
       "Visitante:",
       "Gols do mandante:",
@@ -1799,6 +1810,7 @@
       competition: validField(fieldValue(fields, "competicao")),
       phase: validField(fieldValue(fields, "fase")),
       stadium: validField(fieldValue(fields, "estadio")),
+      uniform: validField(fieldValue(fields, "uniforme")),
       formation: validField(fieldValue(fields, "formacao")),
       homeTeam: homeTeam,
       awayTeam: awayTeam,
@@ -2976,6 +2988,7 @@
       phase: match.phase,
       stadium: match.stadium,
       location: match.stadium,
+      uniform: match.uniform,
       season: match.season,
       minutes: match.minutes,
       goals: match.goals,
@@ -3095,9 +3108,70 @@
     return clean(event.opponent || event.awayTeam || event.homeTeam || "");
   }
 
+  function calendarMatchHasScore(event) {
+    return event.homeScore !== "" && event.homeScore != null && Number.isFinite(Number(event.homeScore)) &&
+      event.awayScore !== "" && event.awayScore != null && Number.isFinite(Number(event.awayScore));
+  }
+
+  function calendarMatchCompleted(event) {
+    return event.status === "completed" || calendarMatchHasScore(event);
+  }
+
+  function calendarMatchOutcome(career, event) {
+    if (!calendarMatchHasScore(event)) return "";
+    var club = clean(career.profile.currentClub);
+    var playerHome = calendarTeamsMatch(club, event.homeTeam);
+    var playerAway = calendarTeamsMatch(club, event.awayTeam);
+    if (!playerHome && !playerAway) {
+      var opponent = matchOpponent(career, event);
+      playerAway = calendarTeamsMatch(opponent, event.homeTeam);
+      playerHome = !playerAway;
+    }
+    var playerScore = Number(playerHome ? event.homeScore : event.awayScore);
+    var opponentScore = Number(playerHome ? event.awayScore : event.homeScore);
+    return playerScore > opponentScore ? "Ganhou" : playerScore < opponentScore ? "Perdeu" : "Empate";
+  }
+
+  function calendarMatchKit(career, event) {
+    var source = normalizeKey(event.uniform || event.kit);
+    if (/\b(third|terceir[oa]?|3o|3a)\b/.test(source)) return "Third";
+    if (/\b(away|fora|visitante)\b/.test(source)) return "Away";
+    if (/\b(home|casa|mandante)\b/.test(source)) return "Home";
+    var club = clean(career.profile.currentClub);
+    if (calendarTeamsMatch(club, event.homeTeam)) return "Home";
+    if (calendarTeamsMatch(club, event.awayTeam)) return "Away";
+    return "Home";
+  }
+
   function calendarEventIcon(career, event) {
-    var source = event.type === "match" ? calendarShieldForTeam(matchOpponent(career, event)) : CALENDAR_EVENT_META[event.type].icon;
-    return '<img src="' + escapeHTML(source) + '" alt="" aria-hidden="true" />';
+    if (event.type === "match") {
+      return '<img src="' + escapeHTML(calendarShieldForTeam(matchOpponent(career, event))) + '" alt="" aria-hidden="true" />';
+    }
+    return '<span class="calendar-event-glyph calendar-event-glyph--' + escapeHTML(event.type) + '" aria-hidden="true"></span>';
+  }
+
+  function calendarLegendIcon(type) {
+    return '<span class="calendar-event-glyph calendar-event-glyph--' + escapeHTML(type) + '" aria-hidden="true"></span>';
+  }
+
+  function calendarDayEventMarkup(career, event) {
+    var editable = event.synthetic ? "" : ' data-calendar-event="' + escapeHTML(event.id) + '"';
+    var complete = event.type === "match" && calendarMatchCompleted(event);
+    var stateClass = event.type === "match" ? (complete ? " is-completed" : " is-scheduled") : "";
+    var details = "";
+    if (event.type === "match" && complete) {
+      details = '<span class="calendar-match-copy"><strong>' + escapeHTML(String(event.homeScore) + "–" + String(event.awayScore)) + '</strong><small>' + escapeHTML(calendarMatchOutcome(career, event)) + "</small></span>";
+    } else if (event.type === "match") {
+      details = '<span class="calendar-match-copy calendar-match-copy--kit"><small>' + escapeHTML(calendarMatchKit(career, event)) + "</small></span>";
+    }
+    return '<button class="calendar-day-event calendar-day-event--' + escapeHTML(event.type) + stateClass + '" type="button"' + editable + ' title="' + escapeHTML(event.title) + '" aria-label="' + escapeHTML(event.title) + '">' + details + calendarEventIcon(career, event) + "</button>";
+  }
+
+  function calendarSelectedEventMeta(career, event) {
+    var details = [event.time, event.location || event.competition];
+    if (event.type === "match") details.push(calendarMatchCompleted(event) ? calendarMatchOutcome(career, event) : calendarMatchKit(career, event));
+    details.push(CALENDAR_EVENT_META[event.type].label);
+    return details.filter(Boolean).join(" · ");
   }
 
   function calendarMonthTitle(date) {
@@ -3124,22 +3198,23 @@
       var outside = dayDate.getMonth() !== month;
       var current = dateKey === baseDate;
       var selected = dateKey === ui.calendarSelectedDate;
-      var eventButtons = dayEvents.slice(0, 4).map(function (event) {
-        var score = event.type === "match" && event.status === "completed" ? '<small>' + escapeHTML(String(event.homeScore) + "–" + String(event.awayScore)) + "</small>" : "";
-        var editable = event.synthetic ? "" : ' data-calendar-event="' + escapeHTML(event.id) + '"';
-        return '<button class="calendar-day-event calendar-day-event--' + escapeHTML(event.type) + '" type="button"' + editable + ' title="' + escapeHTML(event.title) + '" aria-label="' + escapeHTML(event.title) + '">' + score + calendarEventIcon(career, event) + "</button>";
-      }).join("");
-      if (dayEvents.length > 4) eventButtons += '<span class="calendar-day-more">+' + (dayEvents.length - 4) + "</span>";
-      cells.push('<div class="calendar-day' + (outside ? " is-outside" : "") + (current ? " is-current" : "") + (selected ? " is-selected" : "") + '" data-calendar-date="' + dateKey + '" role="button" tabindex="0"><span class="calendar-day__number">' + dayDate.getDate() + '</span><div class="calendar-day__events">' + eventButtons + "</div></div>");
+      var primaryEvent = dayEvents.find(function (event) { return event.type === "match"; }) || dayEvents[0];
+      var eventButtons = primaryEvent ? calendarDayEventMarkup(career, primaryEvent) : "";
+      if (dayEvents.length > 1) eventButtons += '<span class="calendar-day-more">+' + (dayEvents.length - 1) + "</span>";
+      var eventClass = primaryEvent ? " has-event calendar-day--" + primaryEvent.type : "";
+      if (primaryEvent && primaryEvent.type === "match") eventClass += calendarMatchCompleted(primaryEvent) ? " has-completed-match" : " has-scheduled-match";
+      cells.push('<div class="calendar-day' + eventClass + (outside ? " is-outside" : "") + (current ? " is-current" : "") + (selected ? " is-selected" : "") + '" data-calendar-date="' + dateKey + '" role="button" tabindex="0"><span class="calendar-day__number">' + dayDate.getDate() + '</span><div class="calendar-day__events">' + eventButtons + "</div></div>");
     }
     var selectedEvents = events.filter(function (event) { return event.date === ui.calendarSelectedDate; });
     el.careerContent.innerHTML = [
       '<div class="career-calendar"><header class="calendar-toolbar"><div class="calendar-toolbar__actions"><button type="button" data-calendar-today>IR PARA A DATA ATUAL</button><button class="calendar-add-event" type="button" data-calendar-new><span>+</span> NOVO EVENTO</button></div></header>',
       '<div class="calendar-workspace"><section class="calendar-board"><header class="calendar-month-nav"><button type="button" data-calendar-nav="-1" aria-label="Mês anterior">←</button><div><strong>', escapeHTML(calendarMonthTitle(monthDate)), '</strong><span>', year, '</span></div><button type="button" data-calendar-nav="1" aria-label="Próximo mês">→</button></header><div class="calendar-weekdays"><span>DOM</span><span>SEG</span><span>TER</span><span>QUA</span><span>QUI</span><span>SEX</span><span>SÁB</span></div><div class="calendar-grid" style="--calendar-weeks:', cellCount / 7, '">', cells.join(""), '</div></section>',
       '<aside class="calendar-rail"><div class="calendar-rail__date"><strong>', year, '</strong><span>', escapeHTML(calendarMonthTitle(monthDate)), '</span></div><div class="calendar-selected">',
-      selectedEvents.length ? selectedEvents.map(function (event) { return '<button class="calendar-selected-event calendar-selected-event--' + escapeHTML(event.type) + '" type="button"' + (event.synthetic ? "" : ' data-calendar-event="' + escapeHTML(event.id) + '"') + '><span><strong>' + escapeHTML(event.title) + '</strong><small>' + escapeHTML([event.time, event.location || event.competition, CALENDAR_EVENT_META[event.type].label].filter(Boolean).join(" · ")) + '</small></span><i>' + calendarEventIcon(career, event) + "</i></button>"; }).join("") : '<p>Nenhum compromisso neste dia.<br />Clique no calendário ou em “Novo evento” para adicionar.</p>',
-      '</div><div class="calendar-legend">', Object.keys(CALENDAR_EVENT_META).filter(function (type) { return type !== "personal"; }).map(function (type) { var meta = CALENDAR_EVENT_META[type]; return '<span><i>' + (type === "match" ? '<img src="mod/calendar/shield-time-not-found.svg" alt="" />' : '<img src="' + meta.icon + '" alt="" />') + '</i>' + escapeHTML(meta.label) + "</span>"; }).join(""), "</div></aside></div></div>"
+      selectedEvents.length ? selectedEvents.map(function (event) { return '<button class="calendar-selected-event calendar-selected-event--' + escapeHTML(event.type) + '" type="button"' + (event.synthetic ? "" : ' data-calendar-event="' + escapeHTML(event.id) + '"') + '><span><strong>' + escapeHTML(event.title) + '</strong><small>' + escapeHTML(calendarSelectedEventMeta(career, event)) + '</small></span><i>' + calendarEventIcon(career, event) + "</i></button>"; }).join("") : '<p>Nenhum compromisso neste dia.<br />Clique no calendário ou em “Novo evento” para adicionar.</p>',
+      '</div><div class="calendar-legend">', Object.keys(CALENDAR_EVENT_META).filter(function (type) { return type !== "personal"; }).map(function (type) { var meta = CALENDAR_EVENT_META[type]; return '<span class="calendar-legend__' + escapeHTML(type) + '"><i>' + calendarLegendIcon(type) + '</i>' + escapeHTML(meta.label) + "</span>"; }).join(""), "</div></aside></div></div>"
     ].join("");
+    var careerPage = el.careerContent.closest(".page--player-career");
+    if (careerPage) careerPage.scrollTop = 0;
   }
 
   function shiftCalendarMonth(amount) {
@@ -3161,7 +3236,14 @@
       return renderCareerPage();
     }
     var eventButton = event.target.closest("[data-calendar-event]");
-    if (eventButton) return openCalendarEventDialog("", eventButton.dataset.calendarEvent);
+    if (eventButton) {
+      var eventDay = eventButton.closest("[data-calendar-date]");
+      if (eventDay) {
+        ui.calendarSelectedDate = eventDay.dataset.calendarDate;
+        return renderCareerPage();
+      }
+      return openCalendarEventDialog("", eventButton.dataset.calendarEvent);
+    }
     if (event.target.closest("[data-calendar-new]")) return openCalendarEventDialog(ui.calendarSelectedDate);
     var day = event.target.closest("[data-calendar-date]");
     if (day) {
@@ -3213,7 +3295,8 @@
       common.push('<label><span>STATUS</span><select name="status"><option value="scheduled"' + (draft.status !== "completed" ? " selected" : "") + '>PARTIDA FUTURA</option><option value="completed"' + (draft.status === "completed" ? " selected" : "") + '>PARTIDA FINALIZADA</option></select></label>',
         '<label><span>MANDANTE</span><input name="homeTeam" type="text" required value="' + escapeHTML(draft.homeTeam || "") + '" /></label><label><span>VISITANTE</span><input name="awayTeam" type="text" required value="' + escapeHTML(draft.awayTeam || "") + '" /></label>',
         '<label><span>COMPETIÇÃO</span><input name="competition" type="text" value="' + escapeHTML(draft.competition || "") + '" /></label><label><span>FASE</span><input name="phase" type="text" value="' + escapeHTML(draft.phase || "") + '" /></label>',
-        '<label><span>ESTÁDIO</span><input name="stadium" type="text" value="' + escapeHTML(draft.stadium || "") + '" /></label><label><span>TEMPORADA</span><input name="season" type="text" value="' + escapeHTML(draft.season || activeCareer().profile.season || "") + '" /></label>',
+        '<label><span>ESTÁDIO</span><input name="stadium" type="text" value="' + escapeHTML(draft.stadium || "") + '" /></label><label><span>UNIFORME</span><select name="uniform"><option value=""' + (!draft.uniform ? " selected" : "") + '>AUTOMÁTICO</option><option value="Home"' + (draft.uniform === "Home" ? " selected" : "") + '>HOME</option><option value="Away"' + (draft.uniform === "Away" ? " selected" : "") + '>AWAY</option><option value="Third"' + (draft.uniform === "Third" ? " selected" : "") + '>THIRD</option></select></label>',
+        '<label><span>TEMPORADA</span><input name="season" type="text" value="' + escapeHTML(draft.season || activeCareer().profile.season || "") + '" /></label>',
         '<label><span>GOLS DO MANDANTE</span><input name="homeScore" type="number" min="0" value="' + escapeHTML(draft.homeScore == null ? "" : draft.homeScore) + '" /></label><label><span>GOLS DO VISITANTE</span><input name="awayScore" type="number" min="0" value="' + escapeHTML(draft.awayScore == null ? "" : draft.awayScore) + '" /></label>',
         '<label><span>MINUTOS JOGADOS</span><input name="minutes" type="number" min="0" max="130" value="' + escapeHTML(draft.minutes == null ? "" : draft.minutes) + '" /></label><label><span>GOLS DO JOGADOR</span><input name="goals" type="number" min="0" value="' + escapeHTML(draft.goals == null ? "" : draft.goals) + '" /></label>',
         '<label><span>ASSISTÊNCIAS</span><input name="assists" type="number" min="0" value="' + escapeHTML(draft.assists == null ? "" : draft.assists) + '" /></label><label><span>NOTA</span><input name="rating" type="number" min="0" max="10" step="0.1" value="' + escapeHTML(draft.rating == null ? "" : draft.rating) + '" /></label>',
@@ -3262,6 +3345,7 @@
     Object.assign(match, {
       date: event.date, time: event.time, season: seasonLabel, status: event.status, competition: event.competition,
       phase: event.phase, stadium: event.stadium, homeTeam: event.homeTeam, awayTeam: event.awayTeam,
+      uniform: event.uniform,
       homeScore: event.homeScore, awayScore: event.awayScore, minutes: event.minutes, goals: event.goals,
       assists: event.assists, rating: event.rating, formation: event.formation, goalDetails: event.goalDetails,
       highlights: event.highlights, updatedAt: event.updatedAt

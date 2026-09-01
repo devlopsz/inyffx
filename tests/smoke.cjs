@@ -72,6 +72,14 @@ const calendarManifestSource = read("calendar-shields.js");
 const shortcutSource = read("shortcut-data.js");
 const combinedSource = [html, css, app, registrationSource, characterSource, calendarManifestSource, shortcutSource].join("\n");
 
+function appFunctionSource(name) {
+  const marker = `  function ${name}(`;
+  const start = app.indexOf(marker);
+  if (start < 0) return "";
+  const end = app.indexOf("\n\n  function ", start + marker.length);
+  return app.slice(start + 2, end < 0 ? app.length : end);
+}
+
 check(!/Cruyff Sans Mono|font-family\s*:\s*[^;]*\bmono\b/i.test(combinedSource), "nenhuma fonte mono é usada na interface");
 check(/font-family:\s*"Cruyff Sans"/i.test(css), "Cruyff Sans é a família visual da interface");
 check(html.includes("mod/pics/login/inyffx-background-initial.png") || css.includes("mod/pics/login/inyffx-background-initial.png"), "login usa o fundo fornecido");
@@ -231,6 +239,38 @@ check(css.includes(".career-calendar") && css.includes(".calendar-grid") && css.
 check(!app.includes("DATA ATUAL DA HISTÓRIA") && !app.includes("storyDateObject") && !app.includes("selectedDateObject"), "calendário remove cabeçalho e divisor de data riscados pelo usuário");
 check(app.includes("calendarTeamsMatch") && app.includes("matchOpponent") && css.includes(".calendar-day-event--match") && css.includes(".calendar-selected-event--match"), "calendário identifica o adversário e exibe escudo grande sem moldura no bloco e na lateral");
 check(css.includes("--calendar-weeks") && css.includes("career-surface.is-calendar") && css.includes("grid-template-rows: repeat(var(--calendar-weeks, 5)"), "calendário distribui cinco ou seis semanas dentro da altura normal da tela");
+check(app.includes("/encontro|romance|romantic|date/") && css.includes(".calendar-event-glyph--romantic"), "evento Encontro mantém o tipo romantic e usa ícone vetorial sem moldura");
+check(app.includes("calendarMatchOutcome") && app.includes('"Ganhou"') && app.includes('"Perdeu"') && app.includes('"Empate"'), "partidas encerradas exibem placar e resultado do jogador");
+check(app.includes("calendarMatchKit") && app.includes('uniform: event.uniform') && app.includes('name=\"uniform\"'), "partidas futuras registram e exibem uniforme Home, Away ou Third");
+check(css.includes(".calendar-day.has-scheduled-match") && css.includes("background: #fff") && css.includes(".calendar-day.has-completed-match"), "blocos distinguem partidas futuras claras de partidas encerradas escuras");
+check(css.includes("--calendar-training: #39ef25") && css.includes("--calendar-romantic: #e20064") && css.includes("--calendar-party: #762cff") && css.includes("--calendar-rest: #10bde2") && css.includes("--calendar-birthday: #b7a7ff"), "ícones e blocos de eventos usam a paleta definida no menu lateral");
+check(css.includes("min-height: 432px") && css.includes("grid-template-columns: minmax(0, 1fr) clamp(290px, 19vw, 340px)") && app.includes('eventButton.closest("[data-calendar-date]")'), "calendário mantém dimensões amplas e estáveis ao selecionar um compromisso");
+
+const calendarLogicSandbox = {
+  result: null,
+  clean: (value) => String(value == null ? "" : value).trim(),
+  normalizeKey: (value) => String(value == null ? "" : value).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim(),
+  validDateOnly: (value) => String(value || ""),
+  localDateKey: () => "2026-08-03",
+  uid: () => "calendar-test",
+  CALENDAR_EVENT_META: {
+    match: { title: "Partida" }, training: { title: "Treino" }, romantic: { title: "Encontro amoroso" },
+    party: { title: "Festa" }, rest: { title: "Descanso" }, birthday: { title: "Aniversário" }, personal: { title: "Evento pessoal" }
+  }
+};
+vm.runInNewContext(`${appFunctionSource("normalizeCalendarEvent")}\nresult = normalizeCalendarEvent({ type: "romantic", date: "2026-08-03", title: "Encontro" });`, calendarLogicSandbox);
+check(calendarLogicSandbox.result && calendarLogicSandbox.result.type === "romantic", "selecionar Encontro preserva funcionalmente o tipo romantic ao salvar");
+
+const matchBlockSandbox = {
+  outcome: "",
+  kit: "",
+  clean: (value) => String(value == null ? "" : value).trim(),
+  normalizeKey: (value) => String(value == null ? "" : value).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim(),
+  calendarTeamsMatch: (left, right) => String(left || "").toLowerCase() === String(right || "").toLowerCase(),
+  matchOpponent: (_career, event) => event.awayTeam
+};
+vm.runInNewContext(`${appFunctionSource("calendarMatchHasScore")}\n${appFunctionSource("calendarMatchOutcome")}\n${appFunctionSource("calendarMatchKit")}\nconst career = { profile: { currentClub: "Chelsea" } };\nconst played = { homeTeam: "Chelsea", awayTeam: "Napoli", homeScore: 2, awayScore: 1 };\noutcome = calendarMatchOutcome(career, played);\nkit = calendarMatchKit(career, { homeTeam: "Chelsea", awayTeam: "Arsenal", uniform: "Third" });`, matchBlockSandbox);
+check(matchBlockSandbox.outcome === "Ganhou" && matchBlockSandbox.kit === "Third", "bloco de partida calcula resultado e uniforme com a lógica real do calendário");
 check(/\.fyx-social-phone\s*\{[^}]*margin:\s*-14px 22px -14px 0;/s.test(css) && !css.includes("margin: -18px -13% -18px 0"), "celular possui espaço próprio e não invade o feed social");
 check(css.includes("@media (max-width: 1040px) and (min-width: 821px)") && /\.fyx-today article strong\s*\{[^}]*-webkit-line-clamp:\s*2;/s.test(css), "painel social preserva largura e leitura em telas menores");
 

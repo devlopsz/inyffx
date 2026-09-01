@@ -6204,174 +6204,347 @@ input[type="range"] {
   .kick-tool-card img { width: 25px; height: 25px; }
 }
 
-/* PLAYER CAREER — calendário integral na altura disponível */
+/* PLAYER CAREER — calendário amplo, estável e legível */
+@media (min-width: 761px) {
+  .app-main .page--player-career { overflow: clip; }
+}
+
 .career-surface.is-calendar {
+  width: min(1680px, 100%);
+  height: calc(100svh - clamp(25px, 3.8vh, 43px) - 100px);
+  min-height: 590px;
+  flex: 0 0 auto;
   overflow: hidden;
 }
 
 .career-surface.is-calendar .career-calendar {
   height: 100%;
   min-height: 0;
+  --calendar-training: #39ef25;
+  --calendar-romantic: #e20064;
+  --calendar-party: #762cff;
+  --calendar-rest: #10bde2;
+  --calendar-birthday: #b7a7ff;
 }
 
 .career-surface.is-calendar .calendar-toolbar {
-  min-height: 54px;
-  padding: 7px 16px;
+  min-height: 56px;
+  padding: 7px 18px;
   justify-content: flex-end;
 }
 
 .career-surface.is-calendar .calendar-workspace {
   min-height: 0;
   overflow: hidden;
+  grid-template-columns: minmax(0, 1fr) clamp(290px, 19vw, 340px);
 }
 
 .career-surface.is-calendar .calendar-board {
   display: flex;
+  min-width: 0;
   min-height: 0;
-  padding: 10px 16px 14px;
+  padding: 11px 18px 16px;
   flex-direction: column;
 }
 
 .career-surface.is-calendar .calendar-month-nav {
-  min-height: 44px;
-  flex: 0 0 44px;
+  min-height: 48px;
+  flex: 0 0 48px;
 }
 
 .career-surface.is-calendar .calendar-month-nav button {
-  width: 34px;
-  height: 34px;
+  width: 36px;
+  height: 36px;
 }
 
 .career-surface.is-calendar .calendar-weekdays {
-  flex: 0 0 27px;
+  flex: 0 0 29px;
 }
 
 .career-surface.is-calendar .calendar-weekdays span {
-  min-height: 27px;
-  padding: 6px 8px;
+  min-height: 29px;
+  padding: 7px 9px;
 }
 
 .career-surface.is-calendar .calendar-grid {
-  min-height: 0;
+  min-height: 432px;
   flex: 1 1 auto;
-  grid-template-rows: repeat(var(--calendar-weeks, 5), minmax(0, 1fr));
+  grid-template-rows: repeat(var(--calendar-weeks, 5), minmax(72px, 1fr));
 }
 
 .career-surface.is-calendar .calendar-day {
-  min-height: 0;
-  padding: 7px;
+  min-height: 72px;
+  padding: 9px;
+  isolation: isolate;
+}
+
+.career-surface.is-calendar .calendar-day__number {
+  position: relative;
+  z-index: 3;
+  color: inherit;
+  pointer-events: none;
 }
 
 .calendar-day__events {
-  right: 8px;
-  bottom: 6px;
-  left: 8px;
-  align-items: center;
+  position: absolute;
+  inset: 0;
+  display: block;
+  pointer-events: none;
 }
 
-.calendar-day-event:not(.calendar-day-event--match) img,
-.calendar-selected-event:not(.calendar-selected-event--match) img,
-.calendar-legend img {
-  filter: brightness(0) invert(1);
+.calendar-day-event {
+  pointer-events: auto;
 }
 
-.calendar-day-event--match {
-  width: 48px;
-  height: 48px;
-  margin-left: auto;
+.calendar-day.has-completed-match {
+  color: #fff;
+  background: #10161a;
+}
+
+.calendar-day.has-completed-match:hover,
+.calendar-day.has-completed-match:focus-visible { background: #151d22; }
+
+.calendar-day.has-scheduled-match,
+.calendar-day.has-scheduled-match.is-outside {
+  color: #050607;
+  background: #fff;
+}
+
+.calendar-day.has-scheduled-match:hover,
+.calendar-day.has-scheduled-match:focus-visible { color: #050607; background: #eceeef; }
+
+.calendar-day.has-scheduled-match.is-current::after { background: #050607; }
+
+.calendar-day.calendar-day--training { --calendar-event-color: var(--calendar-training); --calendar-event-ink: #050607; }
+.calendar-day.calendar-day--romantic { --calendar-event-color: var(--calendar-romantic); --calendar-event-ink: #fff; }
+.calendar-day.calendar-day--party { --calendar-event-color: var(--calendar-party); --calendar-event-ink: #fff; }
+.calendar-day.calendar-day--rest { --calendar-event-color: var(--calendar-rest); --calendar-event-ink: #050607; }
+.calendar-day.calendar-day--birthday { --calendar-event-color: var(--calendar-birthday); --calendar-event-ink: #050607; }
+.calendar-day.calendar-day--personal { --calendar-event-color: #8e969b; --calendar-event-ink: #050607; }
+
+.calendar-day.has-event:not(.calendar-day--match),
+.calendar-day.has-event:not(.calendar-day--match).is-outside {
+  color: var(--calendar-event-ink);
+  background: var(--calendar-event-color);
+}
+
+.calendar-day.has-event:not(.calendar-day--match):hover,
+.calendar-day.has-event:not(.calendar-day--match):focus-visible {
+  color: var(--calendar-event-ink);
+  background: color-mix(in srgb, var(--calendar-event-color) 88%, #fff);
+}
+
+.career-surface.is-calendar .calendar-day.is-selected {
+  box-shadow: inset 0 0 0 2px currentColor;
+}
+
+.calendar-day-event {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
   border: 0;
   border-radius: 0;
+  color: inherit;
   background: transparent;
+  text-align: left;
 }
 
-.calendar-day-event--match:hover,
-.calendar-day-event--match:focus-visible {
+.calendar-day-event:hover,
+.calendar-day-event:focus-visible {
   border: 0;
+  color: inherit;
   background: transparent;
   outline: 0;
-  transform: scale(1.06);
 }
 
 .calendar-day-event--match img,
 .calendar-day-event--match:hover img,
 .calendar-day-event--match:focus-visible img {
-  width: 43px;
-  height: 43px;
+  position: absolute;
+  right: 9px;
+  bottom: 9px;
+  width: clamp(38px, 3.2vw, 52px);
+  height: clamp(38px, 3.2vw, 52px);
+  object-fit: contain;
   filter: none;
+  transition: transform 150ms ease;
 }
 
-.calendar-day-event small {
-  right: calc(100% + 3px);
-  bottom: 50%;
-  padding: 0;
-  color: #fff;
-  background: transparent;
-  font-size: 0.52rem;
-  transform: translateY(50%);
+.calendar-day-event--match:hover img,
+.calendar-day-event--match:focus-visible img { transform: scale(1.06); }
+
+.calendar-match-copy {
+  position: absolute;
+  top: 29px;
+  left: 9px;
+  display: grid;
+  gap: 2px;
+  line-height: 1;
 }
+
+.calendar-match-copy strong {
+  font-size: clamp(0.8rem, 0.9vw, 1rem);
+  font-weight: 800;
+  letter-spacing: 0.03em;
+}
+
+.calendar-match-copy small {
+  position: static;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  font-size: clamp(0.5rem, 0.58vw, 0.62rem);
+  font-weight: 800;
+  text-transform: uppercase;
+  transform: none;
+}
+
+.calendar-match-copy--kit small {
+  font-size: clamp(0.58rem, 0.68vw, 0.72rem);
+  letter-spacing: 0.05em;
+  text-transform: none;
+}
+
+.calendar-event-glyph {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: currentColor;
+  -webkit-mask: var(--calendar-event-icon) center / contain no-repeat;
+  mask: var(--calendar-event-icon) center / contain no-repeat;
+}
+
+.calendar-event-glyph--match { --calendar-event-icon: url("mod/calendar/shield-time-not-found.svg"); }
+.calendar-event-glyph--training { --calendar-event-icon: url("mod/calendar/cone-treino.svg"); }
+.calendar-event-glyph--romantic { --calendar-event-icon: url("mod/calendar/heart-encontros.svg"); }
+.calendar-event-glyph--party { --calendar-event-icon: url("mod/calendar/party.svg"); }
+.calendar-event-glyph--rest,
+.calendar-event-glyph--personal { --calendar-event-icon: url("mod/calendar/home-days.svg"); }
+.calendar-event-glyph--birthday { --calendar-event-icon: url("mod/calendar/birthday.svg"); }
+
+.calendar-day-event:not(.calendar-day-event--match) .calendar-event-glyph {
+  position: absolute;
+  top: 30px;
+  left: 9px;
+  width: 27px;
+  height: 27px;
+}
+
+.calendar-day-more {
+  position: absolute;
+  right: 8px;
+  bottom: 5px;
+  z-index: 4;
+  color: inherit;
+  font-size: 0.58rem;
+  font-weight: 800;
+  pointer-events: none;
+}
+
+.calendar-day--match .calendar-day-more { right: 66px; }
 
 .calendar-rail {
+  min-width: 0;
   min-height: 0;
-  padding: 21px 20px;
+  padding: 25px 24px;
   overflow-y: auto;
+  contain: inline-size;
 }
 
 .calendar-rail__date strong {
-  font-size: clamp(2.8rem, 4.3vw, 4.7rem);
+  font-size: clamp(3.2rem, 4.5vw, 5rem);
 }
 
 .calendar-selected {
-  margin-top: 22px;
+  min-width: 0;
+  margin-top: 28px;
   border-top: 0;
 }
 
 .calendar-selected > button {
-  min-height: 66px;
+  min-width: 0;
+  min-height: 72px;
   padding: 10px 0;
-  grid-template-columns: minmax(0, 1fr) 54px;
-  gap: 13px;
+  grid-template-columns: minmax(0, 1fr) 58px;
+  gap: 14px;
   border-top: 1px solid #232629;
 }
 
-.calendar-selected > button:first-child {
-  border-top: 0;
-}
+.calendar-selected > button:first-child { border-top: 0; }
 
 .calendar-selected > button i {
+  display: grid;
+  width: 52px;
+  height: 52px;
   grid-column: 2;
   grid-row: 1;
+  place-items: center;
+  border: 0;
+  border-radius: 0;
+  color: #fff;
 }
 
 .calendar-selected > button span {
+  min-width: 0;
   grid-column: 1;
   grid-row: 1;
 }
 
-.calendar-selected-event--match i {
-  width: 54px !important;
-  height: 54px !important;
-  border: 0 !important;
-  border-radius: 0 !important;
-}
+.calendar-selected > button i .calendar-event-glyph { width: 27px; height: 27px; }
+.calendar-selected-event--training i { color: var(--calendar-training) !important; }
+.calendar-selected-event--romantic i { color: var(--calendar-romantic) !important; }
+.calendar-selected-event--party i { color: var(--calendar-party) !important; }
+.calendar-selected-event--rest i { color: var(--calendar-rest) !important; }
+.calendar-selected-event--birthday i { color: var(--calendar-birthday) !important; }
 
-.calendar-selected-event--match i img {
-  width: 49px !important;
-  height: 49px !important;
-  filter: none !important;
+.calendar-selected > button.calendar-selected-event--match i img {
+  width: 52px;
+  height: 52px;
+  object-fit: contain;
+  filter: none;
 }
 
 .calendar-legend {
-  margin-top: 20px;
-  gap: 6px;
+  margin-top: 24px;
+  gap: 8px;
 }
 
 .calendar-legend span {
-  color: #b8bbbd;
+  color: #c4c7c9;
+}
+
+.calendar-legend i {
+  width: 20px;
+  height: 20px;
+  color: #fff;
+}
+
+.calendar-legend i .calendar-event-glyph { width: 17px; height: 17px; }
+.calendar-legend__training i { color: var(--calendar-training); }
+.calendar-legend__romantic i { color: var(--calendar-romantic); }
+.calendar-legend__party i { color: var(--calendar-party); }
+.calendar-legend__rest i { color: var(--calendar-rest); }
+.calendar-legend__birthday i { color: var(--calendar-birthday); }
+
+@media (max-width: 1100px) and (min-width: 761px) {
+  .career-surface.is-calendar .calendar-workspace { grid-template-columns: minmax(0, 1fr) 270px; }
+  .career-surface.is-calendar .calendar-board { padding-right: 12px; padding-left: 12px; }
+  .career-surface.is-calendar .calendar-grid { min-height: 420px; grid-template-rows: repeat(var(--calendar-weeks, 5), minmax(70px, 1fr)); }
+  .career-surface.is-calendar .calendar-day { min-height: 70px; }
 }
 
 @media (max-width: 760px) {
-  .career-surface.is-calendar { overflow: auto; }
+  .career-surface.is-calendar {
+    height: auto;
+    min-height: 0;
+    overflow: auto;
+  }
+  .career-surface.is-calendar .career-calendar { height: auto; }
   .career-surface.is-calendar .calendar-workspace { min-height: 760px; overflow: visible; }
+  .career-surface.is-calendar .calendar-board { min-height: 620px; }
+  .career-surface.is-calendar .calendar-grid { min-height: 492px; flex: 0 0 492px; grid-template-rows: repeat(var(--calendar-weeks, 5), minmax(82px, 1fr)); }
   .career-surface.is-calendar .calendar-day { min-height: 82px; }
 }
 
