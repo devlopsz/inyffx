@@ -84,6 +84,7 @@
               <div class="kick-composer-dock">
                 <div class="kick-shortcuts" id="kickShortcuts" aria-label="Atalhos do KICK OFF"></div>
                 <div class="kick-tools-menu" id="kickToolsMenu" aria-hidden="true">
+                  <button class="kick-tool-card" type="button" data-open-tool="shortcuts"><strong>Atalhos</strong><img src="mod/pics/icons/mais.svg" alt="" aria-hidden="true" /></button>
                   <button class="kick-tool-card" type="button" data-open-tool="match"><strong>Prompt<br />de Partida</strong><img src="mod/pics/icons/partida.svg" alt="" aria-hidden="true" /></button>
                   <button class="kick-tool-card" type="button" data-open-tool="wheel"><strong>Roleta</strong><img src="mod/pics/icons/roleta.svg" alt="" aria-hidden="true" /></button>
                   <button class="kick-tool-card" type="button" data-open-tool="dice"><strong>Dados</strong><img src="mod/pics/icons/dado.svg" alt="" aria-hidden="true" /></button>
@@ -97,8 +98,9 @@
               </div>
             </div>
             <aside class="tool-drawer" id="toolDrawer" aria-hidden="true">
-              <div class="tool-drawer__header"><h2 id="toolTitle">Prompt de Partida</h2><button class="icon-button" id="closeTools" type="button" aria-label="Fechar ferramentas">×</button></div>
-              <section class="tool-panel is-active" data-tool-panel="match"><p class="tool-intro">Copie o modelo, preencha apenas com o que realmente aconteceu e envie no chat. A partida passa a fazer parte do cânone.</p><div id="matchTemplateForm" class="prompt-template-box"><pre id="matchPromptTemplate">Jogo:
+              <div class="tool-drawer__header"><h2 id="toolTitle">Atalhos</h2><button class="icon-button" id="closeTools" type="button" aria-label="Fechar ferramentas">×</button></div>
+              <section class="tool-panel is-active" data-tool-panel="shortcuts"><div class="shortcut-library" id="shortcutLibrary" aria-label="Todos os atalhos do KICK OFF"></div></section>
+              <section class="tool-panel" data-tool-panel="match"><p class="tool-intro">Copie o modelo, preencha apenas com o que realmente aconteceu e envie no chat. A partida passa a fazer parte do cânone.</p><div id="matchTemplateForm" class="prompt-template-box"><pre id="matchPromptTemplate">Jogo:
 Competição:
 Fase:
 Estádio:
@@ -231,6 +233,7 @@ Eventos importantes:</pre><div class="template-actions"><button class="text-acti
     <script src="registration-data.js"></script>
     <script src="character-data.js?v=20260901-character-import"></script>
     <script src="calendar-shields.js?v=20260901-calendar"></script>
-    <script src="app.js?v=20260901-calendar-shortcuts"></script>
+    <script src="shortcut-data.js?v=20260901-shortcut-library"></script>
+    <script src="app.js?v=20260901-shortcut-library-calendar-fix"></script>
   </body>
 </html>

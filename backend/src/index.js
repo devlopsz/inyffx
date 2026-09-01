@@ -2,11 +2,14 @@ import { generateNarrative, generateMemoryUpdates, DEFAULT_MODEL } from "./provi
 import { buildModelMessages, buildMemoryMessages, buildRepairMessages, inferTurnContract } from "./prompt.js";
 
 const ROLEPLAY_PATH = "/v1/roleplay/message";
-const MAX_BODY_CHARACTERS = 100000;
+const MAX_BODY_CHARACTERS = 300000;
 const MAX_REPLY_CHARACTERS = 16000;
 const NEWS_TYPES = new Set(["headline", "social", "analysis", "gossip", "comment", "fanclub"]);
 const CHARACTER_CATEGORIES = new Set(["friends", "romance", "professional", "team"]);
 const BLOCKED_OBJECT_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+const HEADLINE_SHORTCUT_ACTIONS = new Set(["FYX_HEADLINES", "MATCH_COVERAGE", "PRESS_OPINIONS", "SPORT_CONTROVERSY"]);
+const SOCIAL_SHORTCUT_ACTIONS = new Set(["SOCIAL_MEDIA", "TRENDING_TOPICS", "FAN_COMMENTS", "ROUND_MEMES", "FANDOM", "PRESS_REACTION"]);
+const GOSSIP_SHORTCUT_ACTIONS = new Set(["GOSSIP", "PERSONAL_PUBLIC_TALK", "RELATIONSHIP_RUMORS"]);
 
 class ApiError extends Error {
   constructor(status, code, message) {
@@ -423,7 +426,9 @@ export function sanitizeMemoryUpdates(value, careerId, now = new Date().toISOStr
   const source = value && typeof value === "object" ? value : {};
   const characters = cleanList(source.characters, 24, (item, index) => cleanCharacter(item, index, careerId, now))
     .filter((character) => !isProtagonistCharacter(character, protagonistName));
+  const currentDate = /^\d{4}-\d{2}-\d{2}$/.test(cleanText(source.currentDate, 40)) ? cleanText(source.currentDate, 40) : "";
   return {
+    currentDate,
     canonEvents: cleanList(source.canonEvents, 20, (item, index) => cleanCanon(item, index, careerId, now)),
     news: cleanList(source.news, 20, (item, index) => cleanNews(item, index, careerId, now)),
     characters,
@@ -449,6 +454,7 @@ function normalizeRequest(body, env) {
     message: {
       id: cleanId(body.message && body.message.id) || `message-${crypto.randomUUID()}`,
       content,
+      action: cleanText(body.message && body.message.action, 80).toUpperCase(),
       scene: Math.max(1, Number(body.message && body.message.scene) || 1),
       createdAt: cleanText(body.message && body.message.createdAt, 40) || new Date().toISOString()
     },
@@ -492,6 +498,206 @@ function openingDirectionReply(payload) {
   const protagonistName = cleanText(payload.context && payload.context.profile && payload.context.profile.playerName, 160);
   const vocative = protagonistName ? `, ${protagonistName}` : "";
   return `Por onde começamos${vocative}? Diga onde você está agora, quem está com você e qual momento quer viver primeiro. Nada acontece até você escolher o ponto de partida.`;
+}
+
+function storyDate(payload) {
+  const explicit = cleanText(payload.context && payload.context.currentDate, 40);
+  const explicitMatch = explicit.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (explicitMatch) return explicitMatch[1];
+  const createdAt = cleanText(payload.message && payload.message.createdAt, 40);
+  const createdMatch = createdAt.match(/^(\d{4}-\d{2}-\d{2})/);
+  return createdMatch ? createdMatch[1] : "";
+}
+
+function calendarItems(payload) {
+  const memory = payload.context && payload.context.memory && typeof payload.context.memory === "object"
+    ? payload.context.memory
+    : {};
+  return Array.isArray(memory.calendar) ? memory.calendar.filter((item) => item && typeof item === "object") : [];
+}
+
+function eventDateTime(item) {
+  const start = cleanText(item && (item.start || item.date || item.time), 50);
+  const date = cleanText(item && item.date, 40);
+  const time = cleanText(item && item.time, 20);
+  const iso = start.match(/^(\d{4}-\d{2}-\d{2})(?:[T ](\d{2}):(\d{2}))?/);
+  if (iso) return { date: iso[1], time: iso[2] && iso[3] ? `${iso[2]}:${iso[3]}` : time.match(/^\d{2}:\d{2}/) ? time.slice(0, 5) : "", sort: `${iso[1]}T${iso[2] || "00"}:${iso[3] || "00"}` };
+  const dateOnly = date.match(/^(\d{4}-\d{2}-\d{2})/);
+  return { date: dateOnly ? dateOnly[1] : "", time: time.match(/^\d{2}:\d{2}/) ? time.slice(0, 5) : "", sort: `${dateOnly ? dateOnly[1] : "9999-12-31"}T${time.match(/^\d{2}:\d{2}/) ? time.slice(0, 5) : "00:00"}` };
+}
+
+function formatDatePt(value) {
+  const match = cleanText(value, 40).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : cleanText(value, 40);
+}
+
+function formatMoneyPt(value, currency) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return "valor não cadastrado";
+  try {
+    return new Intl.NumberFormat("pt-BR", { style: "currency", currency: cleanText(currency, 8).toUpperCase() || "BRL" }).format(amount);
+  } catch (_) {
+    return amount.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+}
+
+function deterministicAgendaReply(payload, todayOnly) {
+  const currentDate = storyDate(payload);
+  const eventTypeNames = { match: "PARTIDA", training: "TREINO", date: "ENCONTRO", party: "FESTA", rest: "DESCANSO", birthday: "ANIVERSÁRIO" };
+  const events = calendarItems(payload)
+    .map((item) => ({ item, when: eventDateTime(item) }))
+    .filter((entry) => !todayOnly || !currentDate || entry.when.date === currentDate)
+    .filter((entry) => todayOnly || !currentDate || !entry.when.date || entry.when.date >= currentDate)
+    .sort((left, right) => left.when.sort.localeCompare(right.when.sort));
+  const heading = todayOnly
+    ? `Agenda de hoje${currentDate ? ` — ${formatDatePt(currentDate)}` : ""}`
+    : `Agenda cadastrada${currentDate ? ` a partir de ${formatDatePt(currentDate)}` : ""}`;
+  if (!events.length) {
+    return `${heading}\n\nNenhum compromisso cadastrado${todayOnly ? " para esta data" : ""}. Nenhum horário ou evento foi criado automaticamente.`;
+  }
+  const lines = events.map((entry, index) => {
+    const item = entry.item;
+    const title = cleanText(item.title, 240) || "Compromisso sem título";
+    const when = [entry.when.date ? formatDatePt(entry.when.date) : "data não cadastrada", entry.when.time ? `às ${entry.when.time}` : ""].filter(Boolean).join(" ");
+    const details = [
+      eventTypeNames[cleanText(item.type, 40).toLocaleLowerCase("pt-BR")] || cleanText(item.type, 60).toUpperCase(),
+      cleanText(item.opponent, 160) ? `Adversário: ${cleanText(item.opponent, 160)}` : "",
+      cleanText(item.competition, 160) ? `Competição: ${cleanText(item.competition, 160)}` : "",
+      cleanText(item.location || item.stadium, 180) ? `Local: ${cleanText(item.location || item.stadium, 180)}` : ""
+    ].filter(Boolean);
+    return `${index + 1}. ${when} — ${title}${details.length ? `\n${details.join(" · ")}` : ""}`;
+  });
+  const suffix = todayOnly ? "\n\nOs períodos sem evento cadastrado permanecem livres; nenhum compromisso adicional foi presumido." : "";
+  return `${heading}\n\n${lines.join("\n\n")}${suffix}`;
+}
+
+function financeMemory(payload) {
+  const memory = payload.context && payload.context.memory && typeof payload.context.memory === "object"
+    ? payload.context.memory
+    : {};
+  return memory.finance && typeof memory.finance === "object" ? memory.finance : {};
+}
+
+function deterministicFinanceReply(payload, monthOnly) {
+  const finance = financeMemory(payload);
+  const currency = cleanText(finance.currency, 8) || "BRL";
+  const transactions = Array.isArray(finance.transactions) ? finance.transactions.filter((item) => item && typeof item === "object") : [];
+  const currentDate = storyDate(payload);
+  const currentMonth = currentDate.slice(0, 7);
+  const selected = monthOnly && currentMonth
+    ? transactions.filter((item) => cleanText(item.date || item.createdAt, 40).slice(0, 7) === currentMonth)
+    : transactions.slice(-8);
+  const heading = monthOnly ? `Extrato de ${currentMonth ? `${currentMonth.slice(5, 7)}/${currentMonth.slice(0, 4)}` : "mês não identificado"}` : "Resumo financeiro cadastrado";
+  const balanceLine = Number.isFinite(Number(finance.balance)) ? `Saldo: ${formatMoneyPt(finance.balance, currency)}` : "Saldo: não cadastrado";
+  if (!selected.length) return `${heading}\n\n${balanceLine}\nNenhuma transação cadastrada${monthOnly ? " neste mês" : ""}.`;
+  const entries = selected.map((item, index) => {
+    const amount = Number(item.amount);
+    return `${index + 1}. ${formatDatePt(item.date || item.createdAt)} — ${cleanText(item.description, 240) || "Transação"} — ${formatMoneyPt(amount, currency)}${cleanText(item.category, 100) ? ` · ${cleanText(item.category, 100)}` : ""}`;
+  });
+  if (!monthOnly) return `${heading}\n\n${balanceLine}\n\nTransações recentes\n${entries.join("\n")}`;
+  const income = selected.reduce((total, item) => total + Math.max(0, Number(item.amount) || 0), 0);
+  const expenses = selected.reduce((total, item) => total + Math.min(0, Number(item.amount) || 0), 0);
+  return `${heading}\n\nEntradas: ${formatMoneyPt(income, currency)}\nSaídas: ${formatMoneyPt(expenses, currency)}\nSaldo líquido do mês: ${formatMoneyPt(income + expenses, currency)}\n${balanceLine}\n\n${entries.join("\n")}`;
+}
+
+function deterministicAchievementsReply(payload) {
+  const memory = payload.context && payload.context.memory && typeof payload.context.memory === "object" ? payload.context.memory : {};
+  const hall = memory.hall && typeof memory.hall === "object" ? memory.hall : {};
+  const sections = [["Títulos coletivos", hall.trophies], ["Prêmios individuais", hall.awards], ["Recordes", hall.records]];
+  const rendered = sections.map(([label, items]) => {
+    const valid = Array.isArray(items) ? items.filter((item) => item && cleanText(item.title || item.name, 240)) : [];
+    if (!valid.length) return `${label}\nNenhum registro.`;
+    return `${label}\n${valid.map((item, index) => `${index + 1}. ${cleanText(item.title || item.name, 240)}${cleanText(item.season || item.date, 80) ? ` — ${cleanText(item.season || item.date, 80)}` : ""}`).join("\n")}`;
+  });
+  return `Hall de Troféus\n\n${rendered.join("\n\n")}`;
+}
+
+function parseLocalizedMoney(value) {
+  const raw = cleanText(value, 80).replace(/\s+/g, "");
+  if (!raw) return null;
+  let normalized = raw;
+  if (raw.includes(",")) normalized = raw.replace(/\./g, "").replace(",", ".");
+  else if (/^\d{1,3}(?:\.\d{3})+$/.test(raw)) normalized = raw.replace(/\./g, "");
+  const amount = Number(normalized);
+  return Number.isFinite(amount) && amount > 0 ? amount : null;
+}
+
+function parsePurchase(payload) {
+  const content = cleanText(payload.message && payload.message.content, 12000);
+  const amountMatch = content.match(/R\$\s*([0-9][0-9.,]*)/i)
+    || content.match(/\b(?:valor(?:\s+de)?|cust(?:ou|ando)|paguei|por)\s+([0-9][0-9.,]*)\s*(?:reais)?\b/i)
+    || content.match(/\b([0-9][0-9.,]*)\s*reais\b/i);
+  const amount = parseLocalizedMoney(amountMatch && amountMatch[1]);
+  const descriptionPatterns = [
+    /\b(?:comprei|adquiri)\s+(?:um|uma|uns|umas)?\s*(.+?)(?=\s+(?:hoje|por|no valor|custando|categoria)\b|,|;|\.|\n|$)/i,
+    /\bcompra\s+de\s+(.+?)(?=\s+(?:por|no valor|custando|categoria)\b|,|;|\.|\n|$)/i
+  ];
+  let description = "";
+  for (const pattern of descriptionPatterns) {
+    const match = content.match(pattern);
+    if (match && cleanText(match[1], 240)) {
+      description = cleanText(match[1], 240).replace(/^(?:um|uma|uns|umas)\s+/i, "");
+      break;
+    }
+  }
+  const categoryMatch = content.match(/\bcategoria\s*[:\-]?\s*([^,;.\n]+)/i)
+    || content.match(/\b(?:registre|salve)\s+como\s+(.+?)(?=\s+em\s+\d{4}-\d{2}-\d{2}|,|;|\.|\n|$)/i);
+  const category = cleanText(categoryMatch && categoryMatch[1], 100);
+  const isoDate = content.match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
+  const brDate = content.match(/\b(\d{2})\/(\d{2})\/(\d{4})\b/);
+  let date = isoDate ? `${isoDate[1]}-${isoDate[2]}-${isoDate[3]}` : brDate ? `${brDate[3]}-${brDate[2]}-${brDate[1]}` : "";
+  if (!date && /\bhoje\b/i.test(content)) date = storyDate(payload);
+  return { description, category, amount, date };
+}
+
+function deterministicShortcutOutcome(payload, contract, now) {
+  const action = contract && contract.action;
+  if (action === "AGENDA") return { reply: deterministicAgendaReply(payload, false), skipMemory: true, updates: {} };
+  if (action === "TODAY_AGENDA") return { reply: deterministicAgendaReply(payload, true), skipMemory: true, updates: {} };
+  if (action === "FINANCE_OVERVIEW") return { reply: deterministicFinanceReply(payload, false), skipMemory: true, updates: {} };
+  if (action === "MONTH_STATEMENT") return { reply: deterministicFinanceReply(payload, true), skipMemory: true, updates: {} };
+  if (action === "ACHIEVEMENTS") return { reply: deterministicAchievementsReply(payload), skipMemory: true, updates: {} };
+  if (isEditorialShortcut(action)) return { reply: "Atualizando a cobertura com os fatos registrados.", skipMemory: true, updates: {}, changed: true };
+  if (action !== "REGISTER_PURCHASE") return null;
+
+  const purchase = parsePurchase(payload);
+  const missing = [];
+  if (!purchase.description) missing.push("descrição");
+  if (!purchase.amount) missing.push("valor");
+  if (!purchase.date) missing.push("data");
+  if (missing.length) {
+    return {
+      reply: `Ainda não registrei a compra. Informe ${missing.join(", ")} para que a transação seja salva sem suposições.`,
+      skipMemory: true,
+      updates: {}
+    };
+  }
+  const finance = financeMemory(payload);
+  const currency = cleanText(finance.currency, 8).toUpperCase() || "BRL";
+  const amount = -Math.abs(purchase.amount);
+  const existingBalance = Number(finance.balance);
+  const hasBalance = Number.isFinite(existingBalance);
+  const transaction = {
+    id: `transaction-${stableHash(`${payload.careerId}|${payload.turnId}|${purchase.date}|${purchase.description}|${amount}`)}`,
+    date: purchase.date,
+    description: purchase.description,
+    category: purchase.category,
+    amount,
+    createdAt: now
+  };
+  const financeUpdate = { currency, transactions: [transaction], pockets: [] };
+  if (hasBalance) financeUpdate.balance = existingBalance + amount;
+  const confirmation = [
+    `Compra registrada: ${purchase.description}.`,
+    `Valor: ${formatMoneyPt(amount, currency)}.`,
+    purchase.category ? `Categoria: ${purchase.category}.` : "",
+    `Data: ${formatDatePt(purchase.date)}.`,
+    hasBalance ? `Saldo atualizado: ${formatMoneyPt(financeUpdate.balance, currency)}.` : "O saldo anterior não estava cadastrado, então somente a transação foi adicionada."
+  ].filter(Boolean).join(" ");
+  const updates = { finance: financeUpdate };
+  const unchangedCurrentDate = cleanText(payload.context && payload.context.currentDate, 40).match(/^\d{4}-\d{2}-\d{2}/);
+  if (unchangedCurrentDate) updates.currentDate = unchangedCurrentDate[0];
+  return { reply: confirmation, skipMemory: true, updates, changed: true };
 }
 
 function fallbackMatchNews(payload, now) {
@@ -871,21 +1077,29 @@ function applyVerifiedMatchMemory(memoryUpdates, payload, match, now) {
   return memoryUpdates;
 }
 
-function shortcutFactContext(payload) {
+function shortcutFactContext(payload, now) {
   const memory = payload.context && payload.context.memory || {};
   const season = memory.currentSeason && typeof memory.currentSeason === "object" ? memory.currentSeason : {};
   const matches = Array.isArray(season.matches) ? season.matches : [];
-  const match = matches[matches.length - 1] || null;
+  const completedMatches = matches.filter((item) => item && item.status !== "scheduled" && Number.isFinite(Number(item.homeScore)) && Number.isFinite(Number(item.awayScore)));
+  const match = completedMatches[completedMatches.length - 1] || matches[matches.length - 1] || null;
   const canon = Array.isArray(memory.canonEvents) ? memory.canonEvents : [];
   const event = canon[canon.length - 1] || null;
   const playerName = cleanText(payload.context && payload.context.profile && payload.context.profile.playerName || "O jogador", 160);
+  const hasScore = match && Number.isFinite(Number(match.homeScore)) && Number.isFinite(Number(match.awayScore));
   const matchTitle = match && match.homeTeam && match.awayTeam
-    ? `${match.homeTeam} ${Number(match.homeScore) || 0} x ${Number(match.awayScore) || 0} ${match.awayTeam}`
+    ? hasScore
+      ? `${match.homeTeam} ${Number(match.homeScore)} x ${Number(match.awayScore)} ${match.awayTeam}`
+      : `${match.homeTeam} x ${match.awayTeam}`
     : "";
+  const recent = payload.context && Array.isArray(payload.context.recentMessages) ? payload.context.recentMessages : [];
+  const declaration = [...recent].reverse().find((message) => message && message.role === "user" && !cleanText(message.action, 80));
   return {
     playerName,
     match,
     title: matchTitle || cleanText(event && (event.title || event.description), 260) || `momento atual de ${playerName}`,
+    eventSummary: cleanText(event && (event.description || event.summary || event.title), 1200),
+    declaration: cleanText(declaration && declaration.content, 900),
     occurredAt: cleanText(match && match.date || event && event.occurredAt || payload.context && payload.context.currentDate || now, 40)
   };
 }
@@ -907,13 +1121,37 @@ function shortcutNewsItem(payload, now, index, item) {
   };
 }
 
+function isEditorialShortcut(action) {
+  return HEADLINE_SHORTCUT_ACTIONS.has(action) || SOCIAL_SHORTCUT_ACTIONS.has(action) || GOSSIP_SHORTCUT_ACTIONS.has(action);
+}
+
+function safeEditorialReply(payload, contract, now, memoryUpdates) {
+  const action = contract && contract.action;
+  if (!isEditorialShortcut(action)) return "";
+  const fact = shortcutFactContext(payload, now);
+  const news = Array.isArray(memoryUpdates && memoryUpdates.news) ? memoryUpdates.news : [];
+  const trends = [...new Set(news.map((item) => cleanText(item && item.trend, 180)).filter(Boolean))].slice(0, 4);
+  if (HEADLINE_SHORTCUT_ACTIONS.has(action)) {
+    if (action === "SPORT_CONTROVERSY") {
+      return `FYX NEWS\n\nNão há base registrada suficiente para afirmar uma nova polêmica esportiva sobre ${fact.title}. A página FYX NEWS foi atualizada apenas com a leitura factual do acontecimento, sem criar incidente, declaração ou controvérsia.`;
+    }
+    return `FYX NEWS\n\nManchete principal: ${fact.title}.\n\nA edição completa foi atualizada na página FYX NEWS com leituras jornalísticas separadas dos fatos confirmados. Nenhum lance, número ou declaração ausente foi acrescentado.`;
+  }
+  if (SOCIAL_SHORTCUT_ACTIONS.has(action)) {
+    const trendLine = trends.length ? `\n\nEm alta: ${trends.join(" · ")}.` : "";
+    return `REDES SOCIAIS\n\nAs redes estão repercutindo ${fact.title} com apoio, críticas e análises de perfis diferentes.${trendLine}\n\nO feed completo foi atualizado na página REDES SOCIAIS usando somente o que já é público na carreira.`;
+  }
+  return `FOFOCAS\n\nA página FOFOCAS foi atualizada com a conversa pública relacionada a ${fact.title}. Cada item está marcado como rumor, especulação ou reação de fãs; nenhum segredo privado foi apresentado como fato.${trends.length ? `\n\nEm alta: ${trends.join(" · ")}.` : ""}`;
+}
+
 function ensureShortcutMemory(memoryUpdates, payload, contract, now) {
   const action = contract && contract.action;
   if (!action) return memoryUpdates;
-  const fact = shortcutFactContext(payload);
+  const fact = shortcutFactContext(payload, now);
   const existing = Array.isArray(memoryUpdates.news) ? memoryUpdates.news : [];
   const additions = [];
-  if (action === "FYX_HEADLINES" && !existing.some((item) => item.type === "headline")) {
+  const pressActions = new Set(["PRESS_CONFERENCE", "PRE_MATCH_PRESS", "POST_MATCH_PRESS", "TENSE_PRESS", "EXCLUSIVE_INTERVIEW"]);
+  if (HEADLINE_SHORTCUT_ACTIONS.has(action) && !existing.some((item) => item.type === "headline")) {
     additions.push(
       { type: "headline", title: fact.title, summary: `A edição atual da FYX NEWS acompanha ${fact.title}, usando apenas os fatos registrados.`, source: "FYX NEWS" },
       { type: "analysis", title: "A leitura esportiva do acontecimento", summary: `A análise parte do registro de ${fact.title} e separa desempenho confirmado de interpretação jornalística.`, source: "FYX Análise" },
@@ -921,7 +1159,13 @@ function ensureShortcutMemory(memoryUpdates, payload, contract, now) {
       { type: "analysis", title: "O que pode mudar a partir de agora", summary: "Consequências futuras permanecem em aberto e dependerão dos próximos fatos da carreira.", source: "FYX NEWS" }
     );
   }
-  if (action === "SOCIAL_MEDIA") {
+  if (action === "PRESS_REACTION" && fact.declaration) {
+    additions.push(
+      { type: "headline", title: `${fact.playerName} se pronuncia`, summary: `Declaração registrada: “${fact.declaration}”`, source: "FYX NEWS", trend: fact.playerName, sentiment: "declaração" },
+      { type: "comment", title: "A imprensa repercute a declaração", summary: `A cobertura parte exclusivamente da fala registrada de ${fact.playerName}.`, source: "Sala de Imprensa FYX", trend: fact.playerName, sentiment: "declaração" }
+    );
+  }
+  if (SOCIAL_SHORTCUT_ACTIONS.has(action)) {
     const socialSeeds = [
       ["@FYXMatchday", "Torcedores repercutem " + fact.title, "repercussão", "análise"],
       ["@BancadaFYX", "Debate cresce depois de " + fact.title, fact.playerName, "debate"],
@@ -933,7 +1177,7 @@ function ensureShortcutMemory(memoryUpdates, payload, contract, now) {
     const socialCount = existing.filter((item) => item.type === "social").length;
     socialSeeds.slice(0, Math.max(0, 6 - socialCount)).forEach(([handle, title, trend, sentiment], index) => additions.push({ type: "social", title, summary: `${handle} comenta ${fact.title} sem acrescentar fatos não confirmados.`, source: "FYX Social", handle, trend, sentiment, postCount: `${12 + index * 7},${index}k posts` }));
   }
-  if (action === "GOSSIP") {
+  if (GOSSIP_SHORTCUT_ACTIONS.has(action)) {
     const gossipSeeds = [
       ["gossip", "Rumor: fãs discutem o momento pessoal", "Rumores"],
       ["fanclub", "Fan clubs acompanham cada aparição pública", fact.playerName],
@@ -945,7 +1189,7 @@ function ensureShortcutMemory(memoryUpdates, payload, contract, now) {
     const gossipCount = existing.filter((item) => item.type === "gossip" || item.type === "fanclub").length;
     gossipSeeds.slice(0, Math.max(0, 6 - gossipCount)).forEach(([type, title, trend], index) => additions.push({ type, title, summary: `Conteúdo tratado como ${type === "gossip" ? "rumor ou especulação" : "reação de fãs"}; nenhum segredo privado foi convertido em fato.`, source: type === "gossip" ? "FYX Fofocas" : "FYX Fan Club", handle: `@FYX${type === "gossip" ? "Fofocas" : "Fans"}${index + 1}`, trend, sentiment: "especulação", postCount: `${8 + index * 6},${index}k posts` }));
   }
-  const isPressAnswer = action === "PRESS_CONFERENCE" && !/\[INYFFX_ACTION:PRESS_CONFERENCE\]/i.test(payload.message && payload.message.content || "");
+  const isPressAnswer = pressActions.has(action) && !cleanText(payload.message && payload.message.action, 80) && !/\[INYFFX_ACTION:[A-Z_]+\]/i.test(payload.message && payload.message.content || "");
   if (isPressAnswer && !existing.some((item) => item.type === "comment" || item.type === "headline")) {
     const answer = cleanText(payload.message && payload.message.content, 900);
     if (answer) additions.push({ type: "comment", title: `${fact.playerName} responde à imprensa`, summary: `Declaração registrada na coletiva: “${answer}”`, source: "Sala de Imprensa FYX", trend: fact.playerName, sentiment: "declaração" });
@@ -1049,10 +1293,14 @@ async function handleRoleplay(request, env, origin) {
   }
   const maximumContext = numberFromEnv(env.MAX_CONTEXT_CHARS, 32000, 60000);
   const recentMessages = payload.context && Array.isArray(payload.context.recentMessages) ? payload.context.recentMessages : [];
-  const turnContract = inferTurnContract(payload.message.content, recentMessages);
+  const turnContract = inferTurnContract(payload.message.content, recentMessages, payload.message.action);
   const verifiedMatch = turnContract.mode === "MATCH_REPORT" ? parseMatchReport(payload) : null;
+  const now = new Date().toISOString();
+  const shortcutOutcome = deterministicShortcutOutcome(payload, turnContract, now);
   let rawModelResponse = null;
-  let reply = verifiedMatch ? cleanNarrative(buildVerifiedMatchPackage(payload)) : "";
+  let reply = verifiedMatch
+    ? cleanNarrative(buildVerifiedMatchPackage(payload))
+    : cleanNarrative(shortcutOutcome && shortcutOutcome.reply);
   let narrativeRepaired = false;
   let matchFactChecked = Boolean(verifiedMatch && reply);
 
@@ -1084,16 +1332,19 @@ async function handleRoleplay(request, env, origin) {
     }
   }
 
-  const now = new Date().toISOString();
   let rawMemoryResponse = null;
   let memorySource = {};
-  try {
-    const memoryMessages = buildMemoryMessages(payload, reply, maximumContext);
-    rawMemoryResponse = await generateMemoryUpdates(env, memoryMessages);
-    const parsedMemory = parseModelPayload(rawMemoryResponse);
-    memorySource = parsedMemory && (parsedMemory.memoryUpdates || parsedMemory.updates || parsedMemory) || {};
-  } catch (error) {
-    console.error("Workers AI memory extraction failed", error && error.message ? error.message : error);
+  if (shortcutOutcome && shortcutOutcome.skipMemory) {
+    memorySource = shortcutOutcome.updates || {};
+  } else {
+    try {
+      const memoryMessages = buildMemoryMessages(payload, reply, maximumContext);
+      rawMemoryResponse = await generateMemoryUpdates(env, memoryMessages);
+      const parsedMemory = parseModelPayload(rawMemoryResponse);
+      memorySource = parsedMemory && (parsedMemory.memoryUpdates || parsedMemory.updates || parsedMemory) || {};
+    } catch (error) {
+      console.error("Workers AI memory extraction failed", error && error.message ? error.message : error);
+    }
   }
   let memoryUpdates = sanitizeMemoryUpdates(
     memorySource,
@@ -1106,7 +1357,10 @@ async function handleRoleplay(request, env, origin) {
   } else if (!memoryUpdates.news.length) {
     memoryUpdates.news.push(...fallbackMatchNews(payload, now));
   }
+  if (isEditorialShortcut(turnContract.action)) memoryUpdates.news = [];
   memoryUpdates = ensureShortcutMemory(memoryUpdates, payload, turnContract, now);
+  const editorialReply = safeEditorialReply(payload, turnContract, now, memoryUpdates);
+  if (editorialReply) reply = cleanNarrative(editorialReply);
 
   return jsonResponse({
     schemaVersion: "1.1",
@@ -1125,7 +1379,8 @@ async function handleRoleplay(request, env, origin) {
       mode: turnContract.mode,
       narrativeRepaired,
       matchFactChecked,
-      memoryUpdated: Boolean(rawMemoryResponse),
+      memoryUpdated: Boolean(rawMemoryResponse || shortcutOutcome && shortcutOutcome.changed || isEditorialShortcut(turnContract.action)),
+      deterministicShortcut: Boolean(shortcutOutcome || isEditorialShortcut(turnContract.action)),
       freeTier: true
     }
   }, 200, origin);

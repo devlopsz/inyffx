@@ -178,7 +178,7 @@ Acontecimentos importantes:
   assert.equal(parsed.events.some((event) => event.includes("PARTIDA OFICIAL")), false);
 });
 
-test("atalhos editoriais completam a memória mesmo quando o modelo não devolve cards", async () => {
+test("atalhos editoriais completam a memória sem depender da disponibilidade do modelo", async () => {
   const scenarios = [
     { action: "SOCIAL_MEDIA", mode: "SOCIAL_MEDIA", types: new Set(["social"]), minimum: 6 },
     { action: "GOSSIP", mode: "GOSSIP", types: new Set(["gossip", "fanclub"]), minimum: 6 },
@@ -197,22 +197,125 @@ test("atalhos editoriais completam a memória mesmo quando o modelo não devolve
       characters: [],
       calendar: []
     };
+    let aiCalled = false;
     const response = await worker.fetch(request(body), {
       ALLOWED_ORIGINS: origin,
       RATE_LIMITER: { limit: async () => ({ success: true }) },
       AI: {
-        run: async (_model, options) => options.response_format
-          ? { response: '{"canonEvents":[],"news":[],"characters":[]}' }
-          : { response: "A página foi atualizada somente com o que já está confirmado." }
+        run: async () => { aiCalled = true; throw new Error("Atalhos editoriais factuais não devem depender do modelo."); }
       }
     });
     const payload = await response.json();
     const matching = payload.memoryUpdates.news.filter((item) => scenario.types.has(item.type));
     assert.equal(response.status, 200);
+    assert.equal(aiCalled, false);
     assert.equal(payload.meta.mode, scenario.mode);
+    assert.equal(payload.meta.deterministicShortcut, true);
+    assert.doesNotMatch(payload.reply, /cabeça|acréscimos|falha do goleiro/i);
+    assert.equal(payload.memoryUpdates.news.some((item) => /cabeça|acréscimos|falha do goleiro/i.test(`${item.title} ${item.summary}`)), false);
     assert.ok(matching.length >= scenario.minimum, `${scenario.action} deveria gerar ao menos ${scenario.minimum} itens`);
     assert.equal(matching.every((item) => item.sourceMessageId === body.message.id), true);
   }
+});
+
+test("reconhece as famílias funcionais de atalhos pelo campo action sem expor marcador interno", () => {
+  const scenarios = [
+    ["PRE_MATCH_PRESS", "PRESS_CONFERENCE"],
+    ["MATCH_COVERAGE", "FYX_HEADLINES"],
+    ["FAN_COMMENTS", "SOCIAL_MEDIA"],
+    ["RELATIONSHIP_RUMORS", "GOSSIP"],
+    ["TODAY_AGENDA", "AGENDA"],
+    ["ADVANCE_DAY", "TIME_SKIP"],
+    ["REGISTER_PURCHASE", "DATA_UPDATE"],
+    ["FINANCE_OVERVIEW", "CAREER_REVIEW"],
+    ["FOOTBALL_WORLD", "WORLD_NEWS"],
+    ["PRE_MATCH_LOCKER", "NARRATIVE_SCENE"]
+  ];
+  scenarios.forEach(([action, mode]) => assert.equal(inferTurnContract("Execute a função solicitada.", [], action).mode, mode));
+
+  const messages = buildModelMessages({
+    message: { content: "Mostre as manchetes atuais sem inventar fatos.", action: "FYX_HEADLINES" },
+    context: { profile: { playerName: "Caio" }, recentMessages: [], memory: {} }
+  });
+  assert.match(messages.at(-2).content, /Ação solicitada: FYX_HEADLINES/);
+  assert.equal(messages.at(-1).content.includes("INYFFX_ACTION"), false);
+});
+
+test("executa atalho de atualização e devolve a camada estruturada para o frontend", async () => {
+  const body = validBody();
+  body.message.action = "REGISTER_PURCHASE";
+  body.message.content = "Comprei chuteiras hoje por R$ 900. Registre como equipamento em 2026-09-01.";
+  body.context.currentDate = "2026-09-01";
+  body.context.memory.finance = { currency: "BRL", balance: 5000, transactions: [] };
+  let aiCalled = false;
+  const response = await worker.fetch(request(body), {
+    ALLOWED_ORIGINS: origin,
+    RATE_LIMITER: { limit: async () => ({ success: true }) },
+    AI: {
+      run: async () => { aiCalled = true; throw new Error("A compra determinística não deve depender do modelo."); }
+    }
+  });
+  const payload = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(payload.meta.mode, "DATA_UPDATE");
+  assert.equal(payload.meta.deterministicShortcut, true);
+  assert.equal(aiCalled, false);
+  assert.match(payload.reply, /registrada/i);
+  assert.equal(payload.memoryUpdates.finance.transactions[0].amount, -900);
+  assert.equal(payload.memoryUpdates.finance.transactions[0].description.toLocaleLowerCase("pt-BR"), "chuteiras");
+  assert.equal(payload.memoryUpdates.finance.transactions[0].category.toLocaleLowerCase("pt-BR"), "equipamento");
+  assert.equal(payload.memoryUpdates.finance.transactions[0].date, "2026-09-01");
+  assert.equal(payload.memoryUpdates.finance.balance, 4100);
+  assert.equal(payload.memoryUpdates.currentDate, "2026-09-01");
+});
+
+test("consulta a agenda de modo determinístico sem inventar estádio ou compromissos", async () => {
+  const body = validBody();
+  body.message.action = "AGENDA";
+  body.message.content = "Mostre apenas os compromissos cadastrados.";
+  body.context.currentDate = "2026-09-01";
+  body.context.memory.calendar = [
+    { id: "event-training", type: "training", title: "Treino tático", start: "2026-09-01T15:00:00.000Z", location: "CT QA" },
+    { id: "event-match", type: "match", title: "Clube QA x Rival QA", start: "2026-09-03T19:30:00.000Z", opponent: "Rival QA", competition: "Liga QA" }
+  ];
+  let aiCalled = false;
+  const response = await worker.fetch(request(body), {
+    ALLOWED_ORIGINS: origin,
+    RATE_LIMITER: { limit: async () => ({ success: true }) },
+    AI: { run: async () => { aiCalled = true; throw new Error("A consulta de agenda não deve depender do modelo."); } }
+  });
+  const payload = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(aiCalled, false);
+  assert.equal(payload.meta.deterministicShortcut, true);
+  assert.match(payload.reply, /Treino tático/);
+  assert.match(payload.reply, /Clube QA x Rival QA/);
+  assert.match(payload.reply, /CT QA/);
+  assert.doesNotMatch(payload.reply, /estádio do clube|descrição|programado pelo técnico/i);
+  assert.equal(payload.memoryUpdates.calendar.length, 0);
+});
+
+test("aceita contexto local grande de fichas importadas antes de compactá-lo para o modelo", async () => {
+  const body = validBody();
+  body.context.memory.characters = Array.from({ length: 13 }, (_, index) => ({
+    id: `character-${index}`,
+    name: `Personagem ${index}`,
+    category: "friends",
+    details: { freeDescription: "x".repeat(12000), knownFacts: ["fato".repeat(500)] }
+  }));
+  assert.ok(JSON.stringify(body).length > 100000);
+  const response = await worker.fetch(request(body), {
+    ALLOWED_ORIGINS: origin,
+    RATE_LIMITER: { limit: async () => ({ success: true }) },
+    AI: {
+      run: async (_model, options) => options.response_format
+        ? { response: '{"canonEvents":[],"news":[],"characters":[]}' }
+        : { response: "O personagem responde normalmente, sem perder a continuidade." }
+    }
+  });
+  const payload = await response.json();
+  assert.equal(response.status, 200);
+  assert.match(payload.reply, /responde normalmente/i);
 });
 
 test("detecta controle do protagonista e repara um diálogo antes de salvar a memória", async () => {

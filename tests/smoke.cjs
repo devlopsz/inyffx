@@ -30,6 +30,7 @@ const requiredFiles = [
   "registration-data.js",
   "character-data.js",
   "calendar-shields.js",
+  "shortcut-data.js",
   "assets/config.js",
   "mod/pics/logo-inyffx.png",
   "mod/pics/login/inyffx-background-initial.png",
@@ -68,7 +69,8 @@ const app = read("app.js");
 const registrationSource = read("registration-data.js");
 const characterSource = read("character-data.js");
 const calendarManifestSource = read("calendar-shields.js");
-const combinedSource = [html, css, app, registrationSource, characterSource, calendarManifestSource].join("\n");
+const shortcutSource = read("shortcut-data.js");
+const combinedSource = [html, css, app, registrationSource, characterSource, calendarManifestSource, shortcutSource].join("\n");
 
 check(!/Cruyff Sans Mono|font-family\s*:\s*[^;]*\bmono\b/i.test(combinedSource), "nenhuma fonte mono é usada na interface");
 check(/font-family:\s*"Cruyff Sans"/i.test(css), "Cruyff Sans é a família visual da interface");
@@ -187,8 +189,18 @@ check(html.includes('id="chatHistoryList"') && app.includes("createCareerChat") 
 check(html.includes('id="deleteDayDialog"') && app.includes("openDeleteDayDialog") && app.includes("confirmDeleteDay"), "cada dia do KICK OFF pode ser apagado com confirmação própria");
 check(app.includes("chatDerivedRecordCount") && app.includes("createdInChatId") && app.includes("sourceChatId"), "exclusão do dia rastreia e remove somente dados derivados daquela conversa");
 check(!app.includes('plural(chat.messages.length, "1 mensagem') && css.includes(".chat-history-list { gap: 3px; overflow-x: hidden; }"), "confirmação conta mensagens uma vez e o histórico não cria rolagem horizontal");
-check(html.includes('id="kickShortcuts"') && ["REGISTER_MATCH", "PRESS_CONFERENCE", "FYX_HEADLINES", "SOCIAL_MEDIA", "GOSSIP", "AGENDA"].every((action) => app.includes(`[INYFFX_ACTION:${action}]`)), "atalhos do KICK OFF preparam ações estruturadas para a IA");
-check(html.includes('id="kickToolsMenu"') && html.includes('data-open-tool="match"') && html.includes('data-open-tool="wheel"') && html.includes('data-open-tool="dice"'), "menu de ferramentas do KICK OFF contém os três cards");
+vm.runInNewContext(shortcutSource, sandbox, { filename: "shortcut-data.js" });
+const shortcutLibrary = sandbox.window.INYFFX_SHORTCUT_LIBRARY;
+check(Array.isArray(shortcutLibrary) && shortcutLibrary.length >= 70, "biblioteca do KICK OFF contém todos os atalhos narrativos e funcionais");
+check(new Set(shortcutLibrary.map((shortcut) => shortcut.id)).size === shortcutLibrary.length && shortcutLibrary.every((shortcut) => shortcut.id && shortcut.label && shortcut.prompt), "cada atalho possui ação única, nome e prompt operacional");
+[
+  "REGISTER_MATCH", "PRESS_CONFERENCE", "FYX_HEADLINES", "SOCIAL_MEDIA", "GOSSIP", "AGENDA", "REGISTER_PURCHASE",
+  "REGISTER_ACHIEVEMENT", "ADVANCE_DAY", "PRESS_REACTION", "CONTINUE_STORY"
+].forEach((action) => check(shortcutLibrary.some((shortcut) => shortcut.id === action), `ação funcional disponível: ${action}`));
+check(html.includes('id="kickShortcuts"') && app.includes("preparedShortcutAction") && app.includes("message: { id: userMessage.id, content: userMessage.content, action: userMessage.action"), "atalhos enviam a ação estruturada separada do texto visível");
+check(app.includes("latestShortcutContext") && app.includes("upcomingFinal") && app.includes("hasUserReplyAfterAction"), "sugestões do KICK OFF mudam conforme partida, coletiva, agenda e contexto pessoal");
+check(html.includes('id="shortcutLibrary"') && html.includes('data-open-tool="shortcuts"') && html.indexOf('data-open-tool="shortcuts"') < html.indexOf('data-open-tool="match"'), "card Atalhos aparece antes do Prompt de Partida e abre a biblioteca completa");
+check(html.includes('id="kickToolsMenu"') && html.includes('data-open-tool="match"') && html.includes('data-open-tool="wheel"') && html.includes('data-open-tool="dice"'), "menu de ferramentas preserva Prompt de Partida, Roleta e Dados");
 check(app.includes("data-expand-message") && app.includes("isLongUserMessage"), "mensagens longas do usuário oferecem Mostrar Mais");
 check(!app.includes("chat-message__meta"), "mensagens do KICK OFF não exibem nomes de autor");
 check(html.includes('id="hubBackgroundB"') && app.includes("hubBackgroundVisible") && /transition:\s*opacity\s+520ms/i.test(css), "fundos do hub usam duas camadas com transição fade");
@@ -198,7 +210,7 @@ check(css.includes("width: 100vw") && css.includes("--composer-clearance: 280px"
 check(css.includes(".kick-composer-dock::after") && /height:\s*clamp\(170px,\s*25vh,\s*280px\)/i.test(css), "área sob o composer fica opaca e o fade de leitura é gradual");
 check(css.includes("@keyframes kick-new-day-shine"), "Novo Dia recebe animação de brilho no hover");
 check(html.includes('class="tool-icon-action"') && html.includes('data-tooltip="Copiar modelo"') && html.includes('data-tooltip="Rolar dado"'), "ferramentas usam ações circulares com tooltips");
-check(html.includes('<h2 id="toolTitle">Prompt de Partida</h2>') && !html.includes("<span>FERRAMENTA</span>"), "drawer exibe somente o nome da ferramenta no topo");
+check(html.includes('<h2 id="toolTitle">Atalhos</h2>') && !html.includes("<span>FERRAMENTA</span>"), "drawer exibe somente o nome da ferramenta no topo");
 check(app.includes("data-wheel-weight-index") && app.includes("formatWheelPercentage") && app.includes("totalWeight"), "roleta aceita ponderação e calcula percentuais");
 check(!html.includes('id="useWheelResult"') && !html.includes('id="useDiceResult"'), "roleta e dados não oferecem envio automático do resultado ao chat");
 check(/--accent:\s*#ffffff/i.test(css) && !/216\s*,\s*255\s*,\s*79|#d8ff4f|#65e6a8/i.test(css), "destaques verdes foram removidos da interface");
@@ -216,6 +228,9 @@ check(html.includes('id="calendarEventDialog"') && html.includes('id="calendarEv
 check(app.includes("calendarEventsForCareer") && app.includes('id: "birthday-" + year') && app.includes("calendarShieldForTeam") && app.includes("shield-time-not-found.svg"), "calendário cria aniversários e resolve escudo adversário com fallback");
 check(app.includes("calendarEventIdentity") && app.includes("uniqueEvents"), "calendário consolida registros duplicados da mesma partida na visualização");
 check(css.includes(".career-calendar") && css.includes(".calendar-grid") && css.includes(".calendar-day-event"), "PLAYER CAREER usa calendário escuro responsivo com ícones de evento");
+check(!app.includes("DATA ATUAL DA HISTÓRIA") && !app.includes("storyDateObject") && !app.includes("selectedDateObject"), "calendário remove cabeçalho e divisor de data riscados pelo usuário");
+check(app.includes("calendarTeamsMatch") && app.includes("matchOpponent") && css.includes(".calendar-day-event--match") && css.includes(".calendar-selected-event--match"), "calendário identifica o adversário e exibe escudo grande sem moldura no bloco e na lateral");
+check(css.includes("--calendar-weeks") && css.includes("career-surface.is-calendar") && css.includes("grid-template-rows: repeat(var(--calendar-weeks, 5)"), "calendário distribui cinco ou seis semanas dentro da altura normal da tela");
 check(/\.fyx-social-phone\s*\{[^}]*margin:\s*-14px 22px -14px 0;/s.test(css) && !css.includes("margin: -18px -13% -18px 0"), "celular possui espaço próprio e não invade o feed social");
 check(css.includes("@media (max-width: 1040px) and (min-width: 821px)") && /\.fyx-today article strong\s*\{[^}]*-webkit-line-clamp:\s*2;/s.test(css), "painel social preserva largura e leitura em telas menores");
 
@@ -230,13 +245,15 @@ check(html.includes("prompt%20the%20sims%20EXEMPLO.txt") && html.includes("BAIXA
 check(html.indexOf('src="registration-data.js"') < html.indexOf('src="app.js'), "dados do cadastro carregam antes da aplicação");
 check(html.indexOf('src="character-data.js"') < html.indexOf('src="app.js'), "ficha completa de personagens carrega antes da aplicação");
 check(html.indexOf('src="calendar-shields.js"') < html.indexOf('src="app.js'), "manifesto de escudos carrega antes da aplicação");
+check(html.indexOf('src="shortcut-data.js"') < html.indexOf('src="app.js'), "biblioteca de atalhos carrega antes da aplicação");
 check(app.includes("Cloudflare Workers AI") && html.includes("Qwen3 30B A3B"), "integração gratuita de IA continua configurada");
 
 new Function(app);
 new Function(registrationSource);
 new Function(characterSource);
 new Function(calendarManifestSource);
-check(true, "JavaScript principal, cadastro, fichas e manifesto do calendário compilam sem erro de sintaxe");
+new Function(shortcutSource);
+check(true, "JavaScript principal, cadastro, fichas, atalhos e manifesto do calendário compilam sem erro de sintaxe");
 
 const report = {
   passed: checks.length - failures.length,

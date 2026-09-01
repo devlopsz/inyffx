@@ -21,6 +21,8 @@
   var REFERENCE_DATA = window.INYFFX_REFERENCE_DATA || {};
   var CHARACTER_SCHEMA = window.INYFFX_CHARACTER_SCHEMA || { categories: [], commonSections: [], categorySections: {}, quickKeys: [] };
   var CALENDAR_SHIELDS = Array.isArray(window.INYFFX_CALENDAR_SHIELDS) ? window.INYFFX_CALENDAR_SHIELDS : [];
+  var KICK_SHORTCUT_LIBRARY = Array.isArray(window.INYFFX_SHORTCUT_LIBRARY) ? window.INYFFX_SHORTCUT_LIBRARY : [];
+  var KICK_SHORTCUT_GLOBAL_RULE = clean(window.INYFFX_SHORTCUT_GLOBAL_RULE);
   var CALENDAR_EVENT_META = {
     match: { label: "PARTIDA", icon: "shield", title: "Partida" },
     training: { label: "TREINO", icon: "mod/calendar/cone-treino.svg", title: "Treino" },
@@ -30,7 +32,7 @@
     birthday: { label: "ANIVERSÁRIO", icon: "mod/calendar/birthday.svg", title: "Aniversário" },
     personal: { label: "PESSOAL", icon: "mod/calendar/home-days.svg", title: "Evento pessoal" }
   };
-  var TOOL_TITLES = { match: "Prompt de Partida", wheel: "Roleta", dice: "Dados" };
+  var TOOL_TITLES = { shortcuts: "Atalhos", match: "Prompt de Partida", wheel: "Roleta", dice: "Dados" };
   var WHEEL_COLORS = ["#f4f4f4", "#262626", "#b8b8b8", "#454545", "#dedede", "#616161", "#a0a0a0", "#353535", "#c9c9c9", "#515151", "#ededed", "#747474"];
   var FYX_NEWS_IMAGES = [
     "mod/pics/fyxnews/manchete_1.jpg",
@@ -73,7 +75,8 @@
     pendingAvatar: "",
     sending: false,
     hubBackgroundVisible: "A",
-    hubBackgroundPreview: ""
+    hubBackgroundPreview: "",
+    preparedShortcutAction: ""
   };
   var el = {};
 
@@ -299,7 +302,7 @@
       "createForm", "createError", "registrationQuestion", "registrationSection", "registrationCount", "prevStep",
       "nextStep", "createCareer", "hubSidebar", "openSettings", "openProfile",
       "hubBackgroundA", "hubBackgroundB", "pageBack", "appMain", "chatMessages", "chatForm", "chatInput", "sendMessage", "kickShortcuts",
-      "sceneLabel", "newScene", "aiStatusChip", "toolDrawer", "toolTitle", "closeTools", "matchTemplateForm",
+      "sceneLabel", "newScene", "aiStatusChip", "toolDrawer", "toolTitle", "closeTools", "shortcutLibrary", "matchTemplateForm",
       "chatHistoryControl", "toggleChatHistory", "chatHistoryPanel", "chatHistoryList", "kickToolsMenu", "toggleToolsMenu",
       "matchPromptTemplate", "copyMatchTemplate", "insertMatchTemplate", "wheel", "wheelResult", "wheelEntries", "addWheelEntry",
       "spinWheel", "dicePicker", "diceResult", "rollDice",
@@ -356,9 +359,16 @@
         el.chatForm.requestSubmit();
       }
     });
-    el.chatInput.addEventListener("input", autosizeComposer);
+    el.chatInput.addEventListener("input", function () {
+      if (!clean(el.chatInput.value)) {
+        ui.preparedShortcutAction = "";
+        delete el.chatInput.dataset.shortcutAction;
+      }
+      autosizeComposer();
+    });
     el.chatMessages.addEventListener("click", handleChatMessageClick);
     el.kickShortcuts.addEventListener("click", handleKickShortcut);
+    el.shortcutLibrary.addEventListener("click", handleKickShortcut);
     el.newScene.addEventListener("click", startNewScene);
     el.toggleToolsMenu.addEventListener("click", toggleToolsMenu);
     el.toggleChatHistory.addEventListener("click", toggleChatHistory);
@@ -1047,6 +1057,7 @@
     el.sceneLabel.textContent = career.sceneNumber > 1 ? "Cena " + career.sceneNumber : "Roleplay livre";
     renderChat();
     renderKickShortcuts(career);
+    renderShortcutLibrary();
     renderNews();
     renderRelationships();
     populateSeasonSelect();
@@ -1099,42 +1110,93 @@
     })[0] || null;
   }
 
+  function shortcutById(id) {
+    return KICK_SHORTCUT_LIBRARY.find(function (shortcut) { return shortcut.id === id; }) || null;
+  }
+
+  function shortcutActionFromMessage(message) {
+    if (!message) return "";
+    if (clean(message.action)) return clean(message.action).toUpperCase();
+    return clean((String(message.content || "").match(/\[INYFFX_ACTION:([A-Z_]+)\]/i) || [])[1]).toUpperCase();
+  }
+
+  function latestShortcutContext(career) {
+    var messages = activeMessages(career);
+    var actionIndex = -1;
+    var action = "";
+    for (var index = messages.length - 1; index >= 0; index -= 1) {
+      action = shortcutActionFromMessage(messages[index]);
+      if (action) { actionIndex = index; break; }
+    }
+    return {
+      action: action,
+      hasUserReplyAfterAction: actionIndex >= 0 && messages.slice(actionIndex + 1).some(function (message) { return message.role === "user"; })
+    };
+  }
+
+  function latestMatchOutcome(career, match) {
+    if (!match || match.homeScore === "" || match.awayScore === "" || match.homeScore == null || match.awayScore == null) return "";
+    var club = clean(career.profile.currentClub);
+    var playerHome = calendarTeamsMatch(club, match.homeTeam);
+    var playerAway = calendarTeamsMatch(club, match.awayTeam);
+    if (!playerHome && !playerAway) return "";
+    var playerScore = Number(playerHome ? match.homeScore : match.awayScore);
+    var opponentScore = Number(playerHome ? match.awayScore : match.homeScore);
+    return playerScore > opponentScore ? "win" : playerScore < opponentScore ? "loss" : "draw";
+  }
+
+  function upcomingFinal(career) {
+    var currentDate = validDateOnly(career.currentDate) || localDateKey(new Date());
+    return calendarEventsForCareer(career, Number(currentDate.slice(0, 4)) || new Date().getFullYear()).find(function (event) {
+      return event.type === "match" && event.date >= currentDate && /final/i.test(clean(event.phase));
+    }) || null;
+  }
+
+  function shortcutSuggestion(id, label) {
+    var shortcut = shortcutById(id);
+    return shortcut ? Object.assign({}, shortcut, { label: label || shortcut.label }) : null;
+  }
+
   function kickShortcutDefinitions(career) {
-    var player = clean(career.profile.playerName) || "meu jogador";
     var match = latestCareerMatch(career);
-    var matchReference = match ? match.homeTeam + " " + match.homeScore + " x " + match.awayScore + " " + match.awayTeam : "a partida pública mais recente registrada";
-    return [
-      {
-        id: "match",
-        label: "Enviar partida",
-        prompt: "[INYFFX_ACTION:REGISTER_MATCH]\nQuero registrar oficialmente a partida abaixo. Considere somente os campos que eu preencher como fatos. Salve a partida no calendário e na temporada atual, atualize partidas, gols e assistências de " + player + ", crie a cobertura factual necessária para FYX NEWS e, depois, entregue narração, análise, repercussão e a primeira pergunta da coletiva sem inventar estatísticas.\n\n" + buildShortcutMatchTemplate(career)
-      },
-      {
-        id: "press",
-        label: "Iniciar coletiva",
-        prompt: "[INYFFX_ACTION:PRESS_CONFERENCE]\nInicie agora uma coletiva sobre o acontecimento esportivo público mais recente. Interprete repórteres diferentes e faça somente uma pergunta por vez. Espere sempre minha resposta, reaja brevemente ao que eu disser e então faça a próxima pergunta. Nunca responda por mim. Cada declaração relevante que eu der deve ser registrada como material de imprensa na FYX NEWS, preservando exatamente minhas palavras e sem revelar informações privadas."
-      },
-      {
-        id: "headlines",
-        label: "Ver manchetes atuais",
-        prompt: "[INYFFX_ACTION:FYX_HEADLINES]\nCrie e registre a edição atual da FYX NEWS usando " + matchReference + " e os fatos públicos mais recentes. Gere uma manchete principal forte, manchetes secundárias, análise da partida e legendas coerentes com os fatos. Mostre perspectivas jornalísticas diferentes, mas não invente placar, fala, estatística ou acontecimento. Salve conteúdo suficiente para preencher por completo a seção FYX NEWS."
-      },
-      {
-        id: "social",
-        label: "Ver redes sociais",
-        prompt: "[INYFFX_ACTION:SOCIAL_MEDIA]\nGere e registre a repercussão pública mais recente nas REDES SOCIAIS. Crie comentários variados de torcedores, rivais, jornalistas, páginas esportivas e fan accounts, além de manchetes do feed, volume de posts e quatro trending topics. Misture elogios, críticas, humor e análise. Use somente fatos públicos registrados e salve todo o conteúdo na seção REDES SOCIAIS."
-      },
-      {
-        id: "gossip",
-        label: "Ver fofocas",
-        prompt: "[INYFFX_ACTION:GOSSIP]\nGere e registre a edição atual de FOFOCAS a partir dos acontecimentos pessoais públicos mais recentes. Inclua comentários de fan clubs, tabloides e público, manchetes, volume de posts e quatro trending topics. Diferencie claramente fato confirmado, rumor e especulação. Nunca revele segredos ou informações que o público não poderia conhecer."
-      },
-      {
-        id: "agenda",
-        label: "Ver sua agenda",
-        prompt: "[INYFFX_ACTION:AGENDA]\nConsulte o calendário canônico e apresente minha agenda em ordem cronológica a partir da data atual da história. Destaque compromissos de hoje, próxima partida, treinos, eventos pessoais, aniversários e períodos livres. Não invente compromissos nem resultados de partidas futuras."
-      }
-    ];
+    var context = latestShortcutContext(career);
+    var suggestions;
+    var matchActions = ["REGISTER_MATCH", "QUICK_RESULT", "POST_MATCH_LOCKER", "ANALYZE_PERFORMANCE", "POST_MATCH_PRESS", "MATCH_COVERAGE"];
+    var personalActions = ["GOSSIP", "PERSONAL_PUBLIC_TALK", "PAPARAZZI", "RELATIONSHIP_RUMORS", "REACT_GOSSIP", "MEET_SOMEONE", "TALK_CHARACTER", "MESSAGE_CHARACTER", "RESOLVE_ARGUMENT", "FRIENDS_TIME", "REST_HOME", "DINNER_OUT", "PARTY_OUT", "BIRTHDAY_PARTY", "DAY_OFF", "FREE_NIGHT"];
+
+    if (["PRESS_CONFERENCE", "PRE_MATCH_PRESS", "POST_MATCH_PRESS", "TENSE_PRESS", "EXCLUSIVE_INTERVIEW"].indexOf(context.action) >= 0 && context.hasUserReplyAfterAction) {
+      suggestions = ["PRESS_REACTION", "FYX_HEADLINES", "SOCIAL_MEDIA", "TALK_CHARACTER", "NEXT_APPOINTMENT", "ADVANCE_DAY"];
+    } else if (match && matchActions.indexOf(context.action) >= 0 && (Number(match.goals) >= 2 || Number(match.rating) >= 8.5)) {
+      suggestions = [
+        ["SOCIAL_MEDIA", "Ver repercussão mundial"], ["TRENDING_TOPICS"], ["TALK_CHARACTER", "Falar com treinador"],
+        ["PRESS_CONFERENCE", "Responder à imprensa"], ["ANALYZE_PERFORMANCE"], ["FYX_HEADLINES"]
+      ];
+    } else if (match && matchActions.indexOf(context.action) >= 0 && latestMatchOutcome(career, match) === "loss") {
+      suggestions = [
+        ["POST_MATCH_LOCKER", "Ir para o vestiário"], ["PRESS_OPINIONS", "Ver críticas"], ["TALK_CHARACTER", "Falar com treinador"],
+        ["INDIVIDUAL_TRAINING"], ["SOCIAL_MEDIA"], ["CONTINUE_STORY"]
+      ];
+    } else if (match && matchActions.indexOf(context.action) >= 0) {
+      suggestions = [
+        ["POST_MATCH_LOCKER", "Ir para o vestiário"], ["PRESS_CONFERENCE"], ["FYX_HEADLINES", "Ver manchetes"],
+        ["SOCIAL_MEDIA", "Ver redes sociais"], ["ANALYZE_PERFORMANCE"], ["NEXT_APPOINTMENT"]
+      ];
+    } else if (personalActions.indexOf(context.action) >= 0) {
+      suggestions = ["GOSSIP", "SOCIAL_MEDIA", "TALK_CHARACTER", ["REACT_GOSSIP", "Responder publicamente"], "MESSAGES", "CONTINUE_STORY"];
+    } else if (upcomingFinal(career)) {
+      suggestions = [
+        ["PRE_MATCH", "Ver pré-jogo"], ["PRE_MATCH_PRESS"], ["CLUB_TRAINING", "Treino final"],
+        ["PRE_MATCH_LOCKER", "Vestiário"], ["AGENDA"], ["SOCIAL_MEDIA"]
+      ];
+    } else if (!calendarEventsForCareer(career, Number((career.currentDate || "").slice(0, 4)) || new Date().getFullYear()).some(function (event) { return event.type === "match" && event.date === career.currentDate; })) {
+      suggestions = [["AGENDA", "Ver agenda"], ["CLUB_TRAINING", "Treinar"], "REST_HOME", "MEET_SOMEONE", "FREE_NIGHT", "CONTINUE_STORY"];
+    } else {
+      suggestions = [["REGISTER_MATCH", "Enviar partida"], "PRESS_CONFERENCE", "FYX_HEADLINES", "SOCIAL_MEDIA", "GOSSIP", ["AGENDA", "Ver sua agenda"]];
+    }
+
+    return suggestions.map(function (item) {
+      return Array.isArray(item) ? shortcutSuggestion(item[0], item[1]) : shortcutSuggestion(item);
+    }).filter(Boolean).slice(0, 6);
   }
 
   function renderKickShortcuts(career) {
@@ -1144,14 +1206,31 @@
     }).join("");
   }
 
+  function renderShortcutLibrary() {
+    if (!el.shortcutLibrary) return;
+    el.shortcutLibrary.innerHTML = KICK_SHORTCUT_LIBRARY.map(function (shortcut) {
+      return '<button type="button" data-kick-shortcut="' + escapeHTML(shortcut.id) + '">' + escapeHTML(shortcut.label) + "</button>";
+    }).join("");
+  }
+
+  function preparedShortcutPrompt(career, shortcut) {
+    var parts = [shortcut.prompt];
+    if (shortcut.id === "REGISTER_MATCH") parts.push(buildShortcutMatchTemplate(career));
+    if (KICK_SHORTCUT_GLOBAL_RULE) parts.push("REGRA GLOBAL DO KICK OFF\n" + KICK_SHORTCUT_GLOBAL_RULE);
+    return parts.filter(Boolean).join("\n\n");
+  }
+
   function handleKickShortcut(event) {
     var button = event.target.closest("[data-kick-shortcut]");
     var career = activeCareer();
     if (!button || !career) return;
-    var shortcut = kickShortcutDefinitions(career).find(function (item) { return item.id === button.dataset.kickShortcut; });
+    var shortcut = shortcutById(button.dataset.kickShortcut);
     if (!shortcut) return;
-    el.chatInput.value = shortcut.prompt;
+    el.chatInput.value = preparedShortcutPrompt(career, shortcut);
+    ui.preparedShortcutAction = shortcut.id;
+    el.chatInput.dataset.shortcutAction = shortcut.id;
     autosizeComposer();
+    if (button.closest("#shortcutLibrary")) closeTools();
     el.chatInput.focus();
     toast(shortcut.label + " preparado. Revise e envie quando quiser.");
   }
@@ -1171,11 +1250,13 @@
     var career = activeCareer();
     var content = clean(el.chatInput.value);
     if (!career || !content) return;
+    var requestedAction = clean(ui.preparedShortcutAction || el.chatInput.dataset.shortcutAction).toUpperCase();
     var chat = getActiveChat(career, true);
     var userMessage = {
       id: uid("message"),
       role: "user",
       content: content,
+      action: requestedAction,
       scene: chat.scene,
       sourceChatId: chat.id,
       createdAt: new Date().toISOString()
@@ -1188,6 +1269,8 @@
     var matchAdded = registerMatchFromMessage(career, userMessage);
     saveState();
     el.chatInput.value = "";
+    ui.preparedShortcutAction = "";
+    delete el.chatInput.dataset.shortcutAction;
     autosizeComposer();
     renderAll();
     if (matchAdded) {
@@ -1206,7 +1289,7 @@
     var requestTimer = null;
     try {
       var controller = new AbortController();
-      requestTimer = window.setTimeout(function () { controller.abort(); }, 90000);
+      requestTimer = window.setTimeout(function () { controller.abort(); }, 150000);
       var response = await fetch(joinUrl(apiBaseUrl, "/v1/roleplay/message"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1215,7 +1298,7 @@
           schemaVersion: "1.1",
           turnId: userMessage.id,
           careerId: career.id,
-          message: { id: userMessage.id, content: userMessage.content, scene: userMessage.scene, createdAt: userMessage.createdAt },
+          message: { id: userMessage.id, content: userMessage.content, action: userMessage.action, scene: userMessage.scene, createdAt: userMessage.createdAt },
           context: buildBackendContext(career)
         })
       });
@@ -1227,17 +1310,20 @@
       }
       removePendingMessage();
       var reply = clean(payload.reply || (payload.message && payload.message.content));
+      if (!reply) throw new Error("A IA respondeu sem um texto utilizável. Tente enviar novamente.");
       if (reply) {
         chat.messages.push({
           id: (payload.message && payload.message.id) || uid("message"),
           role: "assistant",
           content: reply,
+          action: requestedAction,
           scene: chat.scene,
           sourceChatId: chat.id,
           createdAt: (payload.message && payload.message.createdAt) || new Date().toISOString()
         });
       }
       chat.updatedAt = new Date().toISOString();
+      if (requestedAction) career.lastShortcutAction = requestedAction;
       career.messages = chat.messages;
       applyMemoryUpdates(career, payload.memoryUpdates || payload.updates || payload.memory || {}, { chatId: chat.id, messageId: userMessage.id });
       career.updatedAt = new Date().toISOString();
@@ -1288,7 +1374,7 @@
       scene: career.sceneNumber,
       currentDate: career.currentDate,
       recentMessages: activeMessages(career).slice(-12).map(function (message) {
-        return { role: message.role, content: message.content, createdAt: message.createdAt };
+        return { role: message.role, content: message.content, action: shortcutActionFromMessage(message), createdAt: message.createdAt };
       }),
       memory: {
         canonEvents: career.canonEvents.slice(-18),
@@ -1309,6 +1395,28 @@
     };
   }
 
+  function compactContextText(value, maximum) {
+    return clean(value).slice(0, maximum || 900);
+  }
+
+  function compactContextList(value, maximumItems, maximumCharacters) {
+    var source = Array.isArray(value) ? value : splitList(value);
+    return source.slice(0, maximumItems || 12).map(function (item) { return compactContextText(item, maximumCharacters || 320); }).filter(Boolean);
+  }
+
+  function compactCharacterDetails(details) {
+    var source = details && typeof details === "object" ? details : {};
+    var compacted = {};
+    ["personalityDescription", "greatestQuality", "greatestFlaw", "speechStyle", "accentSlang", "relationshipCurrent", "viewOfPlayer", "currentGoal", "longTermGoal", "currentState", "characterRules", "freeDescription", "finalAISummary", "professionRole", "teamClub", "position", "squadRole", "romanceStatus"].forEach(function (key) {
+      if (source[key] != null && clean(source[key])) compacted[key] = compactContextText(source[key], key === "freeDescription" || key === "characterRules" ? 1100 : 520);
+    });
+    ["personalityTraits", "samplePhrases", "knownFacts", "unknownFacts", "immutableFacts", "importantEvents", "importantPeople", "openInformation"].forEach(function (key) {
+      var values = compactContextList(source[key], 10, 320);
+      if (values.length) compacted[key] = values;
+    });
+    return compacted;
+  }
+
   function characterContextRecord(character) {
     var normalized = normalizeCharacter(character);
     return {
@@ -1318,17 +1426,19 @@
       role: normalized.role,
       relationship: normalized.relationship,
       relationshipLevel: normalized.relationshipLevel,
-      summary: normalized.summary,
-      knownFacts: normalized.knownFacts,
-      unknownFacts: normalized.unknownFacts,
-      secretsKnown: normalized.secretsKnown,
-      details: normalized.details,
+      summary: compactContextText(normalized.summary, 900),
+      knownFacts: compactContextList(normalized.knownFacts, 12, 360),
+      unknownFacts: compactContextList(normalized.unknownFacts, 12, 360),
+      secretsKnown: compactContextList(normalized.secretsKnown, 8, 320),
+      details: compactCharacterDetails(normalized.details),
       lastUpdated: normalized.lastUpdated
     };
   }
 
   function applyMemoryUpdates(career, updates, origin) {
     if (!updates || typeof updates !== "object") return;
+    var updatedCurrentDate = validDateOnly(updates.currentDate);
+    if (updatedCurrentDate) career.currentDate = updatedCurrentDate;
     upsertMany(career.news, updates.news, origin);
     upsertCharacters(career.characters, updates.characters, origin);
     upsertMany(career.canonEvents, updates.canonEvents, origin);
@@ -1434,6 +1544,8 @@
     saveState();
     closeChatHistory();
     closeToolsMenu();
+    ui.preparedShortcutAction = "";
+    delete el.chatInput.dataset.shortcutAction;
     renderChat();
     toast("Novo dia iniciado. As conversas e o cânone anteriores foram preservados.");
     el.chatInput.focus();
@@ -1465,6 +1577,8 @@
     career.activeChatId = chat.id;
     career.sceneNumber = Number(chat.scene || career.sceneNumber || 1);
     career.messages = chat.messages;
+    ui.preparedShortcutAction = "";
+    delete el.chatInput.dataset.shortcutAction;
     saveState();
     closeChatHistory();
     renderChat();
@@ -1561,7 +1675,7 @@
     el.chatInput.style.height = targetHeight + "px";
     el.chatForm.style.setProperty("--composer-radius", radius + "px");
     el.chatForm.classList.toggle("is-multiline", lines > 1);
-    el.chatMessages.style.setProperty("--composer-clearance", Math.max(320, targetHeight + 280) + "px");
+    el.chatMessages.style.setProperty("--composer-clearance", Math.max(380, targetHeight + 340) + "px");
   }
 
   function openTool(tool) {
@@ -2777,6 +2891,7 @@
   function renderCareerPage() {
     var career = activeCareer();
     if (!career) return;
+    el.careerContent.classList.toggle("is-calendar", ui.careerTab === "calendar");
     if (ui.careerTab === "hall") renderHall(career);
     else if (ui.careerTab === "calendar") renderCalendar(career);
     else renderFinance(career);
@@ -2957,10 +3072,26 @@
     return best.overlap >= Math.max(1, Math.ceil(words.length * 0.6)) ? best.path : "mod/calendar/shield-time-not-found.svg";
   }
 
+  function calendarTeamsMatch(left, right) {
+    var leftKey = normalizeKey(left);
+    var rightKey = normalizeKey(right);
+    if (!leftKey || !rightKey) return false;
+    if (leftKey === rightKey || leftKey.indexOf(rightKey) >= 0 || rightKey.indexOf(leftKey) >= 0) return true;
+    var leftWords = calendarTeamWords(left);
+    var rightWords = calendarTeamWords(right);
+    if (!leftWords.length || !rightWords.length) return false;
+    var overlap = leftWords.filter(function (word) { return rightWords.indexOf(word) >= 0; }).length;
+    return overlap >= Math.max(1, Math.min(leftWords.length, rightWords.length));
+  }
+
   function matchOpponent(career, event) {
-    var club = normalizeKey(career.profile.currentClub || "");
-    if (club && normalizeKey(event.homeTeam) === club) return event.awayTeam;
-    if (club && normalizeKey(event.awayTeam) === club) return event.homeTeam;
+    var club = clean(career.profile.currentClub);
+    if (club && calendarTeamsMatch(club, event.homeTeam)) return clean(event.awayTeam);
+    if (club && calendarTeamsMatch(club, event.awayTeam)) return clean(event.homeTeam);
+    if (clean(event.opponent) && !calendarTeamsMatch(club, event.opponent)) return clean(event.opponent);
+    var homeSimilarity = calendarTeamWords(club).filter(function (word) { return calendarTeamWords(event.homeTeam).indexOf(word) >= 0; }).length;
+    var awaySimilarity = calendarTeamWords(club).filter(function (word) { return calendarTeamWords(event.awayTeam).indexOf(word) >= 0; }).length;
+    if (homeSimilarity !== awaySimilarity) return clean(homeSimilarity > awaySimilarity ? event.awayTeam : event.homeTeam);
     return clean(event.opponent || event.awayTeam || event.homeTeam || "");
   }
 
@@ -2996,19 +3127,17 @@
       var eventButtons = dayEvents.slice(0, 4).map(function (event) {
         var score = event.type === "match" && event.status === "completed" ? '<small>' + escapeHTML(String(event.homeScore) + "–" + String(event.awayScore)) + "</small>" : "";
         var editable = event.synthetic ? "" : ' data-calendar-event="' + escapeHTML(event.id) + '"';
-        return '<button class="calendar-day-event calendar-day-event--' + escapeHTML(event.type) + '" type="button"' + editable + ' title="' + escapeHTML(event.title) + '">' + calendarEventIcon(career, event) + score + "</button>";
+        return '<button class="calendar-day-event calendar-day-event--' + escapeHTML(event.type) + '" type="button"' + editable + ' title="' + escapeHTML(event.title) + '" aria-label="' + escapeHTML(event.title) + '">' + score + calendarEventIcon(career, event) + "</button>";
       }).join("");
       if (dayEvents.length > 4) eventButtons += '<span class="calendar-day-more">+' + (dayEvents.length - 4) + "</span>";
       cells.push('<div class="calendar-day' + (outside ? " is-outside" : "") + (current ? " is-current" : "") + (selected ? " is-selected" : "") + '" data-calendar-date="' + dateKey + '" role="button" tabindex="0"><span class="calendar-day__number">' + dayDate.getDate() + '</span><div class="calendar-day__events">' + eventButtons + "</div></div>");
     }
     var selectedEvents = events.filter(function (event) { return event.date === ui.calendarSelectedDate; });
-    var selectedDateObject = new Date(ui.calendarSelectedDate + "T12:00:00");
-    var storyDateObject = new Date(baseDate + "T12:00:00");
     el.careerContent.innerHTML = [
-      '<div class="career-calendar"><header class="calendar-toolbar"><div class="calendar-story-date"><span>DATA ATUAL DA HISTÓRIA</span><strong>', escapeHTML(new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "2-digit", month: "long", year: "numeric" }).format(storyDateObject)), '</strong><input id="storyDateControl" type="date" value="', escapeHTML(baseDate), '" aria-label="Data atual da história" /></div><div class="calendar-toolbar__actions"><button type="button" data-calendar-today>IR PARA A DATA ATUAL</button><button class="calendar-add-event" type="button" data-calendar-new><span>+</span> NOVO EVENTO</button></div></header>',
-      '<div class="calendar-workspace"><section class="calendar-board"><header class="calendar-month-nav"><button type="button" data-calendar-nav="-1" aria-label="Mês anterior">←</button><div><strong>', escapeHTML(calendarMonthTitle(monthDate)), '</strong><span>', year, '</span></div><button type="button" data-calendar-nav="1" aria-label="Próximo mês">→</button></header><div class="calendar-weekdays"><span>DOM</span><span>SEG</span><span>TER</span><span>QUA</span><span>QUI</span><span>SEX</span><span>SÁB</span></div><div class="calendar-grid">', cells.join(""), '</div></section>',
-      '<aside class="calendar-rail"><div class="calendar-rail__date"><strong>', year, '</strong><span>', escapeHTML(calendarMonthTitle(monthDate)), '</span></div><div class="calendar-selected"><span>', escapeHTML(new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "2-digit", month: "long" }).format(selectedDateObject)), '</span>',
-      selectedEvents.length ? selectedEvents.map(function (event) { return '<button type="button"' + (event.synthetic ? "" : ' data-calendar-event="' + escapeHTML(event.id) + '"') + '><i>' + calendarEventIcon(career, event) + '</i><span><strong>' + escapeHTML(event.title) + '</strong><small>' + escapeHTML([event.time, event.location || event.competition, CALENDAR_EVENT_META[event.type].label].filter(Boolean).join(" · ")) + "</small></span></button>"; }).join("") : '<p>Nenhum compromisso neste dia.<br />Clique no calendário ou em “Novo evento” para adicionar.</p>',
+      '<div class="career-calendar"><header class="calendar-toolbar"><div class="calendar-toolbar__actions"><button type="button" data-calendar-today>IR PARA A DATA ATUAL</button><button class="calendar-add-event" type="button" data-calendar-new><span>+</span> NOVO EVENTO</button></div></header>',
+      '<div class="calendar-workspace"><section class="calendar-board"><header class="calendar-month-nav"><button type="button" data-calendar-nav="-1" aria-label="Mês anterior">←</button><div><strong>', escapeHTML(calendarMonthTitle(monthDate)), '</strong><span>', year, '</span></div><button type="button" data-calendar-nav="1" aria-label="Próximo mês">→</button></header><div class="calendar-weekdays"><span>DOM</span><span>SEG</span><span>TER</span><span>QUA</span><span>QUI</span><span>SEX</span><span>SÁB</span></div><div class="calendar-grid" style="--calendar-weeks:', cellCount / 7, '">', cells.join(""), '</div></section>',
+      '<aside class="calendar-rail"><div class="calendar-rail__date"><strong>', year, '</strong><span>', escapeHTML(calendarMonthTitle(monthDate)), '</span></div><div class="calendar-selected">',
+      selectedEvents.length ? selectedEvents.map(function (event) { return '<button class="calendar-selected-event calendar-selected-event--' + escapeHTML(event.type) + '" type="button"' + (event.synthetic ? "" : ' data-calendar-event="' + escapeHTML(event.id) + '"') + '><span><strong>' + escapeHTML(event.title) + '</strong><small>' + escapeHTML([event.time, event.location || event.competition, CALENDAR_EVENT_META[event.type].label].filter(Boolean).join(" · ")) + '</small></span><i>' + calendarEventIcon(career, event) + "</i></button>"; }).join("") : '<p>Nenhum compromisso neste dia.<br />Clique no calendário ou em “Novo evento” para adicionar.</p>',
       '</div><div class="calendar-legend">', Object.keys(CALENDAR_EVENT_META).filter(function (type) { return type !== "personal"; }).map(function (type) { var meta = CALENDAR_EVENT_META[type]; return '<span><i>' + (type === "match" ? '<img src="mod/calendar/shield-time-not-found.svg" alt="" />' : '<img src="' + meta.icon + '" alt="" />') + '</i>' + escapeHTML(meta.label) + "</span>"; }).join(""), "</div></aside></div></div>"
     ].join("");
   }
@@ -3104,6 +3233,7 @@
     });
     draft.type = CALENDAR_EVENT_META[draft.type] ? draft.type : "personal";
     draft.title = draft.type === "match" ? clean(draft.homeTeam) + " x " + clean(draft.awayTeam) : clean(draft.title) || CALENDAR_EVENT_META[draft.type].title;
+    if (draft.type === "match") draft.opponent = matchOpponent(activeCareer(), draft);
     draft.location = draft.type === "match" ? clean(draft.stadium) : clean(draft.location);
     draft.updatedAt = new Date().toISOString();
     ui.calendarDraft = normalizeCalendarEvent(draft);
@@ -3537,6 +3667,8 @@
 
   function insertIntoChat(text) {
     navigate("kick-off");
+    ui.preparedShortcutAction = "";
+    delete el.chatInput.dataset.shortcutAction;
     var existing = el.chatInput.value.trim();
     el.chatInput.value = existing ? existing + "\n\n" + text : text;
     autosizeComposer();
