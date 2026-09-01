@@ -129,6 +129,92 @@ test("gera pacote pós-jogo e memória somente com os fatos enviados", async () 
   assert.equal(payload.memoryUpdates.canonEvents[0].certainty, "FATO_DO_JOGO");
 });
 
+test("interpreta o modelo oficial dos atalhos sem confundir o placar com os gols do jogador", () => {
+  const body = validBody();
+  body.context.profile.playerName = "Caio Alexandre";
+  body.context.profile.currentClub = "Chelsea";
+  body.message.content = `[INYFFX_ACTION:REGISTER_MATCH]
+[PARTIDA OFICIAL]
+Data: 2026-09-01
+Temporada: 2026/27
+Competição: UEFA Champions League
+Fase: Oitavas de final
+Estádio: Stamford Bridge
+Mandante: Chelsea
+Visitante: Napoli
+Gols do mandante: 3
+Gols do visitante: 1
+Minutos jogados: 90
+Gols do meu jogador (Caio Alexandre): 2
+Assistências: 1
+Nota: 9,2
+Formação / escalação:
+GO - Robert Sánchez
+LD - Reece James
+ZC - Colwill
+Como os gols aconteceram:
+12:30 - Caio Alexandre finalizou no canto esquerdo
+74:10 - Caio Alexandre marcou de cabeça
+Acontecimentos importantes:
+60:00 - Palmer deu uma assistência
+[/PARTIDA OFICIAL]`;
+
+  const contract = inferTurnContract(body.message.content, []);
+  const parsed = parseMatchReport(body);
+
+  assert.equal(contract.mode, "MATCH_REPORT");
+  assert.equal(contract.action, "REGISTER_MATCH");
+  assert.equal(parsed.homeTeam, "Chelsea");
+  assert.equal(parsed.awayTeam, "Napoli");
+  assert.equal(parsed.homeScore, 3);
+  assert.equal(parsed.awayScore, 1);
+  assert.equal(parsed.protagonistName, "Caio Alexandre");
+  assert.equal(parsed.goals, 2);
+  assert.equal(parsed.assists, 1);
+  assert.equal(parsed.minutes, 90);
+  assert.equal(parsed.rating, 9.2);
+  assert.match(parsed.formation, /Robert Sánchez[\s\S]*Reece James[\s\S]*Colwill/);
+  assert.equal(parsed.events.length, 3);
+  assert.equal(parsed.events.some((event) => event.includes("PARTIDA OFICIAL")), false);
+});
+
+test("atalhos editoriais completam a memória mesmo quando o modelo não devolve cards", async () => {
+  const scenarios = [
+    { action: "SOCIAL_MEDIA", mode: "SOCIAL_MEDIA", types: new Set(["social"]), minimum: 6 },
+    { action: "GOSSIP", mode: "GOSSIP", types: new Set(["gossip", "fanclub"]), minimum: 6 },
+    { action: "FYX_HEADLINES", mode: "FYX_HEADLINES", types: new Set(["headline", "analysis", "comment"]), minimum: 4 }
+  ];
+
+  for (const scenario of scenarios) {
+    const body = validBody();
+    body.message.content = `[INYFFX_ACTION:${scenario.action}]\nPrepare a página correspondente usando somente os fatos registrados.`;
+    body.context.currentDate = "2026-09-01";
+    body.context.memory = {
+      currentSeason: {
+        matches: [{ homeTeam: "Chelsea", awayTeam: "Napoli", homeScore: 2, awayScore: 1, date: "2026-08-31" }]
+      },
+      canonEvents: [],
+      characters: [],
+      calendar: []
+    };
+    const response = await worker.fetch(request(body), {
+      ALLOWED_ORIGINS: origin,
+      RATE_LIMITER: { limit: async () => ({ success: true }) },
+      AI: {
+        run: async (_model, options) => options.response_format
+          ? { response: '{"canonEvents":[],"news":[],"characters":[]}' }
+          : { response: "A página foi atualizada somente com o que já está confirmado." }
+      }
+    });
+    const payload = await response.json();
+    const matching = payload.memoryUpdates.news.filter((item) => scenario.types.has(item.type));
+    assert.equal(response.status, 200);
+    assert.equal(payload.meta.mode, scenario.mode);
+    assert.ok(matching.length >= scenario.minimum, `${scenario.action} deveria gerar ao menos ${scenario.minimum} itens`);
+    assert.equal(matching.every((item) => item.sourceMessageId === body.message.id), true);
+  }
+});
+
 test("detecta controle do protagonista e repara um diálogo antes de salvar a memória", async () => {
   const body = validBody();
   body.message.content = "Ligo para Iris Eva. Ainda falta uma hora para o jogo.";

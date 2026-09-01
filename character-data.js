@@ -277,6 +277,164 @@
     }]
   };
 
+  function normalizeFormText(value) {
+    return String(value || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[“”‘’]/g, "")
+      .replace(/[^a-zA-Z0-9]+/g, " ")
+      .trim()
+      .toLocaleLowerCase("pt-BR");
+  }
+
+  function cleanFormAnswer(value) {
+    return String(value || "")
+      .replace(/\r/g, "")
+      .split("\n")
+      .map(function (line) { return line.trimEnd(); })
+      .join("\n")
+      .replace(/^\s+|\s+$/g, "");
+  }
+
+  function parseFormAnswers(source) {
+    var answers = [];
+    var current = null;
+    var collecting = false;
+    function commit() {
+      if (!current) return;
+      current.answer = cleanFormAnswer(current.answerLines.join("\n"));
+      delete current.answerLines;
+      answers.push(current);
+      current = null;
+      collecting = false;
+    }
+    String(source || "").replace(/\r\n/g, "\n").split("\n").forEach(function (line) {
+      var question = line.match(/^\s*(\d+\.\d+)\.\s+(.+?)\s*$/);
+      if (question) {
+        commit();
+        current = { number: question[1], question: question[2], answerLines: [] };
+        return;
+      }
+      if (!current) return;
+      var answer = line.match(/^\s*(?:Resposta(?:\s+opcional)?|Arquivo\s+ou\s+descri(?:ç|c)ão)\s*:\s*(.*)$/i);
+      if (answer) {
+        collecting = true;
+        current.answerLines.push(answer[1]);
+        return;
+      }
+      if (collecting && (/^\s*\d+\.\s+[A-ZÁÀÂÃÉÊÍÓÔÕÚÇ]/.test(line) || /^\s*=+\s*$/.test(line))) {
+        collecting = false;
+        return;
+      }
+      if (collecting) current.answerLines.push(line);
+    });
+    commit();
+    return answers;
+  }
+
+  function formList(value, splitSlash) {
+    var source = cleanFormAnswer(value);
+    if (!source) return [];
+    var lines = source.split("\n").map(function (line) { return line.replace(/^[-*•]\s*/, "").trim(); }).filter(Boolean);
+    if (lines.length > 1) return lines;
+    if (splitSlash && source.indexOf("/") >= 0) return source.split("/").map(function (item) { return item.trim(); }).filter(Boolean);
+    return [source];
+  }
+
+  function rangeFromText(fieldDefinition, value) {
+    var direct = String(value || "").match(/\b(\d{1,3})(?:\s*\/\s*\d{1,3})?/);
+    if (direct) return Math.max(Number(fieldDefinition.min || 0), Math.min(Number(fieldDefinition.max || 100), Number(direct[1])));
+    var normalized = normalizeFormText(value);
+    var labels = Array.isArray(fieldDefinition.labels) ? fieldDefinition.labels : [];
+    var labelIndex = labels.findIndex(function (label) { return normalized.indexOf(normalizeFormText(label)) >= 0; });
+    if (labelIndex >= 0) return Number(fieldDefinition.min || 0) + labelIndex;
+    if (/extrem|totalmente|muito alto/.test(normalized)) return Number(fieldDefinition.max || 100);
+    if (/alto|bastante|forte/.test(normalized)) return Math.max(Number(fieldDefinition.min || 0), Number(fieldDefinition.max || 100) - 1);
+    if (/moderad|medio|equilibr/.test(normalized)) return Math.round((Number(fieldDefinition.min || 0) + Number(fieldDefinition.max || 100)) / 2);
+    if (/baixo|pouco/.test(normalized)) return Math.min(Number(fieldDefinition.max || 100), Number(fieldDefinition.min || 0) + 1);
+    if (/nada|nenhum|nao/.test(normalized)) return Number(fieldDefinition.min || 0);
+    return "";
+  }
+
+  function dateFromForm(value) {
+    var source = cleanFormAnswer(value);
+    if (!source || /em aberto|nao definid/i.test(normalizeFormText(source))) return "";
+    var brazilian = source.match(/\b(\d{1,2})[./-](\d{1,2})[./-](\d{4})\b/);
+    if (brazilian) return brazilian[3] + "-" + String(brazilian[2]).padStart(2, "0") + "-" + String(brazilian[1]).padStart(2, "0");
+    var iso = source.match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
+    return iso ? iso[0] : "";
+  }
+
+  function eventsFromForm(value) {
+    return formList(value, false).map(function (line) {
+      var source = line.replace(/^[-*•]\s*/, "").trim();
+      var date = (source.match(/^(\d{4}(?:[-/]\d{1,2}(?:[-/]\d{1,2})?)?)/) || [])[1] || "";
+      var withoutDate = source.replace(/^\d{4}(?:[-/]\d{1,2}(?:[-/]\d{1,2})?)?\s*[—–-]?\s*/, "");
+      var divider = withoutDate.indexOf(":");
+      return {
+        title: (divider >= 0 ? withoutDate.slice(0, divider) : withoutDate).trim(),
+        date: date,
+        importance: "",
+        description: (divider >= 0 ? withoutDate.slice(divider + 1) : source).trim()
+      };
+    }).filter(function (event) { return event.title || event.description; });
+  }
+
+  function fieldValueFromForm(fieldDefinition, answer) {
+    var value = cleanFormAnswer(answer);
+    if (fieldDefinition.type === "checkbox") return /^sim\b/i.test(normalizeFormText(value));
+    if (fieldDefinition.type === "date") return dateFromForm(value);
+    if (fieldDefinition.type === "number") {
+      var number = value.match(/\b\d+(?:[.,]\d+)?/);
+      return number ? Number(number[0].replace(",", ".")) : "";
+    }
+    if (fieldDefinition.type === "range") return rangeFromText(fieldDefinition, value);
+    if (fieldDefinition.type === "tags") return formList(value, false);
+    if (fieldDefinition.type === "multi") return formList(value, true);
+    if (fieldDefinition.type === "events") return eventsFromForm(value);
+    return value;
+  }
+
+  function parseCharacterFormText(source, filename) {
+    var answers = parseFormAnswers(source);
+    var byNumber = {};
+    var byQuestion = {};
+    answers.forEach(function (entry) {
+      byNumber[entry.number] = entry.answer;
+      byQuestion[normalizeFormText(entry.question)] = entry.answer;
+    });
+    var categoryAnswer = normalizeFormText(byNumber["0.1"] || "");
+    var category = /namor|romance|casad/.test(categoryAnswer) ? "romance"
+      : /profissional|empres|agente|tecnico|jornal/.test(categoryAnswer) ? "professional"
+        : /time|elenco|companheiro/.test(categoryAnswer) ? "team" : "friends";
+    var headerName = (String(source || "").match(/^PERSONAGEM\s*:\s*(.+)$/im) || [])[1] || "";
+    var name = cleanFormAnswer(byNumber["0.2"] || headerName || String(filename || "").replace(/_INYFFX\.txt$/i, "").replace(/_/g, " "));
+    var details = {};
+    var sections = commonSections.concat(categorySections[category] || []);
+    sections.forEach(function (section) {
+      section.fields.forEach(function (fieldDefinition) {
+        if (fieldDefinition.type === "summary") {
+          var summaryAnswer = byQuestion[normalizeFormText("Resumo objetivo usado pela IA")];
+          if (summaryAnswer) details[fieldDefinition.key] = cleanFormAnswer(summaryAnswer);
+          return;
+        }
+        var answer = byQuestion[normalizeFormText(fieldDefinition.label)];
+        if (answer == null) return;
+        details[fieldDefinition.key] = fieldValueFromForm(fieldDefinition, answer);
+      });
+    });
+    details.profileImageDescription = cleanFormAnswer(byNumber["0.3"] || "");
+    details.bannerImageDescription = cleanFormAnswer(byNumber["0.4"] || "");
+    if (!details.finalAISummary) details.finalAISummary = cleanFormAnswer(byQuestion[normalizeFormText("Resumo objetivo usado pela IA")] || details.freeDescription || "");
+    return {
+      name: name,
+      category: category,
+      details: details,
+      sourceFilename: String(filename || ""),
+      source: "character-form-import"
+    };
+  }
+
   window.INYFFX_CHARACTER_SCHEMA = {
     categories: [
       { key: "friends", label: "AMIGOS", singular: "Amigo(a)" },
@@ -287,6 +445,7 @@
     commonSections: commonSections,
     categorySections: categorySections,
     quickKeys: ["approximateAge", "relationshipCurrent", "personalityTraits", "speechStyle", "howMet", "viewOfPlayer", "knownFacts", "unknownFacts", "currentGoal", "freeDescription"],
-    parseLineup: parseLineup
+    parseLineup: parseLineup,
+    parseCharacterFormText: parseCharacterFormText
   };
 }());

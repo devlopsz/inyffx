@@ -29,6 +29,7 @@ const requiredFiles = [
   "app.js",
   "registration-data.js",
   "character-data.js",
+  "calendar-shields.js",
   "assets/config.js",
   "mod/pics/logo-inyffx.png",
   "mod/pics/login/inyffx-background-initial.png",
@@ -47,6 +48,12 @@ const requiredFiles = [
   "assets/fonts/fyxnews/news-701-bt.ttf",
   "assets/fonts/fyxnews/SourceSansPro-Regular.ttf",
   "assets/fonts/fyxnews/SourceSansPro-Black.ttf",
+  "mod/calendar/birthday.svg",
+  "mod/calendar/cone-treino.svg",
+  "mod/calendar/heart-encontros.svg",
+  "mod/calendar/home-days.svg",
+  "mod/calendar/party.svg",
+  "mod/calendar/shield-time-not-found.svg",
   "mod/prompt partidas para o usuario copiar.txt",
   "mod/prompt the sims para o usuario copiar.txt",
   "mod/prompt the sims EXEMPLO.txt"
@@ -60,7 +67,8 @@ const css = read("styles.css");
 const app = read("app.js");
 const registrationSource = read("registration-data.js");
 const characterSource = read("character-data.js");
-const combinedSource = [html, css, app, registrationSource, characterSource].join("\n");
+const calendarManifestSource = read("calendar-shields.js");
+const combinedSource = [html, css, app, registrationSource, characterSource, calendarManifestSource].join("\n");
 
 check(!/Cruyff Sans Mono|font-family\s*:\s*[^;]*\bmono\b/i.test(combinedSource), "nenhuma fonte mono é usada na interface");
 check(/font-family:\s*"Cruyff Sans"/i.test(css), "Cruyff Sans é a família visual da interface");
@@ -168,12 +176,18 @@ check(css.includes(".character-avatar img") && /\.character-avatar\s*\{[\s\S]*?o
 check(/\.relationship-card__banner img\s*\{[\s\S]*?position:\s*absolute[\s\S]*?object-fit:\s*cover/i.test(css), "banner salvo preenche toda a moldura do card");
 check(/\.relationship-card\s*\{[\s\S]*?display:\s*grid[\s\S]*?grid-template-rows:\s*128px\s+minmax\(0,\s*1fr\)/i.test(css), "card não centraliza o banner nem cria faixas vazias");
 check(app.includes("importTeamFromLineup") && app.includes('category: "team"') && characterSource.includes("positionLabels"), "elenco do modelo de partida alimenta automaticamente a categoria TIME");
+check(typeof characterSchema.parseCharacterFormText === "function" && app.includes("importCharacterFiles"), "Relationships importa fichas completas em TXT pela interface");
+check(html.includes('id="characterImportInput"') && html.includes('accept=".txt,text/plain"'), "seletor aceita múltiplas fichas TXT sem publicar os arquivos pessoais");
 const parsedLineup = characterSchema.parseLineup("Formação: GO - Robert Sánchez\nLD - Reece James, ZC - Colwill, ZC - Fofana, LE - Cucurella\nVOL - Moisés Caicedo\nMAT - Palmer\nPD - Pedro Neto, CA - Caio QA, PE - Estêvão");
 check(parsedLineup.length === 10 && parsedLineup[0].position === "Goleiro" && parsedLineup.at(-1).name === "Estêvão", "parser do elenco reconhece nomes, posições e linhas agrupadas do modelo de partida");
 check(app.includes("characterContextRecord") && !/characterContextRecord[\s\S]{0,900}avatarData/.test(app), "memória envia a ficha para a IA sem incluir imagens em base64");
 check(css.includes(".relationship-tabs") && css.includes(".character-editor") && css.includes(".character-card") === false, "Relationships possui layout clean próprio e editor em tela inteira");
 
 check(html.includes('id="chatHistoryList"') && app.includes("createCareerChat") && app.includes("selectChatFromHistory"), "KICK OFF mantém conversas separadas por Novo Dia");
+check(html.includes('id="deleteDayDialog"') && app.includes("openDeleteDayDialog") && app.includes("confirmDeleteDay"), "cada dia do KICK OFF pode ser apagado com confirmação própria");
+check(app.includes("chatDerivedRecordCount") && app.includes("createdInChatId") && app.includes("sourceChatId"), "exclusão do dia rastreia e remove somente dados derivados daquela conversa");
+check(!app.includes('plural(chat.messages.length, "1 mensagem') && css.includes(".chat-history-list { gap: 3px; overflow-x: hidden; }"), "confirmação conta mensagens uma vez e o histórico não cria rolagem horizontal");
+check(html.includes('id="kickShortcuts"') && ["REGISTER_MATCH", "PRESS_CONFERENCE", "FYX_HEADLINES", "SOCIAL_MEDIA", "GOSSIP", "AGENDA"].every((action) => app.includes(`[INYFFX_ACTION:${action}]`)), "atalhos do KICK OFF preparam ações estruturadas para a IA");
 check(html.includes('id="kickToolsMenu"') && html.includes('data-open-tool="match"') && html.includes('data-open-tool="wheel"') && html.includes('data-open-tool="dice"'), "menu de ferramentas do KICK OFF contém os três cards");
 check(app.includes("data-expand-message") && app.includes("isLongUserMessage"), "mensagens longas do usuário oferecem Mostrar Mais");
 check(!app.includes("chat-message__meta"), "mensagens do KICK OFF não exibem nomes de autor");
@@ -193,6 +207,15 @@ check(app.includes("renderNewsFrontPage") && app.includes("renderNewsSocialBoard
 check(css.includes('"FYX News 701"') && css.includes('"FYX Source Sans"') && css.includes(".fyx-paper__masthead") && css.includes(".fyx-social-board"), "fontes e estruturas visuais exclusivas do FYX NEWS foram aplicadas");
 check(/\.fyx-paper,\s*\.fyx-paper \*\s*\{[^}]*FYX Source Sans/s.test(css) && !/\.page--fyx-news,\s*\.page--fyx-news \*\s*\{[^}]*FYX Source Sans/s.test(css), "fontes editoriais ficam restritas ao jornal; redes sociais e fofocas mantêm Cruyff Sans");
 check(html.includes("<title>InyffX</title>") && manifest.name === "InyffX" && manifest.short_name === "InyffX", "nome público do site é somente InyffX");
+
+vm.runInNewContext(calendarManifestSource, sandbox, { filename: "calendar-shields.js" });
+const calendarShields = sandbox.window.INYFFX_CALENDAR_SHIELDS;
+check(Array.isArray(calendarShields) && calendarShields.length >= 600, "manifesto do calendário disponibiliza mais de 600 escudos locais");
+check(calendarShields.some((pathValue) => /chelsea/i.test(pathValue)) && calendarShields.some((pathValue) => /napoli/i.test(pathValue)), "manifesto inclui escudos reconhecíveis para Chelsea e Napoli");
+check(html.includes('id="calendarEventDialog"') && html.includes('id="calendarEventForm"') && app.includes("syncMatchToCalendar"), "calendário permite cadastrar eventos e sincroniza partidas com temporadas");
+check(app.includes("calendarEventsForCareer") && app.includes('id: "birthday-" + year') && app.includes("calendarShieldForTeam") && app.includes("shield-time-not-found.svg"), "calendário cria aniversários e resolve escudo adversário com fallback");
+check(app.includes("calendarEventIdentity") && app.includes("uniqueEvents"), "calendário consolida registros duplicados da mesma partida na visualização");
+check(css.includes(".career-calendar") && css.includes(".calendar-grid") && css.includes(".calendar-day-event"), "PLAYER CAREER usa calendário escuro responsivo com ícones de evento");
 check(/\.fyx-social-phone\s*\{[^}]*margin:\s*-14px 22px -14px 0;/s.test(css) && !css.includes("margin: -18px -13% -18px 0"), "celular possui espaço próprio e não invade o feed social");
 check(css.includes("@media (max-width: 1040px) and (min-width: 821px)") && /\.fyx-today article strong\s*\{[^}]*-webkit-line-clamp:\s*2;/s.test(css), "painel social preserva largura e leitura em telas menores");
 
@@ -206,12 +229,14 @@ check(html.includes("prompt%20the%20sims%20EXEMPLO.txt") && html.includes("BAIXA
 
 check(html.indexOf('src="registration-data.js"') < html.indexOf('src="app.js'), "dados do cadastro carregam antes da aplicação");
 check(html.indexOf('src="character-data.js"') < html.indexOf('src="app.js'), "ficha completa de personagens carrega antes da aplicação");
+check(html.indexOf('src="calendar-shields.js"') < html.indexOf('src="app.js'), "manifesto de escudos carrega antes da aplicação");
 check(app.includes("Cloudflare Workers AI") && html.includes("Qwen3 30B A3B"), "integração gratuita de IA continua configurada");
 
 new Function(app);
 new Function(registrationSource);
 new Function(characterSource);
-check(true, "JavaScript principal, cadastro e fichas de personagem compilam sem erro de sintaxe");
+new Function(calendarManifestSource);
+check(true, "JavaScript principal, cadastro, fichas e manifesto do calendário compilam sem erro de sintaxe");
 
 const report = {
   passed: checks.length - failures.length,

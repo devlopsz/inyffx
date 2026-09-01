@@ -20,6 +20,16 @@
   var REGISTRATION_QUESTIONS = Array.isArray(window.INYFFX_REGISTRATION_QUESTIONS) ? window.INYFFX_REGISTRATION_QUESTIONS : [];
   var REFERENCE_DATA = window.INYFFX_REFERENCE_DATA || {};
   var CHARACTER_SCHEMA = window.INYFFX_CHARACTER_SCHEMA || { categories: [], commonSections: [], categorySections: {}, quickKeys: [] };
+  var CALENDAR_SHIELDS = Array.isArray(window.INYFFX_CALENDAR_SHIELDS) ? window.INYFFX_CALENDAR_SHIELDS : [];
+  var CALENDAR_EVENT_META = {
+    match: { label: "PARTIDA", icon: "shield", title: "Partida" },
+    training: { label: "TREINO", icon: "mod/calendar/cone-treino.svg", title: "Treino" },
+    romantic: { label: "ENCONTRO", icon: "mod/calendar/heart-encontros.svg", title: "Encontro amoroso" },
+    party: { label: "FESTA", icon: "mod/calendar/party.svg", title: "Festa com amigos" },
+    rest: { label: "DESCANSO", icon: "mod/calendar/home-days.svg", title: "Dia de descanso" },
+    birthday: { label: "ANIVERSÁRIO", icon: "mod/calendar/birthday.svg", title: "Aniversário" },
+    personal: { label: "PESSOAL", icon: "mod/calendar/home-days.svg", title: "Evento pessoal" }
+  };
   var TOOL_TITLES = { match: "Prompt de Partida", wheel: "Roleta", dice: "Dados" };
   var WHEEL_COLORS = ["#f4f4f4", "#262626", "#b8b8b8", "#454545", "#dedede", "#616161", "#a0a0a0", "#353535", "#c9c9c9", "#515151", "#ededed", "#747474"];
   var FYX_NEWS_IMAGES = [
@@ -45,6 +55,11 @@
     characterDraft: null,
     characterImageEdit: null,
     careerTab: "pay",
+    calendarMonth: "",
+    calendarSelectedDate: "",
+    editingCalendarEventId: "",
+    calendarDraft: null,
+    pendingDeleteChatId: "",
     dieSides: 20,
     lastDice: null,
     wheelResult: "",
@@ -132,6 +147,49 @@
     return safe;
   }
 
+  function validDateOnly(value) {
+    var source = clean(value);
+    var match = source.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!match) return "";
+    var date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+    if (Number.isNaN(date.getTime()) || date.getFullYear() !== Number(match[1]) || date.getMonth() !== Number(match[2]) - 1 || date.getDate() !== Number(match[3])) return "";
+    return match[1] + "-" + match[2] + "-" + match[3];
+  }
+
+  function localDateKey(date) {
+    var value = date instanceof Date ? date : new Date(date);
+    if (Number.isNaN(value.getTime())) return "";
+    return [value.getFullYear(), String(value.getMonth() + 1).padStart(2, "0"), String(value.getDate()).padStart(2, "0")].join("-");
+  }
+
+  function normalizeCalendarEvent(event) {
+    var safe = event && typeof event === "object" ? Object.assign({}, event) : {};
+    var type = normalizeKey(safe.type || safe.category || "personal");
+    if (/partida|jogo|match/.test(type)) type = "match";
+    else if (/treino|training/.test(type)) type = "training";
+    else if (/encontro|romance|date/.test(type)) type = "romantic";
+    else if (/festa|party|amigos/.test(type)) type = "party";
+    else if (/descanso|folga|rest|casa/.test(type)) type = "rest";
+    else if (/anivers/.test(type)) type = "birthday";
+    else type = "personal";
+    safe.id = safe.id || uid("calendar");
+    safe.type = type;
+    safe.date = validDateOnly(safe.date || safe.start || safe.createdAt) || localDateKey(new Date());
+    safe.time = clean(safe.time || (/T(\d{2}:\d{2})/.exec(safe.start || "") || [])[1]);
+    safe.title = clean(safe.title) || CALENDAR_EVENT_META[type].title;
+    safe.location = clean(safe.location || safe.stadium);
+    safe.description = clean(safe.description || safe.highlights);
+    safe.status = safe.status === "completed" ? "completed" : "scheduled";
+    safe.homeTeam = clean(safe.homeTeam);
+    safe.awayTeam = clean(safe.awayTeam);
+    safe.competition = clean(safe.competition);
+    safe.phase = clean(safe.phase);
+    safe.stadium = clean(safe.stadium || safe.location);
+    safe.createdAt = safe.createdAt || new Date().toISOString();
+    safe.updatedAt = safe.updatedAt || safe.createdAt;
+    return safe;
+  }
+
   function characterCategoryMeta(key) {
     return CHARACTER_SCHEMA.categories.find(function (category) { return category.key === key; }) || { key: "friends", label: "AMIGOS", singular: "Amigo(a)" };
   }
@@ -153,9 +211,13 @@
     safe.chats = Array.isArray(safe.chats) ? safe.chats.filter(function (chat) {
       return chat && typeof chat === "object";
     }).map(function (chat, index) {
-      var messages = Array.isArray(chat.messages) ? chat.messages : [];
+      var chatId = chat.id || uid("chat");
+      var messages = Array.isArray(chat.messages) ? chat.messages.map(function (message) {
+        if (message && typeof message === "object" && !message.sourceChatId) message.sourceChatId = chatId;
+        return message;
+      }) : [];
       return {
-        id: chat.id || uid("chat"),
+        id: chatId,
         title: clean(chat.title) || "Dia " + (index + 1),
         scene: Number(chat.scene || index + 1),
         messages: messages,
@@ -181,7 +243,10 @@
     safe.canonEvents = Array.isArray(safe.canonEvents) ? safe.canonEvents : [];
     safe.news = Array.isArray(safe.news) ? safe.news : [];
     safe.characters = Array.isArray(safe.characters) ? safe.characters.map(normalizeCharacter) : [];
-    safe.seasons = Array.isArray(safe.seasons) ? safe.seasons : [];
+    safe.seasons = Array.isArray(safe.seasons) ? safe.seasons.map(function (season) {
+      season.matches = Array.isArray(season.matches) ? season.matches : [];
+      return season;
+    }) : [];
     safe.finance = Object.assign({ initialized: false, currency: "BRL", balance: 0, transactions: [], pockets: [] }, safe.finance || {});
     safe.finance.transactions = Array.isArray(safe.finance.transactions) ? safe.finance.transactions : [];
     safe.finance.pockets = Array.isArray(safe.finance.pockets) ? safe.finance.pockets : [];
@@ -189,7 +254,8 @@
     safe.hall.trophies = Array.isArray(safe.hall.trophies) ? safe.hall.trophies : [];
     safe.hall.records = Array.isArray(safe.hall.records) ? safe.hall.records : [];
     safe.hall.awards = Array.isArray(safe.hall.awards) ? safe.hall.awards : [];
-    safe.calendar = Array.isArray(safe.calendar) ? safe.calendar : [];
+    safe.calendar = Array.isArray(safe.calendar) ? safe.calendar.map(normalizeCalendarEvent) : [];
+    safe.currentDate = validDateOnly(safe.currentDate) || latestCareerDate(safe) || localDateKey(new Date());
     safe.offPitch = Object.assign({ currentCity: "", currentResidence: "", houses: [] }, safe.offPitch || {});
     safe.offPitch.houses = Array.isArray(safe.offPitch.houses) ? safe.offPitch.houses : [];
     safe.tools = Object.assign({ wheelEntries: [{ label: "", weight: 1 }, { label: "", weight: 1 }], diceHistory: [] }, safe.tools || {});
@@ -232,19 +298,22 @@
       "authGate", "appShell", "loginForm", "loginCareer", "loginPasscode", "rememberCareer", "loginHint", "loginError",
       "createForm", "createError", "registrationQuestion", "registrationSection", "registrationCount", "prevStep",
       "nextStep", "createCareer", "hubSidebar", "openSettings", "openProfile",
-      "hubBackgroundA", "hubBackgroundB", "pageBack", "appMain", "chatMessages", "chatForm", "chatInput", "sendMessage",
+      "hubBackgroundA", "hubBackgroundB", "pageBack", "appMain", "chatMessages", "chatForm", "chatInput", "sendMessage", "kickShortcuts",
       "sceneLabel", "newScene", "aiStatusChip", "toolDrawer", "toolTitle", "closeTools", "matchTemplateForm",
       "chatHistoryControl", "toggleChatHistory", "chatHistoryPanel", "chatHistoryList", "kickToolsMenu", "toggleToolsMenu",
       "matchPromptTemplate", "copyMatchTemplate", "insertMatchTemplate", "wheel", "wheelResult", "wheelEntries", "addWheelEntry",
       "spinWheel", "dicePicker", "diceResult", "rollDice",
-      "newsFilters", "newsContent", "relationshipSearch", "relationshipTabs", "relationshipsContent", "addCharacter",
+      "newsFilters", "newsContent", "relationshipSearch", "relationshipTabs", "relationshipsContent", "addCharacter", "characterImportInput",
       "characterEditor", "characterForm", "characterEditorTitle", "closeCharacterEditor", "deleteCharacter", "saveCharacter",
       "characterModeTabs", "characterFields", "characterAvatarInput", "characterBannerInput", "characterAvatarPreview",
       "characterBannerPreview", "characterPreviewName", "characterPreviewCategory",
       "characterImageEditor", "closeCharacterImageEditor",
       "characterCropStage", "characterCropCanvas", "characterCropZoom", "characterCropZoomValue", "resetCharacterCrop",
       "cancelCharacterCrop", "applyCharacterCrop",
-      "seasonSelect", "seasonsContent", "careerContent", "copyOffPitchTemplate", "insertOffPitchTemplate",
+      "seasonSelect", "seasonsContent", "careerContent", "calendarEventDialog", "calendarEventForm", "calendarEventTitle",
+      "calendarEventFields", "closeCalendarEvent", "cancelCalendarEvent", "deleteCalendarEvent",
+      "deleteDayDialog", "deleteDayTitle", "deleteDayDescription", "cancelDeleteDay", "confirmDeleteDay",
+      "copyOffPitchTemplate", "insertOffPitchTemplate",
       "offPitchTemplate", "residenceContent", "spotifyNow", "spotifyDisc", "spotifyStatus", "spotifyTrack",
       "spotifyArtist", "settingsModal", "settingsForm", "backendStatusDot", "backendStatusText",
       "spotifyClientId", "spotifyRedirectUri", "copyRedirectUri", "disconnectSpotify", "connectSpotify",
@@ -289,6 +358,7 @@
     });
     el.chatInput.addEventListener("input", autosizeComposer);
     el.chatMessages.addEventListener("click", handleChatMessageClick);
+    el.kickShortcuts.addEventListener("click", handleKickShortcut);
     el.newScene.addEventListener("click", startNewScene);
     el.toggleToolsMenu.addEventListener("click", toggleToolsMenu);
     el.toggleChatHistory.addEventListener("click", toggleChatHistory);
@@ -319,6 +389,7 @@
     el.relationshipTabs.addEventListener("click", changeRelationshipCategory);
     el.relationshipsContent.addEventListener("click", handleRelationshipCardClick);
     el.addCharacter.addEventListener("click", function () { openCharacterEditor(); });
+    el.characterImportInput.addEventListener("change", importCharacterFiles);
     el.closeCharacterEditor.addEventListener("click", closeCharacterEditor);
     el.characterModeTabs.addEventListener("click", changeCharacterMode);
     el.characterFields.addEventListener("input", handleCharacterFieldInput);
@@ -343,10 +414,29 @@
     el.characterForm.addEventListener("submit", saveCharacterForm);
     el.deleteCharacter.addEventListener("click", deleteCurrentCharacter);
     el.seasonSelect.addEventListener("change", renderSeasons);
+    el.careerContent.addEventListener("click", handleCareerContentClick);
+    el.careerContent.addEventListener("change", handleCareerContentChange);
+    el.calendarEventForm.addEventListener("submit", saveCalendarEvent);
+    el.calendarEventFields.addEventListener("change", function (event) {
+      if (event.target.name !== "type") return;
+      captureCalendarDraft();
+      renderCalendarEventFields();
+    });
+    el.closeCalendarEvent.addEventListener("click", closeCalendarEventDialog);
+    el.cancelCalendarEvent.addEventListener("click", closeCalendarEventDialog);
+    el.deleteCalendarEvent.addEventListener("click", deleteCurrentCalendarEvent);
+    el.calendarEventDialog.addEventListener("cancel", function (event) { event.preventDefault(); closeCalendarEventDialog(); });
+    el.confirmDeleteDay.addEventListener("click", confirmDeleteDay);
+    el.deleteDayDialog.addEventListener("cancel", function (event) { event.preventDefault(); closeDeleteDayDialog(); });
+    el.deleteDayDialog.addEventListener("close", function () { ui.pendingDeleteChatId = ""; });
     document.querySelectorAll("[data-career-tab]").forEach(function (button) {
       button.addEventListener("click", function () {
         ui.careerTab = button.dataset.careerTab;
-        document.querySelectorAll("[data-career-tab]").forEach(function (item) { item.classList.toggle("is-active", item === button); });
+        document.querySelectorAll("[data-career-tab]").forEach(function (item) {
+          var active = item === button;
+          item.classList.toggle("is-active", active);
+          item.setAttribute("aria-selected", String(active));
+        });
         renderCareerPage();
       });
     });
@@ -956,6 +1046,7 @@
     renderAvatar(career);
     el.sceneLabel.textContent = career.sceneNumber > 1 ? "Cena " + career.sceneNumber : "Roleplay livre";
     renderChat();
+    renderKickShortcuts(career);
     renderNews();
     renderRelationships();
     populateSeasonSelect();
@@ -995,8 +1086,74 @@
     el.chatHistoryControl.classList.toggle("has-chats", chats.length > 0);
     el.chatHistoryList.innerHTML = chats.map(function (chat) {
       var selected = chat.id === career.activeChatId;
-      return '<button type="button" class="chat-history-item' + (selected ? " is-active" : "") + '" data-chat-id="' + escapeHTML(chat.id) + '"><span>' + escapeHTML(chat.title || "Novo dia") + '</span><small>' + escapeHTML(formatShortDate(chat.updatedAt || chat.createdAt)) + "</small></button>";
+      return '<div class="chat-history-row' + (selected ? " is-active" : "") + '"><button type="button" class="chat-history-item" data-chat-id="' + escapeHTML(chat.id) + '"><span>' + escapeHTML(chat.title || "Novo dia") + '</span><small>' + escapeHTML(formatShortDate(chat.updatedAt || chat.createdAt)) + '</small></button><button class="chat-history-delete" type="button" data-delete-chat="' + escapeHTML(chat.id) + '" aria-label="Apagar ' + escapeHTML(chat.title || "Novo dia") + '" data-tooltip="Apagar dia"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3m-8 0 1 13h8l1-13M10 11v5m4-5v5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>';
     }).join("");
+  }
+
+  function latestCareerMatch(career) {
+    var matches = (career.seasons || []).reduce(function (all, season) {
+      return all.concat((season.matches || []).map(function (match) { return Object.assign({ season: match.season || season.label }, match); }));
+    }, []);
+    return matches.sort(function (left, right) {
+      return String(right.date || right.createdAt || "").localeCompare(String(left.date || left.createdAt || ""));
+    })[0] || null;
+  }
+
+  function kickShortcutDefinitions(career) {
+    var player = clean(career.profile.playerName) || "meu jogador";
+    var match = latestCareerMatch(career);
+    var matchReference = match ? match.homeTeam + " " + match.homeScore + " x " + match.awayScore + " " + match.awayTeam : "a partida pública mais recente registrada";
+    return [
+      {
+        id: "match",
+        label: "Enviar partida",
+        prompt: "[INYFFX_ACTION:REGISTER_MATCH]\nQuero registrar oficialmente a partida abaixo. Considere somente os campos que eu preencher como fatos. Salve a partida no calendário e na temporada atual, atualize partidas, gols e assistências de " + player + ", crie a cobertura factual necessária para FYX NEWS e, depois, entregue narração, análise, repercussão e a primeira pergunta da coletiva sem inventar estatísticas.\n\n" + buildShortcutMatchTemplate(career)
+      },
+      {
+        id: "press",
+        label: "Iniciar coletiva",
+        prompt: "[INYFFX_ACTION:PRESS_CONFERENCE]\nInicie agora uma coletiva sobre o acontecimento esportivo público mais recente. Interprete repórteres diferentes e faça somente uma pergunta por vez. Espere sempre minha resposta, reaja brevemente ao que eu disser e então faça a próxima pergunta. Nunca responda por mim. Cada declaração relevante que eu der deve ser registrada como material de imprensa na FYX NEWS, preservando exatamente minhas palavras e sem revelar informações privadas."
+      },
+      {
+        id: "headlines",
+        label: "Ver manchetes atuais",
+        prompt: "[INYFFX_ACTION:FYX_HEADLINES]\nCrie e registre a edição atual da FYX NEWS usando " + matchReference + " e os fatos públicos mais recentes. Gere uma manchete principal forte, manchetes secundárias, análise da partida e legendas coerentes com os fatos. Mostre perspectivas jornalísticas diferentes, mas não invente placar, fala, estatística ou acontecimento. Salve conteúdo suficiente para preencher por completo a seção FYX NEWS."
+      },
+      {
+        id: "social",
+        label: "Ver redes sociais",
+        prompt: "[INYFFX_ACTION:SOCIAL_MEDIA]\nGere e registre a repercussão pública mais recente nas REDES SOCIAIS. Crie comentários variados de torcedores, rivais, jornalistas, páginas esportivas e fan accounts, além de manchetes do feed, volume de posts e quatro trending topics. Misture elogios, críticas, humor e análise. Use somente fatos públicos registrados e salve todo o conteúdo na seção REDES SOCIAIS."
+      },
+      {
+        id: "gossip",
+        label: "Ver fofocas",
+        prompt: "[INYFFX_ACTION:GOSSIP]\nGere e registre a edição atual de FOFOCAS a partir dos acontecimentos pessoais públicos mais recentes. Inclua comentários de fan clubs, tabloides e público, manchetes, volume de posts e quatro trending topics. Diferencie claramente fato confirmado, rumor e especulação. Nunca revele segredos ou informações que o público não poderia conhecer."
+      },
+      {
+        id: "agenda",
+        label: "Ver sua agenda",
+        prompt: "[INYFFX_ACTION:AGENDA]\nConsulte o calendário canônico e apresente minha agenda em ordem cronológica a partir da data atual da história. Destaque compromissos de hoje, próxima partida, treinos, eventos pessoais, aniversários e períodos livres. Não invente compromissos nem resultados de partidas futuras."
+      }
+    ];
+  }
+
+  function renderKickShortcuts(career) {
+    if (!el.kickShortcuts || !career) return;
+    el.kickShortcuts.innerHTML = kickShortcutDefinitions(career).map(function (shortcut) {
+      return '<button type="button" data-kick-shortcut="' + escapeHTML(shortcut.id) + '">' + escapeHTML(shortcut.label) + "</button>";
+    }).join("");
+  }
+
+  function handleKickShortcut(event) {
+    var button = event.target.closest("[data-kick-shortcut]");
+    var career = activeCareer();
+    if (!button || !career) return;
+    var shortcut = kickShortcutDefinitions(career).find(function (item) { return item.id === button.dataset.kickShortcut; });
+    if (!shortcut) return;
+    el.chatInput.value = shortcut.prompt;
+    autosizeComposer();
+    el.chatInput.focus();
+    toast(shortcut.label + " preparado. Revise e envie quando quiser.");
   }
 
   function handleChatMessageClick(event) {
@@ -1020,6 +1177,7 @@
       role: "user",
       content: content,
       scene: chat.scene,
+      sourceChatId: chat.id,
       createdAt: new Date().toISOString()
     };
     chat.messages.push(userMessage);
@@ -1075,12 +1233,13 @@
           role: "assistant",
           content: reply,
           scene: chat.scene,
+          sourceChatId: chat.id,
           createdAt: (payload.message && payload.message.createdAt) || new Date().toISOString()
         });
       }
       chat.updatedAt = new Date().toISOString();
       career.messages = chat.messages;
-      applyMemoryUpdates(career, payload.memoryUpdates || payload.updates || payload.memory || {});
+      applyMemoryUpdates(career, payload.memoryUpdates || payload.updates || payload.memory || {}, { chatId: chat.id, messageId: userMessage.id });
       career.updatedAt = new Date().toISOString();
       saveState();
       renderAll();
@@ -1127,6 +1286,7 @@
       profile: career.profile,
       profileRevision: career.profileRevision || null,
       scene: career.sceneNumber,
+      currentDate: career.currentDate,
       recentMessages: activeMessages(career).slice(-12).map(function (message) {
         return { role: message.role, content: message.content, createdAt: message.createdAt };
       }),
@@ -1167,21 +1327,31 @@
     };
   }
 
-  function applyMemoryUpdates(career, updates) {
+  function applyMemoryUpdates(career, updates, origin) {
     if (!updates || typeof updates !== "object") return;
-    upsertMany(career.news, updates.news);
-    upsertCharacters(career.characters, updates.characters);
-    upsertMany(career.canonEvents, updates.canonEvents);
-    upsertMany(career.calendar, updates.calendar);
+    upsertMany(career.news, updates.news, origin);
+    upsertCharacters(career.characters, updates.characters, origin);
+    upsertMany(career.canonEvents, updates.canonEvents, origin);
+    upsertMany(career.calendar, Array.isArray(updates.calendar) ? updates.calendar.map(normalizeCalendarEvent) : [], origin);
     if (Array.isArray(updates.seasons)) {
       updates.seasons.forEach(function (incoming) {
         if (!incoming || !incoming.label) return;
         var season = career.seasons.find(function (item) { return item.label === incoming.label; });
-        if (!season) career.seasons.push(Object.assign({ id: uid("season"), matches: [] }, incoming));
-        else {
-          upsertMany(season.matches, Array.isArray(incoming.matches) ? incoming.matches : []);
+        if (!season) {
+          season = Object.assign({ id: uid("season"), matches: [], createdInChatId: origin && origin.chatId || "" }, incoming);
+          season.matches = [];
+          career.seasons.push(season);
+        } else {
           Object.keys(incoming).forEach(function (key) { if (key !== "matches") season[key] = incoming[key]; });
         }
+        var incomingMatches = Array.isArray(incoming.matches) ? incoming.matches.map(function (match) {
+          var normalizedMatch = Object.assign({}, match);
+          var sameTurn = normalizedMatch.sourceMessageId && season.matches.find(function (existingMatch) { return existingMatch.sourceMessageId === normalizedMatch.sourceMessageId; });
+          if (sameTurn) normalizedMatch.id = sameTurn.id;
+          return normalizedMatch;
+        }) : [];
+        upsertMany(season.matches, incomingMatches, origin);
+        (season.matches || []).forEach(function (match) { syncMatchToCalendar(career, match); });
       });
     }
     if (updates.finance && typeof updates.finance === "object") {
@@ -1190,34 +1360,43 @@
         career.finance.initialized = true;
       }
       if (updates.finance.currency) career.finance.currency = clean(updates.finance.currency);
-      upsertMany(career.finance.transactions, updates.finance.transactions);
-      upsertMany(career.finance.pockets, updates.finance.pockets);
+      upsertMany(career.finance.transactions, updates.finance.transactions, origin);
+      upsertMany(career.finance.pockets, updates.finance.pockets, origin);
     }
     if (updates.hall && typeof updates.hall === "object") {
-      upsertMany(career.hall.trophies, updates.hall.trophies);
-      upsertMany(career.hall.records, updates.hall.records);
-      upsertMany(career.hall.awards, updates.hall.awards);
+      upsertMany(career.hall.trophies, updates.hall.trophies, origin);
+      upsertMany(career.hall.records, updates.hall.records, origin);
+      upsertMany(career.hall.awards, updates.hall.awards, origin);
     }
     if (updates.offPitch && typeof updates.offPitch === "object") {
       if (typeof updates.offPitch.currentCity === "string") career.offPitch.currentCity = clean(updates.offPitch.currentCity);
       if (typeof updates.offPitch.currentResidence === "string") career.offPitch.currentResidence = clean(updates.offPitch.currentResidence);
-      upsertMany(career.offPitch.houses, updates.offPitch.houses);
+      upsertMany(career.offPitch.houses, updates.offPitch.houses, origin);
     }
   }
 
-  function upsertMany(target, incoming) {
+  function upsertMany(target, incoming, origin) {
     if (!Array.isArray(target) || !Array.isArray(incoming)) return;
     incoming.forEach(function (item) {
       if (!item || typeof item !== "object") return;
       var normalized = Object.assign({}, item);
       normalized.id = normalized.id || uid("memory");
       var index = target.findIndex(function (existing) { return existing.id === normalized.id; });
-      if (index >= 0) target[index] = Object.assign({}, target[index], normalized);
-      else target.push(normalized);
+      if (index >= 0) {
+        if (origin && origin.chatId) normalized.lastSourceChatId = origin.chatId;
+        target[index] = Object.assign({}, target[index], normalized);
+      } else {
+        if (origin && origin.chatId) {
+          normalized.sourceChatId = normalized.sourceChatId || origin.chatId;
+          normalized.createdInChatId = normalized.createdInChatId || origin.chatId;
+        }
+        if (origin && origin.messageId) normalized.sourceMessageId = normalized.sourceMessageId || origin.messageId;
+        target.push(normalized);
+      }
     });
   }
 
-  function upsertCharacters(target, incoming) {
+  function upsertCharacters(target, incoming, origin) {
     if (!Array.isArray(target) || !Array.isArray(incoming)) return;
     incoming.forEach(function (item) {
       if (!item || typeof item !== "object" || !clean(item.name)) return;
@@ -1226,7 +1405,12 @@
         return existing.id === item.id || normalizeKey(existing.name) === itemName;
       });
       if (index < 0) {
-        target.push(normalizeCharacter(item));
+        var created = Object.assign({}, item, {
+          source: item.source || "ai-memory",
+          sourceChatId: item.sourceChatId || origin && origin.chatId || "",
+          createdInChatId: item.createdInChatId || origin && origin.chatId || ""
+        });
+        target.push(normalizeCharacter(created));
         return;
       }
       var existing = normalizeCharacter(target[index]);
@@ -1235,6 +1419,7 @@
       ["knownFacts", "unknownFacts", "immutableFacts", "currentState", "characterRules", "openInformation", "currentGoal", "speechStyle", "personalityTraits", "freeDescription"].forEach(function (key) {
         if (item[key] != null) merged.details[key] = item[key];
       });
+      if (origin && origin.chatId) merged.lastSourceChatId = origin.chatId;
       target[index] = normalizeCharacter(merged);
     });
   }
@@ -1267,6 +1452,11 @@
   }
 
   function selectChatFromHistory(event) {
+    var deleteButton = event.target.closest("[data-delete-chat]");
+    if (deleteButton) {
+      openDeleteDayDialog(deleteButton.dataset.deleteChat);
+      return;
+    }
     var button = event.target.closest("[data-chat-id]");
     var career = activeCareer();
     if (!button || !career) return;
@@ -1281,6 +1471,84 @@
     el.chatInput.focus();
   }
 
+  function linkedToChat(item, chatId) {
+    return Boolean(item && (item.sourceChatId === chatId || item.createdInChatId === chatId));
+  }
+
+  function chatDerivedRecordCount(career, chatId) {
+    var total = 0;
+    [career.news, career.canonEvents, career.calendar, career.finance.transactions, career.finance.pockets,
+      career.hall.trophies, career.hall.records, career.hall.awards, career.offPitch.houses].forEach(function (collection) {
+      total += (collection || []).filter(function (item) { return linkedToChat(item, chatId); }).length;
+    });
+    total += (career.seasons || []).reduce(function (sum, season) {
+      return sum + (season.matches || []).filter(function (match) { return linkedToChat(match, chatId); }).length;
+    }, 0);
+    total += (career.characters || []).filter(function (character) {
+      return linkedToChat(character, chatId) && !character.userEditedAt;
+    }).length;
+    return total;
+  }
+
+  function openDeleteDayDialog(chatId) {
+    var career = activeCareer();
+    var chat = career && career.chats.find(function (item) { return item.id === chatId; });
+    if (!chat) return;
+    ui.pendingDeleteChatId = chat.id;
+    var records = chatDerivedRecordCount(career, chat.id);
+    el.deleteDayTitle.textContent = "Apagar “" + (chat.title || "Novo dia") + "”?";
+    el.deleteDayDescription.textContent = plural(chat.messages.length, "mensagem será apagada", "mensagens serão apagadas") + (records ? " junto com " + plural(records, "registro vinculado", "registros vinculados") : "") + ". Dados manuais e registros de outros dias serão preservados.";
+    if (!el.deleteDayDialog.open) el.deleteDayDialog.showModal();
+  }
+
+  function closeDeleteDayDialog() {
+    ui.pendingDeleteChatId = "";
+    if (el.deleteDayDialog.open) el.deleteDayDialog.close();
+  }
+
+  function removeLinkedRecords(collection, chatId) {
+    return (collection || []).filter(function (item) { return !linkedToChat(item, chatId); });
+  }
+
+  function confirmDeleteDay() {
+    var career = activeCareer();
+    var chatId = ui.pendingDeleteChatId;
+    var chat = career && career.chats.find(function (item) { return item.id === chatId; });
+    if (!career || !chat) return closeDeleteDayDialog();
+    var recordCount = chatDerivedRecordCount(career, chatId);
+    career.news = removeLinkedRecords(career.news, chatId);
+    career.canonEvents = removeLinkedRecords(career.canonEvents, chatId);
+    career.calendar = removeLinkedRecords(career.calendar, chatId);
+    career.finance.transactions = removeLinkedRecords(career.finance.transactions, chatId);
+    career.finance.pockets = removeLinkedRecords(career.finance.pockets, chatId);
+    career.hall.trophies = removeLinkedRecords(career.hall.trophies, chatId);
+    career.hall.records = removeLinkedRecords(career.hall.records, chatId);
+    career.hall.awards = removeLinkedRecords(career.hall.awards, chatId);
+    career.offPitch.houses = removeLinkedRecords(career.offPitch.houses, chatId);
+    career.characters = (career.characters || []).filter(function (character) {
+      return !(linkedToChat(character, chatId) && !character.userEditedAt);
+    });
+    career.seasons = (career.seasons || []).map(function (season) {
+      season.matches = removeLinkedRecords(season.matches, chatId);
+      return season;
+    }).filter(function (season) { return season.matches.length || season.createdInChatId !== chatId; });
+    var deletedIndex = career.chats.findIndex(function (item) { return item.id === chatId; });
+    career.chats = career.chats.filter(function (item) { return item.id !== chatId; });
+    if (!career.chats.length) createCareerChat(career);
+    else if (career.activeChatId === chatId) {
+      var nextChat = career.chats[Math.min(Math.max(0, deletedIndex - 1), career.chats.length - 1)];
+      career.activeChatId = nextChat.id;
+      career.sceneNumber = Number(nextChat.scene || 1);
+      career.messages = nextChat.messages;
+    }
+    career.updatedAt = new Date().toISOString();
+    saveState();
+    closeDeleteDayDialog();
+    closeChatHistory();
+    renderAll();
+    toast("Dia apagado. " + plural(recordCount, "1 registro vinculado também foi removido.", recordCount + " registros vinculados também foram removidos."));
+  }
+
   function autosizeComposer() {
     el.chatInput.style.height = "auto";
     var computed = window.getComputedStyle(el.chatInput);
@@ -1293,7 +1561,7 @@
     el.chatInput.style.height = targetHeight + "px";
     el.chatForm.style.setProperty("--composer-radius", radius + "px");
     el.chatForm.classList.toggle("is-multiline", lines > 1);
-    el.chatMessages.style.setProperty("--composer-clearance", Math.max(260, targetHeight + 220) + "px");
+    el.chatMessages.style.setProperty("--composer-clearance", Math.max(320, targetHeight + 280) + "px");
   }
 
   function openTool(tool) {
@@ -1346,6 +1614,32 @@
     return String(el.matchPromptTemplate.textContent || "").replace("(nome do seu jogador)", playerName).trim();
   }
 
+  function buildShortcutMatchTemplate(career) {
+    var playerName = clean(career && career.profile.playerName) || "nome do seu jogador";
+    return [
+      "[PARTIDA OFICIAL]",
+      "Data: " + (career && career.currentDate || ""),
+      "Temporada: " + (career && career.profile.season || ""),
+      "Competição:",
+      "Fase:",
+      "Estádio:",
+      "Mandante:",
+      "Visitante:",
+      "Gols do mandante:",
+      "Gols do visitante:",
+      "Minutos jogados:",
+      "Gols do meu jogador (" + playerName + "):",
+      "Assistências:",
+      "Nota:",
+      "Cartões:",
+      "Lesão:",
+      "Formação / escalação:",
+      "Como os gols aconteceram:",
+      "Acontecimentos importantes:",
+      "[/PARTIDA OFICIAL]"
+    ].join("\n");
+  }
+
   function registerMatchFromMessage(career, message) {
     var fields = parseTaggedBlock(message.content, "PARTIDA OFICIAL");
     var looseTemplate = false;
@@ -1384,9 +1678,14 @@
     var match = {
       id: uid("match"),
       sourceMessageId: message.id,
+      sourceChatId: message.sourceChatId || career.activeChatId,
+      createdInChatId: message.sourceChatId || career.activeChatId,
       date: validField(fieldValue(fields, "data")),
       season: seasonLabel,
       competition: validField(fieldValue(fields, "competicao")),
+      phase: validField(fieldValue(fields, "fase")),
+      stadium: validField(fieldValue(fields, "estadio")),
+      formation: validField(fieldValue(fields, "formacao")),
       homeTeam: homeTeam,
       awayTeam: awayTeam,
       homeScore: homeScore,
@@ -1409,8 +1708,12 @@
       title: homeTeam + " " + homeScore + " x " + awayScore + " " + awayTeam,
       occurredAt: match.date || message.createdAt,
       sourceMessageId: message.id,
+      sourceChatId: match.sourceChatId,
+      createdInChatId: match.sourceChatId,
       certainty: "fact"
     });
+    syncMatchToCalendar(career, match);
+    if (validDateOnly(match.date)) career.currentDate = validDateOnly(match.date);
     return true;
   }
 
@@ -1452,6 +1755,8 @@
           summary: details.finalAISummary,
           details: details,
           source: "match-lineup",
+          sourceChatId: career.activeChatId,
+          createdInChatId: career.activeChatId,
           createdAt: now,
           lastUpdated: now
         }));
@@ -1507,7 +1812,10 @@
       source: "KICK OFF · RELATO DO JOGADOR",
       occurredAt: match.date || match.createdAt,
       createdAt: new Date().toISOString(),
-      sourceMatchId: match.id
+      sourceMatchId: match.id,
+      sourceMessageId: match.sourceMessageId,
+      sourceChatId: match.sourceChatId,
+      createdInChatId: match.sourceChatId
     };
   }
 
@@ -1537,7 +1845,10 @@
   }
 
   function fieldValue(fields, key) {
-    return clean(fields[normalizeKey(key)] || "");
+    var normalizedKey = normalizeKey(key);
+    if (fields[normalizedKey] != null) return clean(fields[normalizedKey]);
+    var matchingKey = Object.keys(fields || {}).find(function (candidate) { return candidate.indexOf(normalizedKey) === 0; });
+    return clean(matchingKey ? fields[matchingKey] : "");
   }
 
   function validField(value) {
@@ -1747,6 +2058,74 @@
     if (!button) return;
     ui.relationshipCategory = button.dataset.relationshipCategory;
     renderRelationships();
+  }
+
+  async function importCharacterFiles(event) {
+    var career = activeCareer();
+    var files = Array.from(event.target.files || []);
+    event.target.value = "";
+    if (!career || !files.length) return;
+    if (typeof CHARACTER_SCHEMA.parseCharacterFormText !== "function") {
+      toast("O importador de fichas não está disponível nesta versão.", "error");
+      return;
+    }
+    var imported = 0;
+    var updated = 0;
+    var failed = [];
+    var firstCategory = "";
+    for (var index = 0; index < files.length; index += 1) {
+      var file = files[index];
+      try {
+        var source = await file.text();
+        var parsed = CHARACTER_SCHEMA.parseCharacterFormText(source, file.name);
+        if (!parsed || !clean(parsed.name)) throw new Error("Nome não identificado");
+        var existingIndex = career.characters.findIndex(function (character) { return normalizeKey(character.name) === normalizeKey(parsed.name); });
+        var existing = existingIndex >= 0 ? normalizeCharacter(career.characters[existingIndex]) : null;
+        var now = new Date().toISOString();
+        var details = Object.assign({}, existing && existing.details || {}, parsed.details || {});
+        var character = normalizeCharacter(Object.assign({}, existing || {}, parsed, {
+          id: existing ? existing.id : uid("character"),
+          name: clean(parsed.name),
+          category: parsed.category,
+          details: details,
+          avatarData: existing && existing.avatarData || "",
+          bannerData: existing && existing.bannerData || "",
+          knownFacts: Array.isArray(details.knownFacts) ? details.knownFacts.slice() : [],
+          unknownFacts: Array.isArray(details.unknownFacts) ? details.unknownFacts.slice() : [],
+          relationship: relationshipScaleLabel(details.relationshipCurrent),
+          relationshipLevel: Number.isFinite(Number(details.relationshipCurrent)) ? Math.round((Number(details.relationshipCurrent) - 1) / 6 * 100) : null,
+          summary: clean(details.finalAISummary || details.freeDescription),
+          source: "character-form-import",
+          sourceFilename: file.name,
+          importedAt: now,
+          userEditedAt: now,
+          createdAt: existing && existing.createdAt || now,
+          lastUpdated: now
+        }));
+        character.role = characterRoleFromDetails(character);
+        if (existingIndex >= 0) {
+          career.characters[existingIndex] = character;
+          updated += 1;
+        } else {
+          career.characters.push(character);
+          imported += 1;
+        }
+        if (!firstCategory) firstCategory = character.category;
+      } catch (error) {
+        failed.push(file.name);
+      }
+    }
+    if (imported || updated) {
+      career.updatedAt = new Date().toISOString();
+      if (firstCategory) ui.relationshipCategory = firstCategory;
+      saveState();
+      renderRelationships();
+    }
+    var parts = [];
+    if (imported) parts.push(plural(imported, "1 personagem cadastrado", imported + " personagens cadastrados"));
+    if (updated) parts.push(plural(updated, "1 ficha atualizada", updated + " fichas atualizadas"));
+    if (failed.length) parts.push(plural(failed.length, "1 arquivo não pôde ser lido", failed.length + " arquivos não puderam ser lidos"));
+    toast(parts.join(" · ") || "Nenhuma ficha válida foi encontrada.", failed.length && !imported && !updated ? "error" : "");
   }
 
   function handleRelationshipCardClick(event) {
@@ -2442,15 +2821,360 @@
     ].join("");
   }
 
-  function renderCalendar(career) {
-    if (!career.calendar.length) {
-      el.careerContent.innerHTML = emptyMarkup("05 / 03", "Nenhum compromisso marcado.", "Partidas, treinos, viagens, encontros e entrevistas confirmados durante o RP serão organizados aqui.");
-      return;
+  function dateFromAny(value) {
+    var direct = validDateOnly(value);
+    if (direct) return direct;
+    var source = clean(value);
+    var brazilian = source.match(/\b(\d{1,2})[./-](\d{1,2})[./-](\d{4})\b/);
+    if (brazilian) return brazilian[3] + "-" + String(brazilian[2]).padStart(2, "0") + "-" + String(brazilian[1]).padStart(2, "0");
+    var normalized = normalizeKey(source);
+    var monthNames = { jan: 1, janeiro: 1, fev: 2, fevereiro: 2, mar: 3, marco: 3, abr: 4, abril: 4, mai: 5, maio: 5, jun: 6, junho: 6, jul: 7, julho: 7, ago: 8, agosto: 8, set: 9, setembro: 9, out: 10, outubro: 10, nov: 11, novembro: 11, dez: 12, dezembro: 12 };
+    var written = normalized.match(/\b(\d{1,2})\s+(?:de\s+)?([a-z]+)\s+(?:de\s+)?(\d{4})\b/);
+    if (written && monthNames[written[2]]) return written[3] + "-" + String(monthNames[written[2]]).padStart(2, "0") + "-" + String(written[1]).padStart(2, "0");
+    return "";
+  }
+
+  function latestCareerDate(career) {
+    var dates = [];
+    (career.calendar || []).forEach(function (event) { var date = dateFromAny(event.date || event.start); if (date) dates.push(date); });
+    (career.seasons || []).forEach(function (season) { (season.matches || []).forEach(function (match) { var date = dateFromAny(match.date || match.createdAt); if (date) dates.push(date); }); });
+    (career.canonEvents || []).forEach(function (event) { var date = dateFromAny(event.occurredAt || event.date); if (date) dates.push(date); });
+    return dates.sort().pop() || "";
+  }
+
+  function calendarEventFromMatch(match) {
+    var date = dateFromAny(match.date || match.createdAt);
+    if (!date) return null;
+    var hasScore = match.homeScore !== "" && match.homeScore != null && match.awayScore !== "" && match.awayScore != null;
+    return normalizeCalendarEvent({
+      id: "calendar-match-" + match.id,
+      type: "match",
+      title: clean(match.homeTeam) + " x " + clean(match.awayTeam),
+      date: date,
+      time: match.time,
+      status: match.status || (hasScore ? "completed" : "scheduled"),
+      homeTeam: match.homeTeam,
+      awayTeam: match.awayTeam,
+      homeScore: match.homeScore,
+      awayScore: match.awayScore,
+      competition: match.competition,
+      phase: match.phase,
+      stadium: match.stadium,
+      location: match.stadium,
+      season: match.season,
+      minutes: match.minutes,
+      goals: match.goals,
+      assists: match.assists,
+      rating: match.rating,
+      formation: match.formation,
+      goalDetails: match.goalDetails,
+      highlights: match.highlights,
+      sourceMatchId: match.id,
+      sourceMessageId: match.sourceMessageId,
+      sourceChatId: match.sourceChatId,
+      createdInChatId: match.createdInChatId,
+      createdAt: match.createdAt
+    });
+  }
+
+  function syncMatchToCalendar(career, match) {
+    var event = calendarEventFromMatch(match);
+    if (!event) return;
+    var index = career.calendar.findIndex(function (item) { return item.sourceMatchId === match.id || item.id === event.id; });
+    if (index >= 0) career.calendar[index] = Object.assign({}, career.calendar[index], event, { id: career.calendar[index].id });
+    else career.calendar.push(event);
+  }
+
+  function calendarEventIdentity(event) {
+    if (event.type !== "match") return clean(event.id) || [event.type, event.date, normalizeKey(event.title)].join("|");
+    return [
+      "match",
+      event.date,
+      normalizeKey(event.homeTeam),
+      normalizeKey(event.awayTeam),
+      normalizeKey(event.competition),
+      normalizeKey(event.phase)
+    ].join("|");
+  }
+
+  function calendarEventsForCareer(career, year) {
+    var events = (career.calendar || []).map(normalizeCalendarEvent);
+    (career.seasons || []).forEach(function (season) {
+      (season.matches || []).forEach(function (match) {
+        var exists = events.some(function (event) { return event.sourceMatchId === match.id; });
+        var derived = calendarEventFromMatch(Object.assign({ season: season.label }, match));
+        if (!exists && derived) events.push(derived);
+      });
+    });
+    var birthDate = dateFromAny(career.profile.birthDate);
+    if (birthDate) {
+      var parts = birthDate.split("-");
+      events.push(normalizeCalendarEvent({
+        id: "birthday-" + year,
+        type: "birthday",
+        title: "Aniversário de " + (career.profile.playerName || "seu jogador"),
+        date: year + "-" + parts[1] + "-" + parts[2],
+        description: "Data derivada automaticamente da ficha do jogador.",
+        synthetic: true
+      }));
     }
-    var sorted = career.calendar.slice().sort(function (a, b) { return String(a.start || a.date || "").localeCompare(String(b.start || b.date || "")); });
-    el.careerContent.innerHTML = '<div class="calendar-layout"><section class="career-side-panel"><span>AGENDA DO CÂNONE</span><h2>PRÓXIMOS COMPROMISSOS</h2><p>Somente eventos confirmados pelo roleplay.</p></section><section class="calendar-list">' + sorted.map(function (event) {
-      return '<article class="calendar-item"><span>' + escapeHTML(formatDate(event.start || event.date)) + '</span><div><strong>' + escapeHTML(event.title || "Compromisso") + '</strong><span>' + escapeHTML(event.location || event.type || "") + '</span></div><strong>' + escapeHTML(formatClock(event.start || event.time)) + "</strong></article>";
-    }).join("") + "</section></div>";
+    var positions = Object.create(null);
+    var uniqueEvents = [];
+    events.forEach(function (event) {
+      var identity = calendarEventIdentity(event);
+      if (positions[identity] == null) {
+        positions[identity] = uniqueEvents.length;
+        uniqueEvents.push(event);
+        return;
+      }
+      var position = positions[identity];
+      uniqueEvents[position] = Object.assign({}, uniqueEvents[position], event, { id: uniqueEvents[position].id || event.id });
+    });
+    return uniqueEvents.sort(function (left, right) { return (left.date + "T" + (left.time || "23:59")).localeCompare(right.date + "T" + (right.time || "23:59")); });
+  }
+
+  function calendarTeamWords(value) {
+    var ignored = { football: true, futbol: true, futebol: true, club: true, clube: true, fc: true, afc: true, cf: true, sc: true, ac: true, calcio: true, association: true, deportivo: true, esporte: true, sporting: true, sport: true, the: true, de: true, da: true, do: true, e: true, v: true, comm: true };
+    return normalizeKey(value).replace(/[^a-z0-9]+/g, " ").split(/\s+/).filter(function (word) { return word.length > 1 && !ignored[word] && !/^\d+$/.test(word); });
+  }
+
+  function calendarShieldForTeam(team) {
+    var words = calendarTeamWords(team);
+    if (!words.length) return "mod/calendar/shield-time-not-found.svg";
+    if (!calendarShieldForTeam.index) {
+      calendarShieldForTeam.index = CALENDAR_SHIELDS.map(function (path) {
+        var filename = path.split("/").pop().replace(/\.svg$/i, "").replace(/^\d+[-_]/, "").replace(/-v\d+(?:-comm)?$/i, "");
+        return { path: path, words: calendarTeamWords(filename), normalized: normalizeKey(filename) };
+      });
+    }
+    var teamKey = normalizeKey(team);
+    var best = calendarShieldForTeam.index.reduce(function (winner, candidate) {
+      var overlap = words.filter(function (word) { return candidate.words.indexOf(word) >= 0; }).length;
+      var contains = candidate.normalized.indexOf(teamKey) >= 0 || teamKey.indexOf(candidate.normalized) >= 0;
+      var score = (contains ? 100 : 0) + overlap * 18 - Math.abs(candidate.words.length - words.length) * 2;
+      return score > winner.score ? { score: score, path: candidate.path, overlap: overlap } : winner;
+    }, { score: -1, path: "", overlap: 0 });
+    return best.overlap >= Math.max(1, Math.ceil(words.length * 0.6)) ? best.path : "mod/calendar/shield-time-not-found.svg";
+  }
+
+  function matchOpponent(career, event) {
+    var club = normalizeKey(career.profile.currentClub || "");
+    if (club && normalizeKey(event.homeTeam) === club) return event.awayTeam;
+    if (club && normalizeKey(event.awayTeam) === club) return event.homeTeam;
+    return clean(event.opponent || event.awayTeam || event.homeTeam || "");
+  }
+
+  function calendarEventIcon(career, event) {
+    var source = event.type === "match" ? calendarShieldForTeam(matchOpponent(career, event)) : CALENDAR_EVENT_META[event.type].icon;
+    return '<img src="' + escapeHTML(source) + '" alt="" aria-hidden="true" />';
+  }
+
+  function calendarMonthTitle(date) {
+    return new Intl.DateTimeFormat("pt-BR", { month: "long" }).format(date).toLocaleUpperCase("pt-BR");
+  }
+
+  function renderCalendar(career) {
+    var baseDate = dateFromAny(career.currentDate) || localDateKey(new Date());
+    if (!/^\d{4}-\d{2}$/.test(ui.calendarMonth)) ui.calendarMonth = baseDate.slice(0, 7);
+    if (!ui.calendarSelectedDate) ui.calendarSelectedDate = baseDate;
+    var monthParts = ui.calendarMonth.split("-");
+    var monthDate = new Date(Number(monthParts[0]), Number(monthParts[1]) - 1, 1);
+    var year = monthDate.getFullYear();
+    var month = monthDate.getMonth();
+    var events = calendarEventsForCareer(career, year);
+    var firstCell = new Date(year, month, 1 - monthDate.getDay());
+    var lastDay = new Date(year, month + 1, 0).getDate();
+    var cellCount = monthDate.getDay() + lastDay > 35 ? 42 : 35;
+    var cells = [];
+    for (var index = 0; index < cellCount; index += 1) {
+      var dayDate = new Date(firstCell.getFullYear(), firstCell.getMonth(), firstCell.getDate() + index);
+      var dateKey = localDateKey(dayDate);
+      var dayEvents = events.filter(function (event) { return event.date === dateKey; });
+      var outside = dayDate.getMonth() !== month;
+      var current = dateKey === baseDate;
+      var selected = dateKey === ui.calendarSelectedDate;
+      var eventButtons = dayEvents.slice(0, 4).map(function (event) {
+        var score = event.type === "match" && event.status === "completed" ? '<small>' + escapeHTML(String(event.homeScore) + "–" + String(event.awayScore)) + "</small>" : "";
+        var editable = event.synthetic ? "" : ' data-calendar-event="' + escapeHTML(event.id) + '"';
+        return '<button class="calendar-day-event calendar-day-event--' + escapeHTML(event.type) + '" type="button"' + editable + ' title="' + escapeHTML(event.title) + '">' + calendarEventIcon(career, event) + score + "</button>";
+      }).join("");
+      if (dayEvents.length > 4) eventButtons += '<span class="calendar-day-more">+' + (dayEvents.length - 4) + "</span>";
+      cells.push('<div class="calendar-day' + (outside ? " is-outside" : "") + (current ? " is-current" : "") + (selected ? " is-selected" : "") + '" data-calendar-date="' + dateKey + '" role="button" tabindex="0"><span class="calendar-day__number">' + dayDate.getDate() + '</span><div class="calendar-day__events">' + eventButtons + "</div></div>");
+    }
+    var selectedEvents = events.filter(function (event) { return event.date === ui.calendarSelectedDate; });
+    var selectedDateObject = new Date(ui.calendarSelectedDate + "T12:00:00");
+    var storyDateObject = new Date(baseDate + "T12:00:00");
+    el.careerContent.innerHTML = [
+      '<div class="career-calendar"><header class="calendar-toolbar"><div class="calendar-story-date"><span>DATA ATUAL DA HISTÓRIA</span><strong>', escapeHTML(new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "2-digit", month: "long", year: "numeric" }).format(storyDateObject)), '</strong><input id="storyDateControl" type="date" value="', escapeHTML(baseDate), '" aria-label="Data atual da história" /></div><div class="calendar-toolbar__actions"><button type="button" data-calendar-today>IR PARA A DATA ATUAL</button><button class="calendar-add-event" type="button" data-calendar-new><span>+</span> NOVO EVENTO</button></div></header>',
+      '<div class="calendar-workspace"><section class="calendar-board"><header class="calendar-month-nav"><button type="button" data-calendar-nav="-1" aria-label="Mês anterior">←</button><div><strong>', escapeHTML(calendarMonthTitle(monthDate)), '</strong><span>', year, '</span></div><button type="button" data-calendar-nav="1" aria-label="Próximo mês">→</button></header><div class="calendar-weekdays"><span>DOM</span><span>SEG</span><span>TER</span><span>QUA</span><span>QUI</span><span>SEX</span><span>SÁB</span></div><div class="calendar-grid">', cells.join(""), '</div></section>',
+      '<aside class="calendar-rail"><div class="calendar-rail__date"><strong>', year, '</strong><span>', escapeHTML(calendarMonthTitle(monthDate)), '</span></div><div class="calendar-selected"><span>', escapeHTML(new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "2-digit", month: "long" }).format(selectedDateObject)), '</span>',
+      selectedEvents.length ? selectedEvents.map(function (event) { return '<button type="button"' + (event.synthetic ? "" : ' data-calendar-event="' + escapeHTML(event.id) + '"') + '><i>' + calendarEventIcon(career, event) + '</i><span><strong>' + escapeHTML(event.title) + '</strong><small>' + escapeHTML([event.time, event.location || event.competition, CALENDAR_EVENT_META[event.type].label].filter(Boolean).join(" · ")) + "</small></span></button>"; }).join("") : '<p>Nenhum compromisso neste dia.<br />Clique no calendário ou em “Novo evento” para adicionar.</p>',
+      '</div><div class="calendar-legend">', Object.keys(CALENDAR_EVENT_META).filter(function (type) { return type !== "personal"; }).map(function (type) { var meta = CALENDAR_EVENT_META[type]; return '<span><i>' + (type === "match" ? '<img src="mod/calendar/shield-time-not-found.svg" alt="" />' : '<img src="' + meta.icon + '" alt="" />') + '</i>' + escapeHTML(meta.label) + "</span>"; }).join(""), "</div></aside></div></div>"
+    ].join("");
+  }
+
+  function shiftCalendarMonth(amount) {
+    var parts = ui.calendarMonth.split("-");
+    var date = new Date(Number(parts[0]), Number(parts[1]) - 1 + Number(amount || 0), 1);
+    ui.calendarMonth = date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0");
+    ui.calendarSelectedDate = localDateKey(date);
+    renderCareerPage();
+  }
+
+  function handleCareerContentClick(event) {
+    if (ui.careerTab !== "calendar") return;
+    var nav = event.target.closest("[data-calendar-nav]");
+    if (nav) return shiftCalendarMonth(nav.dataset.calendarNav);
+    if (event.target.closest("[data-calendar-today]")) {
+      var career = activeCareer();
+      ui.calendarSelectedDate = dateFromAny(career.currentDate) || localDateKey(new Date());
+      ui.calendarMonth = ui.calendarSelectedDate.slice(0, 7);
+      return renderCareerPage();
+    }
+    var eventButton = event.target.closest("[data-calendar-event]");
+    if (eventButton) return openCalendarEventDialog("", eventButton.dataset.calendarEvent);
+    if (event.target.closest("[data-calendar-new]")) return openCalendarEventDialog(ui.calendarSelectedDate);
+    var day = event.target.closest("[data-calendar-date]");
+    if (day) {
+      ui.calendarSelectedDate = day.dataset.calendarDate;
+      renderCareerPage();
+    }
+  }
+
+  function handleCareerContentChange(event) {
+    if (event.target.id !== "storyDateControl") return;
+    var career = activeCareer();
+    var date = validDateOnly(event.target.value);
+    if (!career || !date) return;
+    career.currentDate = date;
+    ui.calendarMonth = date.slice(0, 7);
+    ui.calendarSelectedDate = date;
+    career.updatedAt = new Date().toISOString();
+    saveState();
+    renderCareerPage();
+    toast("Data atual da história atualizada.");
+  }
+
+  function blankCalendarEvent(date) {
+    return normalizeCalendarEvent({ id: uid("calendar"), type: "personal", date: date || activeCareer().currentDate, title: "", status: "scheduled" });
+  }
+
+  function openCalendarEventDialog(date, eventId) {
+    var career = activeCareer();
+    if (!career) return;
+    var allEvents = calendarEventsForCareer(career, Number((date || career.currentDate).slice(0, 4)) || new Date().getFullYear());
+    var existing = eventId ? allEvents.find(function (event) { return event.id === eventId; }) : null;
+    if (existing && existing.synthetic) return;
+    ui.editingCalendarEventId = existing ? existing.id : "";
+    ui.calendarDraft = existing ? JSON.parse(JSON.stringify(existing)) : blankCalendarEvent(date || ui.calendarSelectedDate);
+    renderCalendarEventFields();
+    if (!el.calendarEventDialog.open) el.calendarEventDialog.showModal();
+  }
+
+  function renderCalendarEventFields() {
+    var draft = ui.calendarDraft;
+    if (!draft) return;
+    var typeOptions = Object.keys(CALENDAR_EVENT_META).filter(function (type) { return type !== "birthday"; });
+    el.calendarEventTitle.textContent = ui.editingCalendarEventId ? "EDITAR EVENTO" : "NOVO EVENTO";
+    el.deleteCalendarEvent.hidden = !ui.editingCalendarEventId;
+    var common = [
+      '<div class="calendar-form-grid"><label><span>TIPO DE EVENTO</span><select name="type">', typeOptions.map(function (type) { return '<option value="' + type + '"' + (draft.type === type ? " selected" : "") + '>' + escapeHTML(CALENDAR_EVENT_META[type].label) + "</option>"; }).join(""), '</select></label><label><span>DATA</span><input name="date" type="date" required value="', escapeHTML(draft.date), '" /></label><label><span>HORÁRIO</span><input name="time" type="time" value="', escapeHTML(draft.time || ""), '" /></label>'
+    ];
+    if (draft.type === "match") {
+      common.push('<label><span>STATUS</span><select name="status"><option value="scheduled"' + (draft.status !== "completed" ? " selected" : "") + '>PARTIDA FUTURA</option><option value="completed"' + (draft.status === "completed" ? " selected" : "") + '>PARTIDA FINALIZADA</option></select></label>',
+        '<label><span>MANDANTE</span><input name="homeTeam" type="text" required value="' + escapeHTML(draft.homeTeam || "") + '" /></label><label><span>VISITANTE</span><input name="awayTeam" type="text" required value="' + escapeHTML(draft.awayTeam || "") + '" /></label>',
+        '<label><span>COMPETIÇÃO</span><input name="competition" type="text" value="' + escapeHTML(draft.competition || "") + '" /></label><label><span>FASE</span><input name="phase" type="text" value="' + escapeHTML(draft.phase || "") + '" /></label>',
+        '<label><span>ESTÁDIO</span><input name="stadium" type="text" value="' + escapeHTML(draft.stadium || "") + '" /></label><label><span>TEMPORADA</span><input name="season" type="text" value="' + escapeHTML(draft.season || activeCareer().profile.season || "") + '" /></label>',
+        '<label><span>GOLS DO MANDANTE</span><input name="homeScore" type="number" min="0" value="' + escapeHTML(draft.homeScore == null ? "" : draft.homeScore) + '" /></label><label><span>GOLS DO VISITANTE</span><input name="awayScore" type="number" min="0" value="' + escapeHTML(draft.awayScore == null ? "" : draft.awayScore) + '" /></label>',
+        '<label><span>MINUTOS JOGADOS</span><input name="minutes" type="number" min="0" max="130" value="' + escapeHTML(draft.minutes == null ? "" : draft.minutes) + '" /></label><label><span>GOLS DO JOGADOR</span><input name="goals" type="number" min="0" value="' + escapeHTML(draft.goals == null ? "" : draft.goals) + '" /></label>',
+        '<label><span>ASSISTÊNCIAS</span><input name="assists" type="number" min="0" value="' + escapeHTML(draft.assists == null ? "" : draft.assists) + '" /></label><label><span>NOTA</span><input name="rating" type="number" min="0" max="10" step="0.1" value="' + escapeHTML(draft.rating == null ? "" : draft.rating) + '" /></label>',
+        '<label class="is-wide"><span>FORMAÇÃO / ESCALAÇÃO</span><textarea name="formation">' + escapeHTML(draft.formation || "") + '</textarea></label><label class="is-wide"><span>COMO OS GOLS ACONTECERAM</span><textarea name="goalDetails">' + escapeHTML(draft.goalDetails || "") + '</textarea></label><label class="is-wide"><span>REGISTRO COMPLETO DA PARTIDA</span><textarea name="highlights">' + escapeHTML(draft.highlights || draft.description || "") + "</textarea></label>");
+    } else {
+      common.push('<label class="is-wide"><span>TÍTULO</span><input name="title" type="text" required value="' + escapeHTML(draft.title || "") + '" placeholder="' + escapeHTML(CALENDAR_EVENT_META[draft.type].title) + '" /></label><label class="is-wide"><span>LOCAL</span><input name="location" type="text" value="' + escapeHTML(draft.location || "") + '" /></label><label class="is-wide"><span>DETALHES</span><textarea name="description">' + escapeHTML(draft.description || "") + "</textarea></label>");
+    }
+    common.push("</div>");
+    el.calendarEventFields.innerHTML = common.join("");
+  }
+
+  function captureCalendarDraft() {
+    var draft = ui.calendarDraft;
+    if (!draft) return null;
+    new FormData(el.calendarEventForm).forEach(function (value, key) {
+      draft[key] = ["homeScore", "awayScore", "minutes", "goals", "assists", "rating"].indexOf(key) >= 0 ? (value === "" ? "" : Number(value)) : clean(value);
+    });
+    draft.type = CALENDAR_EVENT_META[draft.type] ? draft.type : "personal";
+    draft.title = draft.type === "match" ? clean(draft.homeTeam) + " x " + clean(draft.awayTeam) : clean(draft.title) || CALENDAR_EVENT_META[draft.type].title;
+    draft.location = draft.type === "match" ? clean(draft.stadium) : clean(draft.location);
+    draft.updatedAt = new Date().toISOString();
+    ui.calendarDraft = normalizeCalendarEvent(draft);
+    return ui.calendarDraft;
+  }
+
+  function closeCalendarEventDialog() {
+    ui.editingCalendarEventId = "";
+    ui.calendarDraft = null;
+    if (el.calendarEventDialog.open) el.calendarEventDialog.close();
+  }
+
+  function syncCalendarEventToSeason(career, event) {
+    if (event.type !== "match") return;
+    var seasonLabel = clean(event.season || career.profile.season) || "Temporada atual";
+    var season = career.seasons.find(function (item) { return item.label === seasonLabel; });
+    if (!season) {
+      season = { id: uid("season"), label: seasonLabel, matches: [], source: "calendar" };
+      career.seasons.unshift(season);
+    }
+    var match = season.matches.find(function (item) { return item.id === event.sourceMatchId; });
+    if (!match) {
+      match = { id: event.sourceMatchId || uid("match"), createdAt: event.createdAt || new Date().toISOString(), source: "calendar" };
+      season.matches.push(match);
+    }
+    Object.assign(match, {
+      date: event.date, time: event.time, season: seasonLabel, status: event.status, competition: event.competition,
+      phase: event.phase, stadium: event.stadium, homeTeam: event.homeTeam, awayTeam: event.awayTeam,
+      homeScore: event.homeScore, awayScore: event.awayScore, minutes: event.minutes, goals: event.goals,
+      assists: event.assists, rating: event.rating, formation: event.formation, goalDetails: event.goalDetails,
+      highlights: event.highlights, updatedAt: event.updatedAt
+    });
+    event.sourceMatchId = match.id;
+  }
+
+  function saveCalendarEvent(event) {
+    event.preventDefault();
+    var career = activeCareer();
+    var draft = captureCalendarDraft();
+    if (!career || !draft || !validDateOnly(draft.date)) return toast("Informe uma data válida.", "error");
+    if (draft.type === "match" && (!clean(draft.homeTeam) || !clean(draft.awayTeam))) return toast("Informe mandante e visitante.", "error");
+    syncCalendarEventToSeason(career, draft);
+    var index = career.calendar.findIndex(function (item) { return item.id === ui.editingCalendarEventId || item.sourceMatchId && item.sourceMatchId === draft.sourceMatchId; });
+    if (index >= 0) {
+      draft.id = career.calendar[index].id;
+      career.calendar[index] = draft;
+    } else career.calendar.push(draft);
+    career.currentDate = draft.status === "completed" && draft.date > career.currentDate ? draft.date : career.currentDate;
+    career.updatedAt = new Date().toISOString();
+    ui.calendarMonth = draft.date.slice(0, 7);
+    ui.calendarSelectedDate = draft.date;
+    saveState();
+    closeCalendarEventDialog();
+    renderCareerPage();
+    populateSeasonSelect();
+    toast(draft.type === "match" ? "Partida salva no calendário e na temporada." : "Evento salvo no calendário.");
+  }
+
+  function deleteCurrentCalendarEvent() {
+    var career = activeCareer();
+    var draft = ui.calendarDraft;
+    if (!career || !draft || !ui.editingCalendarEventId) return;
+    if (!window.confirm("Excluir “" + draft.title + "” do calendário?")) return;
+    career.calendar = career.calendar.filter(function (event) { return event.id !== ui.editingCalendarEventId; });
+    if (draft.sourceMatchId) (career.seasons || []).forEach(function (season) { season.matches = (season.matches || []).filter(function (match) { return match.id !== draft.sourceMatchId; }); });
+    career.updatedAt = new Date().toISOString();
+    saveState();
+    closeCalendarEventDialog();
+    renderCareerPage();
+    populateSeasonSelect();
+    toast("Evento excluído do calendário.");
   }
 
   function renderResidence() {

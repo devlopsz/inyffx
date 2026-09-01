@@ -281,7 +281,11 @@ function cleanMatch(item, index, careerId, now) {
   return {
     id: itemId(item, "match", identity),
     date: cleanText(item.date || item.createdAt || now, 40),
+    time: cleanText(item.time, 20),
+    status: cleanText(item.status, 30),
     competition: cleanText(item.competition, 160),
+    phase: cleanText(item.phase, 160),
+    stadium: cleanText(item.stadium, 220),
     homeTeam,
     awayTeam,
     homeScore: numeric(item.homeScore),
@@ -290,6 +294,8 @@ function cleanMatch(item, index, careerId, now) {
     goals: numeric(item.goals),
     assists: numeric(item.assists),
     rating: numeric(item.rating),
+    formation: cleanText(item.formation, 1800),
+    goalDetails: cleanText(item.goalDetails, 1800),
     highlights: cleanText(item.highlights, 1600),
     sourceMessageId: cleanId(item.sourceMessageId)
   };
@@ -374,7 +380,17 @@ function cleanCalendar(value, careerId, now) {
       time: cleanText(item.time, 20),
       location: cleanText(item.location, 220),
       type: cleanText(item.type, 100),
-      description: cleanText(item.description, 1000)
+      description: cleanText(item.description, 1000),
+      status: cleanText(item.status, 30),
+      homeTeam: cleanText(item.homeTeam, 120),
+      awayTeam: cleanText(item.awayTeam, 120),
+      homeScore: Number.isFinite(Number(item.homeScore)) ? Number(item.homeScore) : "",
+      awayScore: Number.isFinite(Number(item.awayScore)) ? Number(item.awayScore) : "",
+      competition: cleanText(item.competition, 160),
+      phase: cleanText(item.phase, 160),
+      stadium: cleanText(item.stadium, 220),
+      sourceMatchId: cleanId(item.sourceMatchId),
+      sourceMessageId: cleanId(item.sourceMessageId)
     };
   });
 }
@@ -508,13 +524,16 @@ function fallbackMatchNews(payload, now) {
 
 function matchSourceText(payload) {
   const current = String(payload.message && payload.message.content || "");
-  if (/^\s*Jogo\s*:/im.test(current) && /^\s*Placar final\s*:/im.test(current)) return current;
+  const isMatch = (/^\s*Jogo\s*:/im.test(current) && /^\s*Placar final\s*:/im.test(current))
+    || (/\[PARTIDA OFICIAL\]/i.test(current) && /^\s*Mandante\s*:/im.test(current) && /^\s*Visitante\s*:/im.test(current));
+  if (isMatch) return current;
   const recent = payload.context && Array.isArray(payload.context.recentMessages)
     ? payload.context.recentMessages
     : [];
   const previous = [...recent].reverse().find((message) => {
     const content = String(message && message.content || "");
-    return /^\s*Jogo\s*:/im.test(content) && /^\s*Placar final\s*:/im.test(content);
+    return (/^\s*Jogo\s*:/im.test(content) && /^\s*Placar final\s*:/im.test(content))
+      || (/\[PARTIDA OFICIAL\]/i.test(content) && /^\s*Mandante\s*:/im.test(content) && /^\s*Visitante\s*:/im.test(content));
   });
   return [previous && previous.content, current].filter(Boolean).join("\n");
 }
@@ -523,6 +542,25 @@ function matchLabel(source, label, maximum = 1600) {
   const escaped = label.replace(/[.*+?^$(){}|[\]\\]/g, "\\$&");
   const match = new RegExp("^\\s*" + escaped + "\\s*:\\s*(.*?)\\s*$", "im").exec(source);
   return cleanText(match && match[1], maximum);
+}
+
+function matchBlockLabel(source, label, maximum = 2400) {
+  const normalizedLabel = comparableText(label);
+  const lines = String(source || "").split(/\r?\n/);
+  const start = lines.findIndex((line) => {
+    const separator = line.indexOf(":");
+    return separator >= 0 && comparableText(line.slice(0, separator)) === normalizedLabel;
+  });
+  if (start < 0) return "";
+  const firstSeparator = lines[start].indexOf(":");
+  const values = [lines[start].slice(firstSeparator + 1).trim()];
+  for (let index = start + 1; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (/^\s*\[\/[^\]]+\]\s*$/.test(line)) break;
+    if (/^\s*[A-Za-zÀ-ÿ][^:\r\n]{0,89}\s*:\s*/.test(line)) break;
+    if (line.trim()) values.push(line.trim());
+  }
+  return cleanText(values.filter(Boolean).join("\n"), maximum);
 }
 
 function eventSentence(event) {
@@ -551,18 +589,25 @@ export function parseMatchReport(payload) {
   const source = matchSourceText(payload);
   const game = /^(.+?)\s+(?:x|×|vs\.?|versus)\s+(.+)$/i.exec(matchLabel(source, "Jogo", 300));
   const score = /(\d+)\s*(?:x|×|[-–])\s*(\d+)/i.exec(matchLabel(source, "Placar final", 180));
-  if (!game || !score) return null;
-
-  const homeTeam = cleanText(game[1], 120);
-  const awayTeam = cleanText(game[2], 120);
-  const homeScore = Number(score[1]);
-  const awayScore = Number(score[2]);
+  const homeTeam = cleanText(game && game[1] || matchLabel(source, "Mandante", 120), 120);
+  const awayTeam = cleanText(game && game[2] || matchLabel(source, "Visitante", 120), 120);
+  const taggedHomeScore = matchLabel(source, "Gols do mandante", 20).match(/\d+/);
+  const taggedAwayScore = matchLabel(source, "Gols do visitante", 20).match(/\d+/);
+  const homeScore = score ? Number(score[1]) : taggedHomeScore ? Number(taggedHomeScore[0]) : null;
+  const awayScore = score ? Number(score[2]) : taggedAwayScore ? Number(taggedAwayScore[0]) : null;
+  if (!homeTeam || !awayTeam || homeScore == null || awayScore == null) return null;
   const profile = payload.context && payload.context.profile && typeof payload.context.profile === "object"
     ? payload.context.profile
     : {};
-  const goalLine = /^\s*Gols do\s+([^:]+)\s*:\s*(\d+)/im.exec(source);
-  const protagonistName = cleanText(profile.playerName || (goalLine && goalLine[1]) || "Protagonista", 160);
-  const goals = goalLine ? Number(goalLine[2]) : 0;
+  const shortcutGoalLine = /^\s*Gols do meu jogador(?:\s*\(([^)]+)\))?\s*:\s*(\d+)/im.exec(source);
+  const legacyGoalLine = [...source.matchAll(/^\s*Gols do\s+([^:]+)\s*:\s*(\d+)/gim)].find((entry) => {
+    const label = comparableText(entry[1]);
+    return label && !/^(?:mandante|visitante|meu jogador)/.test(label);
+  });
+  const protagonistName = cleanText(profile.playerName || (shortcutGoalLine && shortcutGoalLine[1]) || (legacyGoalLine && legacyGoalLine[1]) || "Protagonista", 160);
+  const goals = shortcutGoalLine ? Number(shortcutGoalLine[2]) : legacyGoalLine ? Number(legacyGoalLine[2]) : 0;
+  const assistsMatch = matchLabel(source, "Assistências", 30).match(/\d+/);
+  const minutesMatch = matchLabel(source, "Minutos jogados", 30).match(/\d+/);
   const ratingText = matchLabel(source, "Nota", 40);
   const ratingMatch = /(?:^|\s)(\d+(?:[.,]\d+)?)(?:\s|$)/.exec(ratingText);
 
@@ -578,6 +623,11 @@ export function parseMatchReport(payload) {
     .split(/\r?\n/)
     .map((line) => cleanText(line, 1200))
     .filter((line) => line && !/^00:00\s*[-–—]?\s*$/.test(line));
+  if (!events.length) {
+    [matchBlockLabel(source, "Como os gols aconteceram", 2400), matchBlockLabel(source, "Acontecimentos importantes", 2400)]
+      .filter(Boolean)
+      .forEach((block) => block.split(/\r?\n/).map((line) => cleanText(line, 1200)).filter(Boolean).forEach((line) => events.push(line)));
+  }
 
   const currentClub = cleanText(profile.currentClub || profile.club, 160);
   const normalizedClub = canonicalClubName(currentClub);
@@ -600,11 +650,14 @@ export function parseMatchReport(payload) {
     competition: matchLabel(source, "Competição", 180),
     phase: matchLabel(source, "Fase", 180),
     stadium: matchLabel(source, "Estádio", 180),
+    date: matchLabel(source, "Data", 40),
     uniform: matchLabel(source, "Uniforme", 120),
-    formation: matchLabel(source, "Formação", 1600),
+    formation: matchBlockLabel(source, "Formação", 2400) || matchBlockLabel(source, "Formação / escalação", 2400),
     protagonistName,
     protagonistTeam,
     goals,
+    assists: assistsMatch ? Number(assistsMatch[0]) : 0,
+    minutes: minutesMatch ? Number(minutesMatch[0]) : 0,
     rating: ratingMatch ? Number(ratingMatch[1].replace(",", ".")) : null,
     ratingText: ratingMatch ? ratingMatch[1] : "",
     events,
@@ -682,7 +735,7 @@ export function buildVerifiedMatchPackage(payload) {
 
 function verifiedMatchNews(payload, match, now) {
   if (!match) return [];
-  const occurredAt = cleanText(payload.message && payload.message.createdAt, 40) || now;
+  const occurredAt = cleanText(match.date || payload.message && payload.message.createdAt, 40) || now;
   const sourceMessageId = cleanId(payload.message && payload.message.id);
   const baseIdentity = payload.careerId + "|" + payload.turnId + "|" + match.scoreTitle;
   const performance = match.goals > 0
@@ -772,7 +825,7 @@ function verifiedMatchNews(payload, match, now) {
 
 function applyVerifiedMatchMemory(memoryUpdates, payload, match, now) {
   if (!match) return memoryUpdates;
-  const occurredAt = cleanText(payload.message && payload.message.createdAt, 40) || now;
+  const occurredAt = cleanText(match.date || payload.message && payload.message.createdAt, 40) || now;
   const sourceMessageId = cleanId(payload.message && payload.message.id);
   const seasonLabel = cleanText(
     payload.context && payload.context.profile && payload.context.profile.season
@@ -796,20 +849,109 @@ function applyVerifiedMatchMemory(memoryUpdates, payload, match, now) {
     label: seasonLabel,
     matches: [{
       id: "match-" + stableHash(payload.careerId + "|" + occurredAt + "|" + match.scoreTitle),
-      date: occurredAt,
+      date: cleanText(match.date || occurredAt, 40),
+      status: "completed",
       competition: match.competition,
+      phase: match.phase,
+      stadium: match.stadium,
       homeTeam: match.homeTeam,
       awayTeam: match.awayTeam,
       homeScore: match.homeScore,
       awayScore: match.awayScore,
-      minutes: 0,
+      minutes: match.minutes || 0,
       goals: match.goals,
-      assists: 0,
+      assists: match.assists || 0,
       rating: match.rating || 0,
+      formation: match.formation,
+      goalDetails: match.events.join("\n"),
       highlights: match.events.join("\n"),
       sourceMessageId
     }]
   }];
+  return memoryUpdates;
+}
+
+function shortcutFactContext(payload) {
+  const memory = payload.context && payload.context.memory || {};
+  const season = memory.currentSeason && typeof memory.currentSeason === "object" ? memory.currentSeason : {};
+  const matches = Array.isArray(season.matches) ? season.matches : [];
+  const match = matches[matches.length - 1] || null;
+  const canon = Array.isArray(memory.canonEvents) ? memory.canonEvents : [];
+  const event = canon[canon.length - 1] || null;
+  const playerName = cleanText(payload.context && payload.context.profile && payload.context.profile.playerName || "O jogador", 160);
+  const matchTitle = match && match.homeTeam && match.awayTeam
+    ? `${match.homeTeam} ${Number(match.homeScore) || 0} x ${Number(match.awayScore) || 0} ${match.awayTeam}`
+    : "";
+  return {
+    playerName,
+    match,
+    title: matchTitle || cleanText(event && (event.title || event.description), 260) || `momento atual de ${playerName}`,
+    occurredAt: cleanText(match && match.date || event && event.occurredAt || payload.context && payload.context.currentDate || now, 40)
+  };
+}
+
+function shortcutNewsItem(payload, now, index, item) {
+  return {
+    id: `news-${stableHash(`${payload.careerId}|${payload.turnId}|shortcut|${item.type}|${index}`)}`,
+    title: cleanText(item.title, 260),
+    summary: cleanText(item.summary, 1800),
+    source: cleanText(item.source || "FYX NEWS", 120),
+    type: item.type,
+    handle: cleanText(item.handle, 100),
+    trend: cleanText(item.trend, 180),
+    sentiment: cleanText(item.sentiment, 40),
+    postCount: cleanText(item.postCount, 40),
+    occurredAt: cleanText(item.occurredAt || now, 40),
+    createdAt: now,
+    sourceMessageId: cleanId(payload.message && payload.message.id)
+  };
+}
+
+function ensureShortcutMemory(memoryUpdates, payload, contract, now) {
+  const action = contract && contract.action;
+  if (!action) return memoryUpdates;
+  const fact = shortcutFactContext(payload);
+  const existing = Array.isArray(memoryUpdates.news) ? memoryUpdates.news : [];
+  const additions = [];
+  if (action === "FYX_HEADLINES" && !existing.some((item) => item.type === "headline")) {
+    additions.push(
+      { type: "headline", title: fact.title, summary: `A edição atual da FYX NEWS acompanha ${fact.title}, usando apenas os fatos registrados.`, source: "FYX NEWS" },
+      { type: "analysis", title: "A leitura esportiva do acontecimento", summary: `A análise parte do registro de ${fact.title} e separa desempenho confirmado de interpretação jornalística.`, source: "FYX Análise" },
+      { type: "comment", title: "O assunto que domina a imprensa", summary: `${fact.playerName} permanece no centro da cobertura relacionada a ${fact.title}.`, source: "FYX Sports" },
+      { type: "analysis", title: "O que pode mudar a partir de agora", summary: "Consequências futuras permanecem em aberto e dependerão dos próximos fatos da carreira.", source: "FYX NEWS" }
+    );
+  }
+  if (action === "SOCIAL_MEDIA") {
+    const socialSeeds = [
+      ["@FYXMatchday", "Torcedores repercutem " + fact.title, "repercussão", "análise"],
+      ["@BancadaFYX", "Debate cresce depois de " + fact.title, fact.playerName, "debate"],
+      ["@CentralDaTorcida", "A torcida comenta o momento", fact.title, "torcida"],
+      ["@OlharTatico", "Leituras diferentes movimentam o feed", "AnáliseFYX", "análise"],
+      ["@FanClubFYX", "Fãs organizam novas postagens", fact.playerName, "elogio"],
+      ["@RivalEmCampo", "Rivais também entram na conversa", "Futebol", "crítica"]
+    ];
+    const socialCount = existing.filter((item) => item.type === "social").length;
+    socialSeeds.slice(0, Math.max(0, 6 - socialCount)).forEach(([handle, title, trend, sentiment], index) => additions.push({ type: "social", title, summary: `${handle} comenta ${fact.title} sem acrescentar fatos não confirmados.`, source: "FYX Social", handle, trend, sentiment, postCount: `${12 + index * 7},${index}k posts` }));
+  }
+  if (action === "GOSSIP") {
+    const gossipSeeds = [
+      ["gossip", "Rumor: fãs discutem o momento pessoal", "Rumores"],
+      ["fanclub", "Fan clubs acompanham cada aparição pública", fact.playerName],
+      ["gossip", "Especulação: o que o público acredita ter visto", "Especulação"],
+      ["fanclub", "Comunidades de fãs defendem privacidade", "FanClubs"],
+      ["gossip", "Rumor sem confirmação ganha comentários", "VidaPessoal"],
+      ["gossip", "Debate público cresce sem revelar segredos", "FofocasFYX"]
+    ];
+    const gossipCount = existing.filter((item) => item.type === "gossip" || item.type === "fanclub").length;
+    gossipSeeds.slice(0, Math.max(0, 6 - gossipCount)).forEach(([type, title, trend], index) => additions.push({ type, title, summary: `Conteúdo tratado como ${type === "gossip" ? "rumor ou especulação" : "reação de fãs"}; nenhum segredo privado foi convertido em fato.`, source: type === "gossip" ? "FYX Fofocas" : "FYX Fan Club", handle: `@FYX${type === "gossip" ? "Fofocas" : "Fans"}${index + 1}`, trend, sentiment: "especulação", postCount: `${8 + index * 6},${index}k posts` }));
+  }
+  const isPressAnswer = action === "PRESS_CONFERENCE" && !/\[INYFFX_ACTION:PRESS_CONFERENCE\]/i.test(payload.message && payload.message.content || "");
+  if (isPressAnswer && !existing.some((item) => item.type === "comment" || item.type === "headline")) {
+    const answer = cleanText(payload.message && payload.message.content, 900);
+    if (answer) additions.push({ type: "comment", title: `${fact.playerName} responde à imprensa`, summary: `Declaração registrada na coletiva: “${answer}”`, source: "Sala de Imprensa FYX", trend: fact.playerName, sentiment: "declaração" });
+  }
+  additions.forEach((item, index) => existing.push(shortcutNewsItem(payload, now, index, { ...item, occurredAt: fact.occurredAt })));
+  memoryUpdates.news = existing;
   return memoryUpdates;
 }
 
@@ -964,6 +1106,7 @@ async function handleRoleplay(request, env, origin) {
   } else if (!memoryUpdates.news.length) {
     memoryUpdates.news.push(...fallbackMatchNews(payload, now));
   }
+  memoryUpdates = ensureShortcutMemory(memoryUpdates, payload, turnContract, now);
 
   return jsonResponse({
     schemaVersion: "1.1",

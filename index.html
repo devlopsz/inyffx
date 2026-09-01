@@ -8,7 +8,7 @@
     <title>InyffX</title>
     <link rel="icon" href="mod/pics/favicon.ico" type="image/x-icon" />
     <link rel="manifest" href="manifest.webmanifest" />
-    <link rel="stylesheet" href="styles.css?v=20260901-media-containment" />
+    <link rel="stylesheet" href="styles.css?v=20260901-calendar-shortcuts" />
   </head>
   <body>
     <div class="toast-region" id="toastRegion" aria-live="polite" aria-atomic="true"></div>
@@ -82,6 +82,7 @@
             <div class="chat-stage">
               <div class="chat-messages" id="chatMessages" aria-live="polite"></div>
               <div class="kick-composer-dock">
+                <div class="kick-shortcuts" id="kickShortcuts" aria-label="Atalhos do KICK OFF"></div>
                 <div class="kick-tools-menu" id="kickToolsMenu" aria-hidden="true">
                   <button class="kick-tool-card" type="button" data-open-tool="match"><strong>Prompt<br />de Partida</strong><img src="mod/pics/icons/partida.svg" alt="" aria-hidden="true" /></button>
                   <button class="kick-tool-card" type="button" data-open-tool="wheel"><strong>Roleta</strong><img src="mod/pics/icons/roleta.svg" alt="" aria-hidden="true" /></button>
@@ -136,7 +137,10 @@ Mande a Narração, manchetes, comentários, análises, repercussão em redes so
               <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="m15.5 15.5 4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.5" /></svg>
               <input id="relationshipSearch" type="search" placeholder="Buscar personagem" aria-label="Buscar personagem" autocomplete="off" />
             </label>
-            <button class="relationship-add" id="addCharacter" type="button"><span aria-hidden="true">+</span> NOVO PERSONAGEM</button>
+            <div class="relationships-actions">
+              <label class="relationship-import"><input id="characterImportInput" type="file" accept=".txt,text/plain" multiple /><span aria-hidden="true">↑</span> IMPORTAR FICHAS</label>
+              <button class="relationship-add" id="addCharacter" type="button"><span aria-hidden="true">+</span> NOVO PERSONAGEM</button>
+            </div>
           </div>
           <nav class="relationship-tabs" id="relationshipTabs" aria-label="Categorias de personagens" role="tablist">
             <button class="is-active" type="button" role="tab" aria-selected="true" data-relationship-category="friends">AMIGOS</button>
@@ -147,7 +151,7 @@ Mande a Narração, manchetes, comentários, análises, repercussão em redes so
           <div class="relationships-surface" id="relationshipsContent"></div>
         </section>
         <section class="page" id="page-seasons" data-page="seasons" aria-labelledby="seasonsTitle"><div class="page-topline"><div><span class="section-number">FUTEBOL</span><h1 id="seasonsTitle">SEASONS</h1></div><label class="season-selector"><span>TEMPORADA</span><select id="seasonSelect"></select></label></div><div class="content-surface" id="seasonsContent"></div></section>
-        <section class="page" id="page-player-career" data-page="player-career" aria-labelledby="careerTitle"><div class="page-topline"><div><span class="section-number">CARREIRA</span><h1 id="careerTitle">PLAYER CAREER</h1></div><span class="read-only-tag">CONSULTA</span></div><div class="career-tabs" role="tablist" aria-label="Áreas da carreira"><button class="is-active" type="button" data-career-tab="pay">FYX PAY</button><button type="button" data-career-tab="hall">HALL</button><button type="button" data-career-tab="calendar">CALENDÁRIO</button></div><div class="content-surface" id="careerContent"></div></section>
+        <section class="page page--player-career" id="page-player-career" data-page="player-career" aria-labelledby="careerTitle"><h1 class="sr-only" id="careerTitle">Player Career</h1><nav class="career-tabs" role="tablist" aria-label="Áreas da carreira"><button class="is-active" type="button" role="tab" aria-selected="true" data-career-tab="pay">FYX PAY</button><button type="button" role="tab" aria-selected="false" data-career-tab="hall">HALL</button><button type="button" role="tab" aria-selected="false" data-career-tab="calendar">CALENDÁRIO</button></nav><div class="career-surface" id="careerContent"></div></section>
         <section class="page" id="page-off-the-pitch" data-page="off-the-pitch" aria-labelledby="offPitchTitle"><div class="page-topline"><div><span class="section-number">VIDA</span><h1 id="offPitchTitle">OFF THE PITCH</h1></div><span class="optional-tag">MODO OPCIONAL</span></div><div class="offpitch-layout"><article class="offpitch-intro"><span class="giant-index">SIMS / 04</span><h2>Use o The Sims 4 como simulador da vida fora de campo.</h2><p>O site não controla o The Sims. Você joga, registra o que realmente aconteceu e envia o relatório ao KICK OFF. A IA classifica o conteúdo e incorpora ao cânone apenas o que for válido.</p><ol><li><span>01</span>Receba ou escolha objetivos para o dia.</li><li><span>02</span>Jogue a rotina no The Sims 4.</li><li><span>03</span>Envie fatos e screenshots no KICK OFF.</li><li><span>04</span>Confirme o que passa a ser cânone.</li></ol></article><div class="offpitch-side"><section class="template-box"><div class="template-box__heading"><div><span class="section-number">MODELO COPIÁVEL</span><h3>RELATÓRIO OFF THE PITCH</h3></div><button class="secondary-action" id="copyOffPitchTemplate" type="button">COPIAR</button></div><pre id="offPitchTemplate">Objetivos iniciais:
 Coisas inesperadas:
 Eventos importantes:</pre><div class="template-actions"><button class="text-action" id="insertOffPitchTemplate" type="button">Inserir no KICK OFF →</button><a class="download-example" href="mod/prompt%20the%20sims%20EXEMPLO.txt" download="InyffX - Exemplo OFF THE PITCH.txt">BAIXAR EXEMPLO</a></div></section><section class="residence-box" id="residenceContent"></section></div></div></section>
@@ -203,12 +207,30 @@ Eventos importantes:</pre><div class="template-actions"><button class="text-acti
           </footer>
         </div>
       </dialog>
+
+      <dialog class="confirm-dialog" id="deleteDayDialog" aria-labelledby="deleteDayTitle">
+        <form method="dialog" class="confirm-dialog__shell">
+          <span class="confirm-dialog__eyebrow">EXCLUIR DIA</span>
+          <h2 id="deleteDayTitle">Apagar esta conversa?</h2>
+          <p id="deleteDayDescription">As mensagens e os registros vinculados a este dia serão removidos.</p>
+          <div class="confirm-dialog__actions"><button id="cancelDeleteDay" type="submit" value="cancel">CANCELAR</button><button id="confirmDeleteDay" type="button">APAGAR DIA</button></div>
+        </form>
+      </dialog>
+
+      <dialog class="calendar-dialog" id="calendarEventDialog" aria-labelledby="calendarEventTitle">
+        <form class="calendar-dialog__shell" id="calendarEventForm">
+          <header><div><span>AGENDA DO CÂNONE</span><h2 id="calendarEventTitle">NOVO EVENTO</h2></div><button id="closeCalendarEvent" type="button" aria-label="Fechar">×</button></header>
+          <div class="calendar-dialog__content" id="calendarEventFields"></div>
+          <footer><button class="calendar-event-delete" id="deleteCalendarEvent" type="button" hidden>EXCLUIR</button><div><button id="cancelCalendarEvent" type="button">CANCELAR</button><button class="calendar-event-save" type="submit">SALVAR EVENTO <span>→</span></button></div></footer>
+        </form>
+      </dialog>
     </div>
 
     <dialog class="modal settings-modal" id="settingsModal"><form method="dialog" class="modal__shell" id="settingsForm"><header class="modal__header"><div><span class="section-number">SISTEMA</span><h2>CONFIGURAÇÕES</h2></div><button class="icon-button" type="submit" value="cancel" aria-label="Fechar">×</button></header><div class="modal__content"><section class="settings-section"><div class="settings-section__heading"><span>01</span><div><h3>IA INYFFX</h3><p>A inteligência do site é conectada pelo próprio InyffX. Nenhum jogador precisa informar chave ou endpoint.</p></div></div><div class="integration-card"><div><span>PROVEDOR DO MVP</span><strong>Cloudflare Workers AI</strong></div><div><span>MODELO</span><strong>Qwen3 30B A3B</strong></div></div><div class="connection-row"><i id="backendStatusDot"></i><span id="backendStatusText">Verificando integração</span></div></section><section class="settings-section"><div class="settings-section__heading"><span>02</span><div><h3>SPOTIFY</h3><p>Mostra no disco a faixa reproduzida na sua conta.</p></div></div><label class="field"><span>SPOTIFY CLIENT ID</span><input id="spotifyClientId" type="text" autocomplete="off" placeholder="Client ID público do Spotify" /></label><label class="field"><span>REDIRECT URI</span><div class="copy-field"><input id="spotifyRedirectUri" type="text" readonly /><button id="copyRedirectUri" type="button">COPIAR</button></div></label><div class="button-row"><button class="secondary-action" id="disconnectSpotify" type="button">DESCONECTAR</button><button class="primary-action" id="connectSpotify" type="button">CONECTAR SPOTIFY <span>→</span></button></div></section></div><footer class="modal__footer"><button class="secondary-action" type="submit" value="cancel">CANCELAR</button><button class="primary-action" id="saveSettings" type="button">SALVAR CONFIGURAÇÕES <span>→</span></button></footer></form></dialog>
     <script src="assets/config.js"></script>
     <script src="registration-data.js"></script>
-    <script src="character-data.js?v=20260831-relationships"></script>
-    <script src="app.js?v=20260901-media-containment"></script>
+    <script src="character-data.js?v=20260901-character-import"></script>
+    <script src="calendar-shields.js?v=20260901-calendar"></script>
+    <script src="app.js?v=20260901-calendar-shortcuts"></script>
   </body>
 </html>
