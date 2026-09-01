@@ -43,6 +43,7 @@
     editingCharacterId: "",
     characterMode: "quick",
     characterDraft: null,
+    characterImageEdit: null,
     careerTab: "pay",
     dieSides: 20,
     lastDice: null,
@@ -240,6 +241,9 @@
       "characterEditor", "characterForm", "characterEditorTitle", "closeCharacterEditor", "deleteCharacter", "saveCharacter",
       "characterModeTabs", "characterFields", "characterAvatarInput", "characterBannerInput", "characterAvatarPreview",
       "characterBannerPreview", "characterPreviewName", "characterPreviewCategory",
+      "characterImageEditor", "characterImageEditorTitle", "characterImageEditorDescription", "closeCharacterImageEditor",
+      "characterCropStage", "characterCropCanvas", "characterCropZoom", "characterCropZoomValue", "resetCharacterCrop",
+      "cancelCharacterCrop", "applyCharacterCrop",
       "seasonSelect", "seasonsContent", "careerContent", "copyOffPitchTemplate", "insertOffPitchTemplate",
       "offPitchTemplate", "residenceContent", "spotifyNow", "spotifyDisc", "spotifyStatus", "spotifyTrack",
       "spotifyArtist", "settingsModal", "settingsForm", "backendStatusDot", "backendStatusText",
@@ -322,6 +326,20 @@
     el.characterFields.addEventListener("click", handleCharacterFieldClick);
     el.characterAvatarInput.addEventListener("change", handleCharacterImageChange);
     el.characterBannerInput.addEventListener("change", handleCharacterImageChange);
+    el.closeCharacterImageEditor.addEventListener("click", closeCharacterImageEditor);
+    el.cancelCharacterCrop.addEventListener("click", closeCharacterImageEditor);
+    el.resetCharacterCrop.addEventListener("click", resetCharacterCrop);
+    el.applyCharacterCrop.addEventListener("click", applyCharacterCrop);
+    el.characterCropZoom.addEventListener("input", changeCharacterCropZoom);
+    el.characterCropCanvas.addEventListener("pointerdown", beginCharacterCropDrag);
+    el.characterCropCanvas.addEventListener("pointermove", moveCharacterCropDrag);
+    el.characterCropCanvas.addEventListener("pointerup", endCharacterCropDrag);
+    el.characterCropCanvas.addEventListener("pointercancel", endCharacterCropDrag);
+    el.characterCropCanvas.addEventListener("keydown", nudgeCharacterCrop);
+    el.characterImageEditor.addEventListener("cancel", function (event) {
+      event.preventDefault();
+      closeCharacterImageEditor();
+    });
     el.characterForm.addEventListener("submit", saveCharacterForm);
     el.deleteCharacter.addEventListener("click", deleteCurrentCharacter);
     el.seasonSelect.addEventListener("change", renderSeasons);
@@ -2028,15 +2046,174 @@
   async function handleCharacterImageChange(event) {
     var file = event.target.files && event.target.files[0];
     if (!file || !ui.characterDraft) return;
+    var kind = event.target === el.characterAvatarInput ? "avatar" : "banner";
+    event.target.value = "";
     try {
-      if (event.target === el.characterAvatarInput) ui.characterDraft.avatarData = await optimizeImage(file, 640, 640, 0.78);
-      else ui.characterDraft.bannerData = await optimizeImage(file, 1440, 630, 0.76);
-      updateCharacterMediaPreview();
-      toast(event.target === el.characterAvatarInput ? "Foto de perfil adicionada." : "Banner adicionado.");
+      await openCharacterImageEditor(file, kind);
     } catch (error) {
       toast("Não foi possível processar essa imagem.", "error");
     }
-    event.target.value = "";
+  }
+
+  function loadCharacterCropImage(file) {
+    return new Promise(function (resolve, reject) {
+      var reader = new FileReader();
+      reader.onerror = reject;
+      reader.onload = function () {
+        var image = new Image();
+        image.onerror = reject;
+        image.onload = function () { resolve(image); };
+        image.src = reader.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function openCharacterImageEditor(file, kind) {
+    var image = await loadCharacterCropImage(file);
+    var isAvatar = kind === "avatar";
+    ui.characterImageEdit = {
+      kind: isAvatar ? "avatar" : "banner",
+      image: image,
+      zoom: 1,
+      offsetX: 0,
+      offsetY: 0,
+      dragging: false,
+      pointerId: null,
+      lastX: 0,
+      lastY: 0
+    };
+    el.characterCropCanvas.width = isAvatar ? 640 : 1440;
+    el.characterCropCanvas.height = isAvatar ? 640 : 630;
+    el.characterImageEditor.classList.toggle("is-avatar", isAvatar);
+    el.characterImageEditor.classList.toggle("is-banner", !isAvatar);
+    el.characterImageEditorTitle.textContent = isAvatar ? "AJUSTAR FOTO DE PERFIL" : "AJUSTAR FOTO DE BANNER";
+    el.characterImageEditorDescription.textContent = isAvatar
+      ? "Posicione o rosto dentro do círculo e ajuste o zoom."
+      : "Escolha a área panorâmica que ficará visível no banner.";
+    el.characterCropZoom.value = "100";
+    el.characterCropZoomValue.textContent = "100%";
+    document.body.classList.add("is-character-image-editor-open");
+    if (!el.characterImageEditor.open) el.characterImageEditor.showModal();
+    drawCharacterCrop();
+    window.setTimeout(function () { el.characterCropCanvas.focus(); }, 40);
+  }
+
+  function characterCropMetrics() {
+    var edit = ui.characterImageEdit;
+    var canvas = el.characterCropCanvas;
+    if (!edit || !edit.image || !canvas.width || !canvas.height) return null;
+    var baseScale = Math.max(canvas.width / edit.image.naturalWidth, canvas.height / edit.image.naturalHeight);
+    var scale = baseScale * edit.zoom;
+    var drawWidth = edit.image.naturalWidth * scale;
+    var drawHeight = edit.image.naturalHeight * scale;
+    var maxX = Math.max(0, (drawWidth - canvas.width) / 2);
+    var maxY = Math.max(0, (drawHeight - canvas.height) / 2);
+    edit.offsetX = Math.max(-maxX, Math.min(maxX, edit.offsetX));
+    edit.offsetY = Math.max(-maxY, Math.min(maxY, edit.offsetY));
+    return { drawWidth: drawWidth, drawHeight: drawHeight };
+  }
+
+  function drawCharacterCrop() {
+    var edit = ui.characterImageEdit;
+    var canvas = el.characterCropCanvas;
+    var metrics = characterCropMetrics();
+    if (!edit || !metrics) return;
+    var context = canvas.getContext("2d");
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = "high";
+    context.drawImage(
+      edit.image,
+      (canvas.width - metrics.drawWidth) / 2 + edit.offsetX,
+      (canvas.height - metrics.drawHeight) / 2 + edit.offsetY,
+      metrics.drawWidth,
+      metrics.drawHeight
+    );
+  }
+
+  function changeCharacterCropZoom(event) {
+    var edit = ui.characterImageEdit;
+    if (!edit) return;
+    edit.zoom = Math.max(1, Math.min(3, Number(event.target.value || 100) / 100));
+    el.characterCropZoomValue.textContent = Math.round(edit.zoom * 100) + "%";
+    drawCharacterCrop();
+  }
+
+  function beginCharacterCropDrag(event) {
+    var edit = ui.characterImageEdit;
+    if (!edit || (event.pointerType === "mouse" && event.button !== 0)) return;
+    edit.dragging = true;
+    edit.pointerId = event.pointerId;
+    edit.lastX = event.clientX;
+    edit.lastY = event.clientY;
+    el.characterCropCanvas.classList.add("is-dragging");
+    el.characterCropCanvas.setPointerCapture(event.pointerId);
+  }
+
+  function moveCharacterCropDrag(event) {
+    var edit = ui.characterImageEdit;
+    if (!edit || !edit.dragging || edit.pointerId !== event.pointerId) return;
+    var rect = el.characterCropCanvas.getBoundingClientRect();
+    edit.offsetX += (event.clientX - edit.lastX) * el.characterCropCanvas.width / Math.max(1, rect.width);
+    edit.offsetY += (event.clientY - edit.lastY) * el.characterCropCanvas.height / Math.max(1, rect.height);
+    edit.lastX = event.clientX;
+    edit.lastY = event.clientY;
+    drawCharacterCrop();
+  }
+
+  function endCharacterCropDrag(event) {
+    var edit = ui.characterImageEdit;
+    if (!edit || edit.pointerId !== event.pointerId) return;
+    edit.dragging = false;
+    edit.pointerId = null;
+    el.characterCropCanvas.classList.remove("is-dragging");
+    if (el.characterCropCanvas.hasPointerCapture(event.pointerId)) el.characterCropCanvas.releasePointerCapture(event.pointerId);
+  }
+
+  function nudgeCharacterCrop(event) {
+    var edit = ui.characterImageEdit;
+    if (!edit || ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].indexOf(event.key) < 0) return;
+    event.preventDefault();
+    var step = event.shiftKey ? 24 : 8;
+    if (event.key === "ArrowLeft") edit.offsetX -= step;
+    if (event.key === "ArrowRight") edit.offsetX += step;
+    if (event.key === "ArrowUp") edit.offsetY -= step;
+    if (event.key === "ArrowDown") edit.offsetY += step;
+    drawCharacterCrop();
+  }
+
+  function resetCharacterCrop() {
+    var edit = ui.characterImageEdit;
+    if (!edit) return;
+    edit.zoom = 1;
+    edit.offsetX = 0;
+    edit.offsetY = 0;
+    el.characterCropZoom.value = "100";
+    el.characterCropZoomValue.textContent = "100%";
+    drawCharacterCrop();
+  }
+
+  function closeCharacterImageEditor() {
+    var edit = ui.characterImageEdit;
+    if (edit) edit.dragging = false;
+    ui.characterImageEdit = null;
+    el.characterCropCanvas.classList.remove("is-dragging");
+    document.body.classList.remove("is-character-image-editor-open");
+    if (el.characterImageEditor.open) el.characterImageEditor.close();
+  }
+
+  function applyCharacterCrop() {
+    var edit = ui.characterImageEdit;
+    if (!edit || !ui.characterDraft) return;
+    drawCharacterCrop();
+    var data = el.characterCropCanvas.toDataURL("image/webp", edit.kind === "avatar" ? 0.82 : 0.8);
+    if (edit.kind === "avatar") ui.characterDraft.avatarData = data;
+    else ui.characterDraft.bannerData = data;
+    var label = edit.kind === "avatar" ? "Foto de perfil ajustada." : "Banner ajustado.";
+    closeCharacterImageEditor();
+    updateCharacterMediaPreview();
+    toast(label);
   }
 
   function updateCharacterMediaPreview() {

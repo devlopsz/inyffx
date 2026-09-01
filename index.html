@@ -8,7 +8,7 @@
     <title>InyffX</title>
     <link rel="icon" href="mod/pics/favicon.ico" type="image/x-icon" />
     <link rel="manifest" href="manifest.webmanifest" />
-    <link rel="stylesheet" href="styles.css?v=20260831-relationships" />
+    <link rel="stylesheet" href="styles.css?v=20260901-image-crop" />
   </head>
   <body>
     <div class="toast-region" id="toastRegion" aria-live="polite" aria-atomic="true"></div>
@@ -185,12 +185,35 @@ Eventos importantes:</pre><div class="template-actions"><button class="text-acti
           <footer class="character-editor__footer"><p>As alterações passam a integrar a memória objetiva da carreira e estarão disponíveis para a IA no próximo turno.</p><button class="character-save" type="submit">SALVAR PERSONAGEM <span>→</span></button></footer>
         </form>
       </section>
+
+      <dialog class="character-image-editor" id="characterImageEditor" aria-labelledby="characterImageEditorTitle">
+        <div class="character-image-editor__shell">
+          <header class="character-image-editor__header">
+            <div><span>ENQUADRAMENTO</span><h2 id="characterImageEditorTitle">AJUSTAR IMAGEM</h2><p id="characterImageEditorDescription">Arraste a imagem e use o zoom para definir o recorte.</p></div>
+            <button class="character-image-editor__close" id="closeCharacterImageEditor" type="button" aria-label="Cancelar ajuste de imagem">×</button>
+          </header>
+          <div class="character-image-editor__body">
+            <div class="character-crop-stage" id="characterCropStage">
+              <canvas id="characterCropCanvas" tabindex="0" aria-label="Prévia do recorte. Arraste para reposicionar a imagem e use as setas do teclado para ajustes finos."></canvas>
+              <span>ARRASTE PARA ENQUADRAR</span>
+            </div>
+            <div class="character-crop-controls">
+              <label for="characterCropZoom"><span>ZOOM</span><input id="characterCropZoom" type="range" min="100" max="300" step="1" value="100" /><output id="characterCropZoomValue" for="characterCropZoom">100%</output></label>
+              <p>A área visível será exatamente a que aparecerá na ficha do personagem.</p>
+            </div>
+          </div>
+          <footer class="character-image-editor__footer">
+            <button id="resetCharacterCrop" type="button">CENTRALIZAR</button>
+            <div><button id="cancelCharacterCrop" type="button">CANCELAR</button><button id="applyCharacterCrop" type="button">APLICAR RECORTE <span>→</span></button></div>
+          </footer>
+        </div>
+      </dialog>
     </div>
 
     <dialog class="modal settings-modal" id="settingsModal"><form method="dialog" class="modal__shell" id="settingsForm"><header class="modal__header"><div><span class="section-number">SISTEMA</span><h2>CONFIGURAÇÕES</h2></div><button class="icon-button" type="submit" value="cancel" aria-label="Fechar">×</button></header><div class="modal__content"><section class="settings-section"><div class="settings-section__heading"><span>01</span><div><h3>IA INYFFX</h3><p>A inteligência do site é conectada pelo próprio InyffX. Nenhum jogador precisa informar chave ou endpoint.</p></div></div><div class="integration-card"><div><span>PROVEDOR DO MVP</span><strong>Cloudflare Workers AI</strong></div><div><span>MODELO</span><strong>Qwen3 30B A3B</strong></div></div><div class="connection-row"><i id="backendStatusDot"></i><span id="backendStatusText">Verificando integração</span></div></section><section class="settings-section"><div class="settings-section__heading"><span>02</span><div><h3>SPOTIFY</h3><p>Mostra no disco a faixa reproduzida na sua conta.</p></div></div><label class="field"><span>SPOTIFY CLIENT ID</span><input id="spotifyClientId" type="text" autocomplete="off" placeholder="Client ID público do Spotify" /></label><label class="field"><span>REDIRECT URI</span><div class="copy-field"><input id="spotifyRedirectUri" type="text" readonly /><button id="copyRedirectUri" type="button">COPIAR</button></div></label><div class="button-row"><button class="secondary-action" id="disconnectSpotify" type="button">DESCONECTAR</button><button class="primary-action" id="connectSpotify" type="button">CONECTAR SPOTIFY <span>→</span></button></div></section></div><footer class="modal__footer"><button class="secondary-action" type="submit" value="cancel">CANCELAR</button><button class="primary-action" id="saveSettings" type="button">SALVAR CONFIGURAÇÕES <span>→</span></button></footer></form></dialog>
     <script src="assets/config.js"></script>
     <script src="registration-data.js"></script>
     <script src="character-data.js?v=20260831-relationships"></script>
-    <script src="app.js?v=20260831-relationships"></script>
+    <script src="app.js?v=20260901-image-crop"></script>
   </body>
 </html>

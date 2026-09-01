@@ -158,6 +158,10 @@ check(characterSchema.categories.map((category) => category.key).join(",") === "
 check(characterSchema.quickKeys.length === 10 && characterSchema.quickKeys.every((key) => characterFieldKeys.has(key)), "cadastro rápido cobre as 12 informações essenciais com nome e categoria");
 check(html.includes('id="relationshipTabs"') && (html.match(/data-relationship-category=/g) || []).length === 4, "Relationships usa quatro abas no padrão visual do FYX NEWS");
 check(html.includes('id="characterAvatarInput"') && html.includes('id="characterBannerInput"') && html.includes('id="characterModeTabs"'), "fichas permitem avatar, banner e cadastro rápido ou completo");
+check(html.includes('id="characterImageEditor"') && html.includes('id="characterCropCanvas"') && html.includes('id="characterCropZoom"'), "avatar e banner abrem editor de enquadramento com zoom");
+check(app.includes("openCharacterImageEditor") && app.includes("beginCharacterCropDrag") && app.includes("applyCharacterCrop"), "editor permite reposicionar e aplicar o recorte antes de salvar");
+check(app.includes('el.characterCropCanvas.width = isAvatar ? 640 : 1440') && app.includes('el.characterCropCanvas.height = isAvatar ? 640 : 630'), "recortes preservam formatos próprios de perfil e banner");
+check(css.includes(".character-image-editor.is-avatar .character-crop-stage") && css.includes("touch-action: none"), "enquadramento funciona em formato circular e por toque");
 check(app.includes("importTeamFromLineup") && app.includes('category: "team"') && characterSource.includes("positionLabels"), "elenco do modelo de partida alimenta automaticamente a categoria TIME");
 const parsedLineup = characterSchema.parseLineup("Formação: GO - Robert Sánchez\nLD - Reece James, ZC - Colwill, ZC - Fofana, LE - Cucurella\nVOL - Moisés Caicedo\nMAT - Palmer\nPD - Pedro Neto, CA - Caio QA, PE - Estêvão");
 check(parsedLineup.length === 10 && parsedLineup[0].position === "Goleiro" && parsedLineup.at(-1).name === "Estêvão", "parser do elenco reconhece nomes, posições e linhas agrupadas do modelo de partida");
