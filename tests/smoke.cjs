@@ -164,6 +164,9 @@ check(html.includes('id="resetCharacterCrop"') && html.includes('id="cancelChara
 check(app.includes("openCharacterImageEditor") && app.includes("beginCharacterCropDrag") && app.includes("applyCharacterCrop"), "editor permite reposicionar e aplicar o recorte antes de salvar");
 check(app.includes('el.characterCropCanvas.width = isAvatar ? 640 : 1440') && app.includes('el.characterCropCanvas.height = isAvatar ? 640 : 630'), "recortes preservam formatos próprios de perfil e banner");
 check(css.includes(".character-image-editor.is-avatar .character-crop-stage") && css.includes("touch-action: none"), "enquadramento funciona em formato circular e por toque");
+check(css.includes(".character-avatar img") && /\.character-avatar\s*\{[\s\S]*?overflow:\s*hidden/i.test(css), "avatar aplicado permanece recortado dentro do círculo da ficha");
+check(/\.relationship-card__banner img\s*\{[\s\S]*?position:\s*absolute[\s\S]*?object-fit:\s*cover/i.test(css), "banner salvo preenche toda a moldura do card");
+check(/\.relationship-card\s*\{[\s\S]*?display:\s*grid[\s\S]*?grid-template-rows:\s*128px\s+minmax\(0,\s*1fr\)/i.test(css), "card não centraliza o banner nem cria faixas vazias");
 check(app.includes("importTeamFromLineup") && app.includes('category: "team"') && characterSource.includes("positionLabels"), "elenco do modelo de partida alimenta automaticamente a categoria TIME");
 const parsedLineup = characterSchema.parseLineup("Formação: GO - Robert Sánchez\nLD - Reece James, ZC - Colwill, ZC - Fofana, LE - Cucurella\nVOL - Moisés Caicedo\nMAT - Palmer\nPD - Pedro Neto, CA - Caio QA, PE - Estêvão");
 check(parsedLineup.length === 10 && parsedLineup[0].position === "Goleiro" && parsedLineup.at(-1).name === "Estêvão", "parser do elenco reconhece nomes, posições e linhas agrupadas do modelo de partida");

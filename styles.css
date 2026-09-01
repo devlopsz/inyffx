@@ -5772,10 +5772,13 @@ input[type="range"] {
 
 .relationship-card {
   position: relative;
+  display: grid;
   min-width: 0;
   min-height: 365px;
   padding: 0;
   overflow: hidden;
+  grid-template-rows: 128px minmax(0, 1fr);
+  align-content: stretch;
   border: 1px solid rgba(255, 255, 255, 0.16);
   color: #fff;
   background: #0b0d0f;
@@ -5785,7 +5788,7 @@ input[type="range"] {
 
 .relationship-card__banner {
   position: relative;
-  height: 128px;
+  height: 100%;
   overflow: hidden;
   background: linear-gradient(125deg, #22262a, #0c0e10 68%);
 }
@@ -5798,9 +5801,14 @@ input[type="range"] {
 }
 
 .relationship-card__banner img {
+  position: absolute;
+  inset: 0;
+  display: block;
   width: 100%;
   height: 100%;
+  max-width: none;
   object-fit: cover;
+  object-position: center;
   transition: transform 420ms ease;
 }
 
@@ -5808,6 +5816,7 @@ input[type="range"] {
 
 .relationship-card__body {
   position: relative;
+  min-height: 0;
   padding: 48px 27px 25px;
 }
 
@@ -6027,6 +6036,28 @@ body.is-character-editor-open { overflow: hidden; }
   padding: 0 22px;
   align-items: flex-end;
   gap: 15px;
+}
+
+.character-avatar {
+  display: grid;
+  overflow: hidden;
+  place-items: center;
+  border-style: solid;
+  border-radius: 50%;
+  color: #fff;
+  background: #24282c;
+  font-family: "Cruyff Sans", Arial, sans-serif;
+  font-weight: 700;
+}
+
+.character-avatar img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  object-fit: cover;
+  object-position: center;
+  border-radius: inherit;
 }
 
 .character-avatar--editor {
