@@ -159,6 +159,8 @@ check(characterSchema.quickKeys.length === 10 && characterSchema.quickKeys.every
 check(html.includes('id="relationshipTabs"') && (html.match(/data-relationship-category=/g) || []).length === 4, "Relationships usa quatro abas no padrão visual do FYX NEWS");
 check(html.includes('id="characterAvatarInput"') && html.includes('id="characterBannerInput"') && html.includes('id="characterModeTabs"'), "fichas permitem avatar, banner e cadastro rápido ou completo");
 check(html.includes('id="characterImageEditor"') && html.includes('id="characterCropCanvas"') && html.includes('id="characterCropZoom"'), "avatar e banner abrem editor de enquadramento com zoom");
+check(!html.includes("ENQUADRAMENTO") && !html.includes("AJUSTAR FOTO DE PERFIL") && !html.includes("characterImageEditorDescription"), "ajuste de imagem não exibe cabeçalho ou descrição");
+check(html.includes('id="resetCharacterCrop"') && html.includes('id="cancelCharacterCrop"') && html.includes('id="applyCharacterCrop"'), "ações de centralizar, cancelar e aplicar permanecem disponíveis");
 check(app.includes("openCharacterImageEditor") && app.includes("beginCharacterCropDrag") && app.includes("applyCharacterCrop"), "editor permite reposicionar e aplicar o recorte antes de salvar");
 check(app.includes('el.characterCropCanvas.width = isAvatar ? 640 : 1440') && app.includes('el.characterCropCanvas.height = isAvatar ? 640 : 630'), "recortes preservam formatos próprios de perfil e banner");
 check(css.includes(".character-image-editor.is-avatar .character-crop-stage") && css.includes("touch-action: none"), "enquadramento funciona em formato circular e por toque");

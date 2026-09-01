@@ -8,7 +8,7 @@
     <title>InyffX</title>
     <link rel="icon" href="mod/pics/favicon.ico" type="image/x-icon" />
     <link rel="manifest" href="manifest.webmanifest" />
-    <link rel="stylesheet" href="styles.css?v=20260901-image-crop" />
+    <link rel="stylesheet" href="styles.css?v=20260901-crop-compact" />
   </head>
   <body>
     <div class="toast-region" id="toastRegion" aria-live="polite" aria-atomic="true"></div>
@@ -186,20 +186,15 @@ Eventos importantes:</pre><div class="template-actions"><button class="text-acti
         </form>
       </section>
 
-      <dialog class="character-image-editor" id="characterImageEditor" aria-labelledby="characterImageEditorTitle">
+      <dialog class="character-image-editor" id="characterImageEditor" aria-label="Ajustar imagem do personagem">
         <div class="character-image-editor__shell">
-          <header class="character-image-editor__header">
-            <div><span>ENQUADRAMENTO</span><h2 id="characterImageEditorTitle">AJUSTAR IMAGEM</h2><p id="characterImageEditorDescription">Arraste a imagem e use o zoom para definir o recorte.</p></div>
-            <button class="character-image-editor__close" id="closeCharacterImageEditor" type="button" aria-label="Cancelar ajuste de imagem">×</button>
-          </header>
+          <button class="character-image-editor__close" id="closeCharacterImageEditor" type="button" aria-label="Cancelar ajuste de imagem">×</button>
           <div class="character-image-editor__body">
             <div class="character-crop-stage" id="characterCropStage">
               <canvas id="characterCropCanvas" tabindex="0" aria-label="Prévia do recorte. Arraste para reposicionar a imagem e use as setas do teclado para ajustes finos."></canvas>
-              <span>ARRASTE PARA ENQUADRAR</span>
             </div>
             <div class="character-crop-controls">
               <label for="characterCropZoom"><span>ZOOM</span><input id="characterCropZoom" type="range" min="100" max="300" step="1" value="100" /><output id="characterCropZoomValue" for="characterCropZoom">100%</output></label>
-              <p>A área visível será exatamente a que aparecerá na ficha do personagem.</p>
             </div>
           </div>
           <footer class="character-image-editor__footer">
@@ -214,6 +209,6 @@ Eventos importantes:</pre><div class="template-actions"><button class="text-acti
     <script src="assets/config.js"></script>
     <script src="registration-data.js"></script>
     <script src="character-data.js?v=20260831-relationships"></script>
-    <script src="app.js?v=20260901-image-crop"></script>
+    <script src="app.js?v=20260901-crop-compact"></script>
   </body>
 </html>

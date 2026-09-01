@@ -241,7 +241,7 @@
       "characterEditor", "characterForm", "characterEditorTitle", "closeCharacterEditor", "deleteCharacter", "saveCharacter",
       "characterModeTabs", "characterFields", "characterAvatarInput", "characterBannerInput", "characterAvatarPreview",
       "characterBannerPreview", "characterPreviewName", "characterPreviewCategory",
-      "characterImageEditor", "characterImageEditorTitle", "characterImageEditorDescription", "closeCharacterImageEditor",
+      "characterImageEditor", "closeCharacterImageEditor",
       "characterCropStage", "characterCropCanvas", "characterCropZoom", "characterCropZoomValue", "resetCharacterCrop",
       "cancelCharacterCrop", "applyCharacterCrop",
       "seasonSelect", "seasonsContent", "careerContent", "copyOffPitchTemplate", "insertOffPitchTemplate",
@@ -2087,10 +2087,6 @@
     el.characterCropCanvas.height = isAvatar ? 640 : 630;
     el.characterImageEditor.classList.toggle("is-avatar", isAvatar);
     el.characterImageEditor.classList.toggle("is-banner", !isAvatar);
-    el.characterImageEditorTitle.textContent = isAvatar ? "AJUSTAR FOTO DE PERFIL" : "AJUSTAR FOTO DE BANNER";
-    el.characterImageEditorDescription.textContent = isAvatar
-      ? "Posicione o rosto dentro do círculo e ajuste o zoom."
-      : "Escolha a área panorâmica que ficará visível no banner.";
     el.characterCropZoom.value = "100";
     el.characterCropZoomValue.textContent = "100%";
     document.body.classList.add("is-character-image-editor-open");
