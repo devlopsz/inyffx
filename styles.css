@@ -745,6 +745,53 @@ body * {
   color: #ff004f;
 }
 
+.login-save-import {
+  display: grid;
+  min-height: 42px;
+  margin-top: 1.6vh;
+  justify-items: center;
+}
+
+.login-import {
+  display: flex;
+  padding: 0;
+  flex-direction: column;
+  align-items: center;
+  border: 0;
+  color: #090909;
+  background: transparent;
+  cursor: pointer;
+}
+
+.login-import span {
+  color: #9f9f9f;
+  font-size: clamp(0.65rem, 0.72vw, 1.05rem);
+  font-weight: 700;
+}
+
+.login-import strong {
+  font-size: clamp(0.72rem, 0.78vw, 1.12rem);
+  font-weight: 700;
+}
+
+.login-import:hover strong,
+.login-import:focus-visible strong {
+  color: #ff004f;
+}
+
+.login-import:disabled {
+  opacity: 0.45;
+  cursor: wait;
+}
+
+.login-save-import small {
+  min-height: 14px;
+  margin-top: 5px;
+  color: #777;
+  font-size: 0.68rem;
+  text-align: center;
+}
+
 .login-footer {
   position: absolute;
   z-index: 2;

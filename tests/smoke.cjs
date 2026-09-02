@@ -108,6 +108,11 @@ check(html.includes('id="pageBack"') && html.includes('aria-label="Voltar para a
 check(html.includes('id="openSettings"') && html.includes('id="openProfile"'), "engrenagem e perfil ficam disponíveis no hub");
 check(html.includes('id="profilePage"') && html.includes('id="profileContent"'), "perfil abre em uma página dedicada");
 check(app.includes("profileRevision") && app.includes("profileChangeHistory") && app.includes("buildBackendContext"), "edições do jogador entram no histórico e no contexto da IA");
+check(html.includes('id="importSaveInput"') && html.includes('id="importSaveTrigger"'), "login permite selecionar e importar um save JSON");
+check(app.includes('SAVE_BACKUP_KEY = "inyffx-backup-before-import-v1"') && app.includes("backupStateBeforeImport"), "importação cria backup recuperável antes de substituir carreiras");
+check(app.includes("parseImportedSave") && app.includes("Number(payload.version) !== 2") && app.includes("Array.isArray(payload.careers)"), "save é validado antes de alterar os dados locais");
+check(app.includes("async function importLocalSave") && app.includes("careers: importedCareers"), "importação substitui as carreiras somente após confirmação");
+check(app.includes("sessionStorage.setItem(SESSION_KEY, active.id)") && app.includes("localStorage.setItem(PERSISTENT_SESSION_KEY, active.id)"), "carreira importada é aberta e mantida conectada no navegador");
 
 const backgrounds = {
   "kick-off": "kick-off.jpg",

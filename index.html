@@ -8,7 +8,7 @@
     <title>InyffX</title>
     <link rel="icon" href="mod/pics/favicon.ico" type="image/x-icon" />
     <link rel="manifest" href="manifest.webmanifest" />
-    <link rel="stylesheet" href="styles.css?v=20260901-calendar-layout-v2" />
+    <link rel="stylesheet" href="styles.css?v=20260902-save-import-v1" />
   </head>
   <body>
     <div class="toast-region" id="toastRegion" aria-live="polite" aria-atomic="true"></div>
@@ -26,6 +26,11 @@
           <p class="login-hint" id="loginHint"></p>
           <button class="ball-submit" type="submit" aria-label="Entrar na carreira"><img src="mod/pics/login/soccer-ball-button.svg" alt="" aria-hidden="true" /></button>
           <button class="login-create" type="button" data-switch-auth="create"><span>NÃO TEM UMA CARREIRA?</span><strong>CRIE A SUA AGORA!</strong></button>
+          <div class="login-save-import">
+            <input id="importSaveInput" type="file" accept=".json,application/json" hidden />
+            <button class="login-import" id="importSaveTrigger" type="button"><span>JÁ TEM UM SAVE?</span><strong>IMPORTAR .JSON</strong></button>
+            <small id="loginImportStatus" aria-live="polite"></small>
+          </div>
         </form>
         <footer class="login-footer"><strong>© 2027 InyffX</strong><span>Ao continuar, você concorda com os <a href="#terms">Termos de Uso</a> e a <a href="#privacy">Política de Privacidade</a> da Lopsz™</span></footer>
       </section>
@@ -234,6 +239,6 @@ Eventos importantes:</pre><div class="template-actions"><button class="text-acti
     <script src="character-data.js?v=20260901-character-import"></script>
     <script src="calendar-shields.js?v=20260901-calendar"></script>
     <script src="shortcut-data.js?v=20260901-shortcut-library"></script>
-    <script src="app.js?v=20260901-calendar-layout-v2"></script>
+    <script src="app.js?v=20260902-save-import-v1"></script>
   </body>
 </html>

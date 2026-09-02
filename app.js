@@ -4,6 +4,7 @@
   var STORAGE_KEY = "inyffx-interface-v2";
   var SESSION_KEY = "inyffx-active-career-v2";
   var PERSISTENT_SESSION_KEY = "inyffx-remembered-career-v1";
+  var SAVE_BACKUP_KEY = "inyffx-backup-before-import-v1";
   var SPOTIFY_TOKEN_KEY = "inyffx-spotify-token-v1";
   var SPOTIFY_VERIFIER_KEY = "inyffx-spotify-verifier-v1";
   var SPOTIFY_STATE_KEY = "inyffx-spotify-state-v1";
@@ -304,6 +305,7 @@
   function cacheElements() {
     [
       "authGate", "appShell", "loginForm", "loginCareer", "loginPasscode", "rememberCareer", "loginHint", "loginError",
+      "importSaveInput", "importSaveTrigger", "loginImportStatus",
       "createForm", "createError", "registrationQuestion", "registrationSection", "registrationCount", "prevStep",
       "nextStep", "createCareer", "hubSidebar", "openSettings", "openProfile",
       "hubBackgroundA", "hubBackgroundB", "pageBack", "appMain", "chatMessages", "chatForm", "chatInput", "sendMessage", "kickShortcuts",
@@ -341,6 +343,8 @@
     el.registrationQuestion.addEventListener("input", handleRegistrationInput);
     el.registrationQuestion.addEventListener("change", handleRegistrationChange);
     el.loginForm.addEventListener("submit", loginToCareer);
+    el.importSaveTrigger.addEventListener("click", function () { el.importSaveInput.click(); });
+    el.importSaveInput.addEventListener("change", importLocalSave);
     document.querySelectorAll("[data-route]").forEach(function (button) {
       button.addEventListener("click", function () { navigate(button.dataset.route); });
     });
@@ -901,6 +905,111 @@
       return;
     }
     el.loginHint.textContent = "Disponível neste navegador: " + state.careers.map(function (career) { return career.user.username; }).join(", ");
+  }
+
+  function parseImportedSave(payload) {
+    if (!payload || typeof payload !== "object" || Number(payload.version) !== 2 || !Array.isArray(payload.careers)) {
+      throw new Error("Este arquivo não é um save compatível com o InyffX.");
+    }
+    if (!payload.careers.length) throw new Error("O save não contém nenhuma carreira.");
+    if (payload.careers.length > 100) throw new Error("O save contém carreiras demais para uma importação local.");
+    var ids = {};
+    var usernames = {};
+    var careers = payload.careers.map(function (source, index) {
+      if (!source || typeof source !== "object" || Array.isArray(source)) throw new Error("A carreira " + (index + 1) + " está corrompida.");
+      var career = normalizeCareer(source);
+      var username = normalizeUsername(career.user && career.user.username);
+      if (!username || username === "@") throw new Error("A carreira " + (index + 1) + " não possui um nome de usuário válido.");
+      if (ids[career.id] || usernames[username]) throw new Error("O save possui carreiras duplicadas.");
+      ids[career.id] = true;
+      usernames[username] = true;
+      return career;
+    });
+    return careers;
+  }
+
+  function downloadJSONFile(filename, payload) {
+    var blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json;charset=utf-8" });
+    var url = URL.createObjectURL(blob);
+    var link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    link.hidden = true;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  }
+
+  function backupStateBeforeImport() {
+    if (!state.careers.length) return false;
+    var stamp = new Date().toISOString();
+    var backup = {
+      version: 2,
+      settings: state.settings,
+      careers: state.careers,
+      exportMetadata: {
+        type: "automatic-backup-before-import",
+        exportedAt: stamp,
+        source: "inyffx-interface-v2"
+      }
+    };
+    try {
+      localStorage.setItem(SAVE_BACKUP_KEY, JSON.stringify(backup));
+    } catch (error) {
+      // O download abaixo continua garantindo uma cópia recuperável mesmo sem espaço local.
+    }
+    downloadJSONFile("inyffx-backup-antes-da-importacao-" + stamp.slice(0, 10) + ".json", backup);
+    return true;
+  }
+
+  async function importLocalSave(event) {
+    var file = event.target.files && event.target.files[0];
+    if (!file) return;
+    el.loginError.textContent = "";
+    el.loginImportStatus.textContent = "Lendo save…";
+    el.importSaveTrigger.disabled = true;
+    try {
+      if (file.size > 25 * 1024 * 1024) throw new Error("O arquivo ultrapassa o limite de 25 MB.");
+      var payload = JSON.parse(await file.text());
+      var importedCareers = parseImportedSave(payload);
+      var importedNames = importedCareers.map(function (career) {
+        return career.user.username + " · " + clean(career.profile && career.profile.playerName || career.name);
+      }).join("\n");
+      var existingCount = state.careers.length;
+      var warning = "Importar este save?\n\n" + importedNames;
+      if (existingCount === 1) warning += "\n\nA carreira atual será substituída. Um backup .json será baixado antes da troca.";
+      else if (existingCount > 1) warning += "\n\nAs " + existingCount + " carreiras atuais serão substituídas. Um backup .json será baixado antes da troca.";
+      if (!window.confirm(warning)) {
+        el.loginImportStatus.textContent = "Importação cancelada.";
+        return;
+      }
+      if (existingCount) backupStateBeforeImport();
+      var previousState = state;
+      state = {
+        version: 2,
+        settings: Object.assign({}, blankState().settings, previousState.settings || {}),
+        careers: importedCareers
+      };
+      if (!saveState()) {
+        state = previousState;
+        throw new Error("Não há espaço suficiente no navegador para salvar essa carreira.");
+      }
+      var active = importedCareers[0];
+      sessionStorage.setItem(SESSION_KEY, active.id);
+      localStorage.setItem(PERSISTENT_SESSION_KEY, active.id);
+      el.loginImportStatus.textContent = "Save importado com sucesso.";
+      window.location.hash = "home";
+      startApp();
+      toast("Save de " + clean(active.profile && active.profile.playerName || active.name) + " importado. As carreiras anteriores foram substituídas.");
+    } catch (error) {
+      el.loginError.textContent = error instanceof SyntaxError ? "O arquivo JSON está inválido ou corrompido." : clean(error && error.message) || "Não foi possível importar este save.";
+      el.loginImportStatus.textContent = "";
+    } finally {
+      el.importSaveTrigger.disabled = false;
+      el.importSaveInput.value = "";
+      populateLoginCareers();
+    }
   }
 
   function showAuth() {
