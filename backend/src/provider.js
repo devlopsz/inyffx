@@ -52,6 +52,29 @@ export async function generateNarrative(env, messages, generation = {}) {
   return env.AI.run(model, options);
 }
 
+export async function generateStructuredTurn(env, messages, generation = {}) {
+  requireBinding(env);
+  const model = String(env.AI_MODEL || DEFAULT_MODEL);
+  const isQwen3 = /\/qwen\/qwen3(?:-|\.)/i.test(model);
+  const maximumOutput = positiveInteger(generation.maxTokens || env.MAX_OUTPUT_TOKENS, 2000, 2000);
+  const options = outputLimit({
+    messages: qwenMessages(messages, isQwen3),
+    temperature: generation.mode === "MATCH_REPORT" ? 0.58 : 0.68,
+    top_p: generation.mode === "MATCH_REPORT" ? 0.9 : 0.86,
+    repetition_penalty: 1.04,
+    response_format: { type: "json_object" }
+  }, isQwen3, maximumOutput);
+
+  try {
+    return await env.AI.run(model, options);
+  } catch (error) {
+    if (!isJsonModeFailure(error)) throw error;
+    const fallbackOptions = { ...options };
+    delete fallbackOptions.response_format;
+    return env.AI.run(model, fallbackOptions);
+  }
+}
+
 export async function generateMemoryUpdates(env, messages) {
   requireBinding(env);
   const model = String(env.AI_MEMORY_MODEL || env.AI_MODEL || DEFAULT_MODEL);

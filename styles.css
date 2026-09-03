@@ -574,7 +574,7 @@ body * {
   inset: 0;
   min-height: 100svh;
   color: #fff;
-  background: #04080c url("mod/pics/login/inyffx-background-initial.png") center center / cover no-repeat;
+  background: #04080c url("mod/pics/login/inyffx-background-initial.webp") center center / cover no-repeat;
   scrollbar-width: none;
 }
 
@@ -4368,6 +4368,89 @@ input[type="range"] {
   }
 }
 
+/* Auditoria 2026-09 — persistência, recibos e transparência local */
+.chat-delivery {
+  display: flex;
+  margin-top: 13px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #5d6265;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+}
+
+.chat-delivery > div { display: flex; flex-wrap: wrap; gap: 7px; }
+.chat-delivery button { padding: 7px 9px; border: 1px solid #aeb2b4; color: #111; background: transparent; font-size: 0.58rem; font-weight: 800; cursor: pointer; }
+.chat-delivery button:hover,
+.chat-delivery button:focus-visible { border-color: #111; background: #111; color: #fff; }
+.chat-delivery.is-failed { color: #a01734; }
+.chat-delivery.is-sending span::after { display: inline-block; width: 5px; height: 5px; margin-left: 7px; border-radius: 50%; background: currentColor; animation: pulse 900ms ease infinite alternate; content: ""; }
+.chat-message--user.has-failed { box-shadow: inset 0 0 0 1px rgba(163, 23, 54, 0.45); }
+
+.chat-memory-receipt {
+  display: flex;
+  width: fit-content;
+  margin-top: 13px;
+  padding: 7px 10px;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid #303437;
+  color: #899094;
+  background: #090b0c;
+  font-size: 0.62rem;
+  letter-spacing: 0.035em;
+}
+
+.chat-memory-receipt.is-verified { border-color: #4e595f; color: #d4d8da; }
+.chat-memory-receipt span { display: grid; width: 15px; height: 15px; place-items: center; border-radius: 50%; color: #000; background: #fff; font-size: 0.56rem; }
+
+.settings-consent {
+  display: flex;
+  margin-top: 14px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #90979b;
+  font-size: 0.64rem;
+  letter-spacing: 0.06em;
+}
+
+.settings-consent button { padding: 7px 10px; border: 1px solid #34393c; color: #d7dbdd; background: transparent; font-size: 0.58rem; font-weight: 700; cursor: pointer; }
+.settings-consent button:disabled { opacity: 0.35; cursor: default; }
+.settings-data-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; }
+.settings-data-actions .text-action--danger { margin-left: auto; padding: 10px 4px; border: 0; color: #ff718e; background: transparent; font-size: 0.65rem; font-weight: 700; cursor: pointer; }
+.settings-data-status { min-height: 18px; margin: 12px 0 0 36px; color: #90979b; font-size: 0.72rem; }
+
+.legal-dialog {
+  width: min(680px, calc(100vw - 28px));
+  max-height: min(720px, calc(100svh - 28px));
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid #34383b;
+  color: #f5f5f5;
+  background: #090b0c;
+}
+
+.legal-dialog::backdrop { background: rgba(0, 0, 0, 0.82); backdrop-filter: blur(5px); }
+.legal-dialog article { display: grid; max-height: inherit; grid-template-rows: auto minmax(0, 1fr); }
+.legal-dialog header { display: flex; padding: 22px 24px; align-items: center; justify-content: space-between; border-bottom: 1px solid #2b2f31; }
+.legal-dialog h2 { margin: 0; font-family: "Cruyff Sans Expanded", "Cruyff Sans", sans-serif; font-size: 1.15rem; }
+.legal-dialog header button { width: 38px; height: 38px; border: 1px solid #34383b; border-radius: 50%; color: #fff; background: transparent; font-size: 1.4rem; cursor: pointer; }
+.legal-dialog #legalContent { padding: 24px; overflow-y: auto; color: #b9bec1; font-size: 0.9rem; line-height: 1.65; }
+.legal-dialog #legalContent p { margin: 0 0 18px; }
+.legal-dialog #legalContent strong { color: #fff; }
+
+@media (max-width: 700px) {
+  .chat-delivery { align-items: flex-start; flex-direction: column; }
+  .settings-consent { align-items: flex-start; flex-direction: column; }
+  .settings-data-actions { align-items: stretch; flex-direction: column; }
+  .settings-data-actions button { width: 100%; }
+  .settings-data-actions .text-action--danger { margin-left: 0; }
+  .settings-data-status { margin-left: 0; }
+}
+
 /* Final cascade precedence for the full-screen shell. */
 .auth-gate {
   position: fixed;
@@ -7425,3 +7508,36 @@ body.is-character-image-editor-open { overflow: hidden; }
   .character-editor__footer { align-items: stretch; flex-direction: column; }
   .character-editor__footer .character-save { width: 100%; }
 }
+
+.character-import-report {
+  margin: 0 0 20px;
+  border: 1px solid #2b2f31;
+  color: #c9cdcf;
+  background: #080a0b;
+}
+
+.character-import-report summary { padding: 13px 16px; font-size: 0.72rem; font-weight: 700; cursor: pointer; }
+.character-import-report ul { display: grid; margin: 0; padding: 0; border-top: 1px solid #2b2f31; list-style: none; }
+.character-import-report li { display: flex; padding: 9px 16px; justify-content: space-between; gap: 18px; border-bottom: 1px solid #1d2022; font-size: 0.68rem; }
+.character-import-report li:last-child { border-bottom: 0; }
+.character-import-report li span { color: #858b8e; text-align: right; }
+.character-import-report li.is-rejected strong { color: #ff718e; }
+
+.calendar-day__select {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  display: block;
+  width: 100%;
+  padding: 9px;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.calendar-day__select:focus-visible { outline: 2px solid currentColor; outline-offset: -3px; }
+.calendar-day__events { z-index: 2; }
+.calendar-day:focus-within { box-shadow: inset 0 0 0 2px currentColor; }
+.calendar-story-date-warning { margin: 0 auto 0 0; color: #92999c; font-size: 0.62rem; letter-spacing: 0.055em; }

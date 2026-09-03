@@ -118,7 +118,7 @@
     q("dreamClub", "NARRATIVA", "Existe algum clube dos sonhos?", "autocomplete", { source: "clubs", manualAllowed: true, placeholder: "Digite Nenhum se não houver" }),
     q("inspirations", "NARRATIVA", "Existe algum jogador que o inspira?", "text", { placeholder: "Opcional. Separe mais de um nome por vírgulas." }),
     q("rival", "NARRATIVA", "Ele tem algum rival ou adversário que queira superar?", "text", { placeholder: "Opcional. Você pode responder Ainda não." }),
-    q("backstory", "NARRATIVA", "Conte resumidamente a história dele antes desta etapa da carreira.", "textarea", { required: true, maxLength: 3000, placeholder: "Origem, dificuldades, momentos marcantes, motivação e relação com o futebol." }),
+    q("backstory", "NARRATIVA", "Conte resumidamente a história dele antes desta etapa da carreira.", "textarea", { required: true, maxLength: 4000, placeholder: "Origem, dificuldades, momentos marcantes, motivação e relação com o futebol." }),
     q("goalCelebration", "NARRATIVA", "Ele tem uma comemoração de gol característica?", "select", { required: true, options: ["Não", "Sim"] }),
     q("goalCelebrationDetails", "NARRATIVA", "Como é a comemoração característica dele?", "textarea", { required: true, when: { key: "goalCelebration", equals: "Sim" } }),
     q("avatarData", "FOTO", "Deseja adicionar uma foto do jogador agora?", "file", { accept: "image/*", hint: "Opcional. Esta imagem também será usada como foto do perfil." }),

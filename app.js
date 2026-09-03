@@ -5,6 +5,9 @@
   var SESSION_KEY = "inyffx-active-career-v2";
   var PERSISTENT_SESSION_KEY = "inyffx-remembered-career-v1";
   var SAVE_BACKUP_KEY = "inyffx-backup-before-import-v1";
+  var PERSISTENCE_DB_NAME = "inyffx-local-v1";
+  var PERSISTENCE_DB_VERSION = 1;
+  var PERSISTENCE_STATE_KEY = "primary";
   var SPOTIFY_TOKEN_KEY = "inyffx-spotify-token-v1";
   var SPOTIFY_VERIFIER_KEY = "inyffx-spotify-verifier-v1";
   var SPOTIFY_STATE_KEY = "inyffx-spotify-state-v1";
@@ -44,7 +47,14 @@
     "mod/pics/fyxnews/manchete_6.jpg"
   ];
   var PUBLIC_CONFIG = Object.assign({}, window.INYFFX_CONFIG || {}, window.INYFFX_TEST_CONFIG || {});
+  var stateRecoveryWarnings = [];
+  var loadedStateFromLocalStorage = false;
+  var persistenceDatabasePromise = null;
+  var persistenceQueue = Promise.resolve();
+  var lastAutomaticBackupAt = 0;
+  var lastPersistedStateRaw = "";
   var state = loadState();
+  if (!lastPersistedStateRaw) lastPersistedStateRaw = JSON.stringify(state);
   var ui = {
     authTab: "login",
     createStep: 0,
@@ -75,9 +85,11 @@
     profileEdit: "",
     pendingAvatar: "",
     sending: false,
+    sendingMessageId: "",
     hubBackgroundVisible: "A",
     hubBackgroundPreview: "",
-    preparedShortcutAction: ""
+    preparedShortcutAction: "",
+    characterImportReport: []
   };
   var el = {};
 
@@ -86,7 +98,8 @@
       version: 2,
       settings: {
         apiBaseUrl: String(PUBLIC_CONFIG.apiBaseUrl || ""),
-        spotifyClientId: String(PUBLIC_CONFIG.spotifyClientId || "")
+        spotifyClientId: String(PUBLIC_CONFIG.spotifyClientId || ""),
+        aiDataConsentAt: ""
       },
       careers: []
     };
@@ -95,14 +108,122 @@
   function loadState() {
     var fallback = blankState();
     try {
-      var parsed = JSON.parse(localStorage.getItem(STORAGE_KEY));
-      if (!parsed || parsed.version !== 2 || !Array.isArray(parsed.careers)) return fallback;
-      parsed.settings = Object.assign({}, fallback.settings, parsed.settings || {});
-      if (String(PUBLIC_CONFIG.apiBaseUrl || "").trim()) parsed.settings.apiBaseUrl = String(PUBLIC_CONFIG.apiBaseUrl).trim();
-      parsed.careers = parsed.careers.map(normalizeCareer);
-      return parsed;
+      var raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return fallback;
+      var parsed = JSON.parse(raw);
+      var normalized = normalizeStatePayload(parsed);
+      loadedStateFromLocalStorage = true;
+      lastPersistedStateRaw = JSON.stringify(normalized);
+      return normalized;
     } catch (error) {
+      stateRecoveryWarnings.push("O save principal do navegador estava ilegível. O InyffX tentou recuperar o espelho local.");
       return fallback;
+    }
+  }
+
+  function normalizeStatePayload(payload) {
+    var fallback = blankState();
+    if (!payload || Number(payload.version) !== 2 || !Array.isArray(payload.careers)) throw new Error("SAVE_SCHEMA_INVALID");
+    var normalized = {
+      version: 2,
+      settings: Object.assign({}, fallback.settings, payload.settings || {}),
+      careers: []
+    };
+    if (String(PUBLIC_CONFIG.apiBaseUrl || "").trim()) normalized.settings.apiBaseUrl = String(PUBLIC_CONFIG.apiBaseUrl).trim();
+    payload.careers.forEach(function (career, index) {
+      try {
+        if (!career || typeof career !== "object" || Array.isArray(career)) throw new Error("CAREER_INVALID");
+        normalized.careers.push(normalizeCareer(career));
+      } catch (error) {
+        stateRecoveryWarnings.push("A carreira " + (index + 1) + " tinha dados corrompidos e foi isolada; as demais foram preservadas.");
+      }
+    });
+    return normalized;
+  }
+
+  function openPersistenceDatabase() {
+    if (!window.indexedDB) return Promise.resolve(null);
+    if (persistenceDatabasePromise) return persistenceDatabasePromise;
+    persistenceDatabasePromise = new Promise(function (resolve) {
+      var request = indexedDB.open(PERSISTENCE_DB_NAME, PERSISTENCE_DB_VERSION);
+      request.onupgradeneeded = function () {
+        var database = request.result;
+        if (!database.objectStoreNames.contains("state")) database.createObjectStore("state", { keyPath: "key" });
+        if (!database.objectStoreNames.contains("backups")) database.createObjectStore("backups", { keyPath: "id" });
+      };
+      request.onsuccess = function () { resolve(request.result); };
+      request.onerror = function () { resolve(null); };
+      request.onblocked = function () { resolve(null); };
+    });
+    return persistenceDatabasePromise;
+  }
+
+  async function readIndexedRecord(storeName, key) {
+    var database = await openPersistenceDatabase();
+    if (!database) return null;
+    return new Promise(function (resolve) {
+      var transaction = database.transaction(storeName, "readonly");
+      var request = transaction.objectStore(storeName).get(key);
+      request.onsuccess = function () { resolve(request.result || null); };
+      request.onerror = function () { resolve(null); };
+    });
+  }
+
+  async function writeIndexedSnapshot(serialized, previousRaw) {
+    var database = await openPersistenceDatabase();
+    if (!database) return false;
+    var now = Date.now();
+    return new Promise(function (resolve, reject) {
+      var shouldBackup = Boolean(previousRaw && previousRaw !== serialized && now - lastAutomaticBackupAt >= 10 * 60 * 1000);
+      var transaction = database.transaction(["state", "backups"], "readwrite");
+      transaction.objectStore("state").put({ key: PERSISTENCE_STATE_KEY, raw: serialized, updatedAt: new Date(now).toISOString() });
+      if (shouldBackup) {
+        transaction.objectStore("backups").put({ id: "backup-" + now, raw: previousRaw, createdAt: new Date(now).toISOString() });
+        lastAutomaticBackupAt = now;
+      }
+      transaction.oncomplete = function () {
+        trimIndexedBackups(database);
+        resolve(true);
+      };
+      transaction.onerror = function () { reject(transaction.error || new Error("INDEXED_DB_WRITE_FAILED")); };
+      transaction.onabort = function () { reject(transaction.error || new Error("INDEXED_DB_WRITE_ABORTED")); };
+    });
+  }
+
+  async function trimIndexedBackups(database) {
+    try {
+      var records = await new Promise(function (resolve) {
+        var transaction = database.transaction("backups", "readonly");
+        var request = transaction.objectStore("backups").getAll();
+        request.onsuccess = function () { resolve(request.result || []); };
+        request.onerror = function () { resolve([]); };
+      });
+      records.sort(function (left, right) { return String(right.createdAt || "").localeCompare(String(left.createdAt || "")); });
+      if (records.length <= 5) return;
+      var transaction = database.transaction("backups", "readwrite");
+      records.slice(5).forEach(function (record) { transaction.objectStore("backups").delete(record.id); });
+    } catch (error) {
+      // A limpeza é auxiliar; o save principal já foi confirmado.
+    }
+  }
+
+  async function hydrateStateFromIndexedDB() {
+    if (loadedStateFromLocalStorage) {
+      persistenceQueue = persistenceQueue.then(function () { return writeIndexedSnapshot(lastPersistedStateRaw, ""); }).catch(function () {});
+      return;
+    }
+    var record = await readIndexedRecord("state", PERSISTENCE_STATE_KEY);
+    if (!record || !record.raw) return;
+    try {
+      var recovered = normalizeStatePayload(JSON.parse(record.raw));
+      state = recovered;
+      var serialized = JSON.stringify(recovered);
+      localStorage.setItem(STORAGE_KEY, serialized);
+      lastPersistedStateRaw = serialized;
+      loadedStateFromLocalStorage = true;
+      stateRecoveryWarnings.push("O save foi recuperado pelo espelho durável deste navegador.");
+    } catch (error) {
+      stateRecoveryWarnings.push("O espelho local também estava ilegível; nenhum dado corrompido foi carregado.");
     }
   }
 
@@ -178,7 +299,7 @@
     else type = "personal";
     safe.id = safe.id || uid("calendar");
     safe.type = type;
-    safe.date = validDateOnly(safe.date || safe.start || safe.createdAt) || localDateKey(new Date());
+    safe.date = validDateOnly(safe.date || safe.start);
     safe.time = clean(safe.time || (/T(\d{2}:\d{2})/.exec(safe.start || "") || [])[1]);
     safe.title = clean(safe.title) || CALENDAR_EVENT_META[type].title;
     safe.location = clean(safe.location || safe.stadium);
@@ -194,7 +315,8 @@
     safe.competition = clean(safe.competition);
     safe.phase = clean(safe.phase);
     safe.stadium = clean(safe.stadium || safe.location);
-    safe.createdAt = safe.createdAt || new Date().toISOString();
+    safe.recordedAt = safe.recordedAt || safe.createdAt || new Date().toISOString();
+    safe.createdAt = safe.createdAt || safe.recordedAt;
     safe.updatedAt = safe.updatedAt || safe.createdAt;
     return safe;
   }
@@ -205,10 +327,12 @@
 
   function normalizeCareer(career) {
     var safe = career && typeof career === "object" ? career : {};
+    var normalizationRecordedAt = new Date().toISOString();
     safe.id = safe.id || uid("career");
     safe.name = safe.name || "Carreira";
     safe.auth = safe.auth || { email: "", passHash: "" };
-    safe.profile = safe.profile || {};
+    safe.profile = safe.profile && typeof safe.profile === "object" && !Array.isArray(safe.profile) ? safe.profile : {};
+    if (!Array.isArray(safe.profile.playStyle)) safe.profile.playStyle = splitList(safe.profile.playStyle);
     safe.user = Object.assign({
       username: safe.auth.username || legacyUsername(safe),
       avatarData: safe.profile.avatarData || ""
@@ -216,13 +340,21 @@
     safe.user.username = normalizeUsername(safe.user.username || legacyUsername(safe));
     safe.auth.username = safe.user.username;
     safe.profileChangeHistory = Array.isArray(safe.profileChangeHistory) ? safe.profileChangeHistory : [];
-    safe.messages = Array.isArray(safe.messages) ? safe.messages : [];
+    safe.messages = Array.isArray(safe.messages) ? safe.messages.filter(function (message) {
+      return message && typeof message === "object" && !Array.isArray(message);
+    }).map(function (message) {
+      if (!message.deliveryStatus) message.deliveryStatus = "completed";
+      return message;
+    }) : [];
     safe.chats = Array.isArray(safe.chats) ? safe.chats.filter(function (chat) {
       return chat && typeof chat === "object";
     }).map(function (chat, index) {
       var chatId = chat.id || uid("chat");
-      var messages = Array.isArray(chat.messages) ? chat.messages.map(function (message) {
-        if (message && typeof message === "object" && !message.sourceChatId) message.sourceChatId = chatId;
+      var messages = Array.isArray(chat.messages) ? chat.messages.filter(function (message) {
+        return message && typeof message === "object" && !Array.isArray(message);
+      }).map(function (message) {
+        if (!message.sourceChatId) message.sourceChatId = chatId;
+        if (!message.deliveryStatus) message.deliveryStatus = "completed";
         return message;
       }) : [];
       return {
@@ -249,22 +381,61 @@
       : (safe.chats.length ? safe.chats[safe.chats.length - 1].id : "");
     var normalizedActiveChat = safe.chats.find(function (chat) { return chat.id === safe.activeChatId; });
     safe.messages = normalizedActiveChat ? normalizedActiveChat.messages : [];
-    safe.canonEvents = Array.isArray(safe.canonEvents) ? safe.canonEvents : [];
-    safe.news = Array.isArray(safe.news) ? safe.news : [];
+    safe.canonEvents = Array.isArray(safe.canonEvents) ? safe.canonEvents.filter(function (event) {
+      return event && typeof event === "object" && !Array.isArray(event);
+    }).map(function (event) {
+      var normalized = Object.assign({}, event);
+      var legacyOccurredAt = normalized.occurredAt || normalized.date || "";
+      normalized.occurredAt = dateFromAny(legacyOccurredAt);
+      normalized.chronologyLabel = clean(normalized.chronologyLabel || (!normalized.occurredAt ? legacyOccurredAt : ""));
+      normalized.recordedAt = normalized.recordedAt || normalized.createdAt || (/T/.test(clean(legacyOccurredAt)) ? legacyOccurredAt : normalizationRecordedAt);
+      return normalized;
+    }) : [];
+    safe.news = Array.isArray(safe.news) ? safe.news.filter(function (item) {
+      return item && typeof item === "object" && !Array.isArray(item);
+    }).map(function (item) {
+      var normalized = Object.assign({}, item);
+      var legacyOccurredAt = normalized.occurredAt || normalized.date || "";
+      normalized.occurredAt = dateFromAny(legacyOccurredAt);
+      normalized.chronologyLabel = clean(normalized.chronologyLabel || (!normalized.occurredAt ? legacyOccurredAt : ""));
+      normalized.recordedAt = normalized.recordedAt || normalized.createdAt || (/T/.test(clean(legacyOccurredAt)) ? legacyOccurredAt : normalizationRecordedAt);
+      normalized.createdAt = normalized.createdAt || normalized.recordedAt;
+      return normalized;
+    }) : [];
     safe.characters = Array.isArray(safe.characters) ? safe.characters.map(normalizeCharacter) : [];
-    safe.seasons = Array.isArray(safe.seasons) ? safe.seasons.map(function (season) {
-      season.matches = Array.isArray(season.matches) ? season.matches : [];
-      return season;
+    safe.seasons = Array.isArray(safe.seasons) ? safe.seasons.filter(function (season) {
+      return season && typeof season === "object" && !Array.isArray(season);
+    }).map(function (season) {
+      var normalizedSeason = Object.assign({}, season);
+      normalizedSeason.matches = Array.isArray(season.matches) ? season.matches.filter(function (match) {
+        return match && typeof match === "object" && !Array.isArray(match);
+      }).map(function (match) {
+        var normalizedMatch = Object.assign({}, match);
+        normalizedMatch.date = dateFromAny(normalizedMatch.date);
+        normalizedMatch.recordedAt = normalizedMatch.recordedAt || normalizedMatch.createdAt || normalizationRecordedAt;
+        return normalizedMatch;
+      }) : [];
+      return normalizedSeason;
     }) : [];
     safe.finance = Object.assign({ initialized: false, currency: "BRL", balance: 0, transactions: [], pockets: [] }, safe.finance || {});
-    safe.finance.transactions = Array.isArray(safe.finance.transactions) ? safe.finance.transactions : [];
+    safe.finance.transactions = Array.isArray(safe.finance.transactions) ? safe.finance.transactions.filter(function (transaction) {
+      return transaction && typeof transaction === "object" && !Array.isArray(transaction);
+    }).map(function (transaction) {
+      var normalized = Object.assign({}, transaction);
+      normalized.date = dateFromAny(normalized.date);
+      normalized.recordedAt = normalized.recordedAt || normalized.createdAt || normalizationRecordedAt;
+      normalized.createdAt = normalized.createdAt || normalized.recordedAt;
+      return normalized;
+    }) : [];
     safe.finance.pockets = Array.isArray(safe.finance.pockets) ? safe.finance.pockets : [];
     safe.hall = Object.assign({ trophies: [], records: [], awards: [] }, safe.hall || {});
     safe.hall.trophies = Array.isArray(safe.hall.trophies) ? safe.hall.trophies : [];
     safe.hall.records = Array.isArray(safe.hall.records) ? safe.hall.records : [];
     safe.hall.awards = Array.isArray(safe.hall.awards) ? safe.hall.awards : [];
-    safe.calendar = Array.isArray(safe.calendar) ? safe.calendar.map(normalizeCalendarEvent) : [];
-    safe.currentDate = validDateOnly(safe.currentDate) || latestCareerDate(safe) || localDateKey(new Date());
+    safe.calendar = Array.isArray(safe.calendar) ? safe.calendar.filter(function (event) {
+      return event && typeof event === "object" && !Array.isArray(event);
+    }).map(normalizeCalendarEvent).filter(function (event) { return event.date; }) : [];
+    safe.currentDate = validDateOnly(safe.currentDate) || latestCareerDate(safe) || "";
     safe.offPitch = Object.assign({ currentCity: "", currentResidence: "", houses: [] }, safe.offPitch || {});
     safe.offPitch.houses = Array.isArray(safe.offPitch.houses) ? safe.offPitch.houses : [];
     safe.tools = Object.assign({ wheelEntries: [{ label: "", weight: 1 }, { label: "", weight: 1 }], diceHistory: [] }, safe.tools || {});
@@ -277,14 +448,50 @@
     return safe;
   }
 
-  function saveState() {
+  function saveState(options) {
+    var previousRaw = lastPersistedStateRaw;
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      var serialized = JSON.stringify(state);
+      localStorage.setItem(STORAGE_KEY, serialized);
+      if (localStorage.getItem(STORAGE_KEY) !== serialized) throw new Error("LOCAL_STORAGE_VERIFICATION_FAILED");
+      lastPersistedStateRaw = serialized;
+      loadedStateFromLocalStorage = true;
+      persistenceQueue = persistenceQueue.then(function () {
+        return writeIndexedSnapshot(serialized, previousRaw);
+      }).catch(function (error) {
+        if (!(options && options.quiet)) toast("O save principal foi gravado, mas o backup durável não pôde ser atualizado.", "error");
+        return false;
+      });
       return true;
     } catch (error) {
-      toast("Não foi possível salvar. A foto de perfil pode ser grande demais para este navegador.", "error");
+      if (previousRaw) restoreSerializedState(previousRaw, false);
+      if (!(options && options.quiet)) toast(error && error.name === "QuotaExceededError" ? "O navegador ficou sem espaço. Nada foi confirmado; exporte o save e reduza imagens grandes." : "A gravação falhou e foi desfeita. Seus dados anteriores continuam preservados.", "error");
       return false;
     }
+  }
+
+  function restoreSerializedState(raw, mirror) {
+    if (!raw) return false;
+    try {
+      state = normalizeStatePayload(JSON.parse(raw));
+      localStorage.setItem(STORAGE_KEY, raw);
+      lastPersistedStateRaw = raw;
+      loadedStateFromLocalStorage = true;
+      if (mirror) {
+        persistenceQueue = persistenceQueue.then(function () { return writeIndexedSnapshot(raw, ""); }).catch(function () { return false; });
+      }
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  async function flushStatePersistence() {
+    await persistenceQueue;
+    var localVerified = Boolean(lastPersistedStateRaw && localStorage.getItem(STORAGE_KEY) === lastPersistedStateRaw);
+    if (!window.indexedDB) return localVerified;
+    var record = await readIndexedRecord("state", PERSISTENCE_STATE_KEY);
+    return record ? record.raw === lastPersistedStateRaw : localVerified;
   }
 
   function uid(prefix) {
@@ -327,6 +534,8 @@
       "offPitchTemplate", "residenceContent", "spotifyNow", "spotifyDisc", "spotifyStatus", "spotifyTrack",
       "spotifyArtist", "settingsModal", "settingsForm", "backendStatusDot", "backendStatusText",
       "spotifyClientId", "spotifyRedirectUri", "copyRedirectUri", "disconnectSpotify", "connectSpotify",
+      "aiConsentStatus", "revokeAiConsent", "exportCurrentSave", "restoreAutomaticBackup", "deleteCurrentCareer", "settingsDataStatus",
+      "legalDialog", "legalTitle", "legalContent", "closeLegal",
       "saveSettings", "profilePage", "profileContent", "profileAvatarImage", "profileAvatarFallback", "profileIdentityLine",
       "closeProfile", "logoutCareer", "toastRegion"
     ].forEach(function (id) { el[id] = document.getElementById(id); });
@@ -483,6 +692,15 @@
     el.connectSpotify.addEventListener("click", beginSpotifyConnectFromSettings);
     el.disconnectSpotify.addEventListener("click", function () { disconnectSpotify(true); });
     el.spotifyNow.addEventListener("click", spotifySidebarAction);
+    el.exportCurrentSave.addEventListener("click", exportCurrentCareerSave);
+    el.restoreAutomaticBackup.addEventListener("click", restoreAutomaticBackup);
+    el.deleteCurrentCareer.addEventListener("click", deleteCurrentCareerFromBrowser);
+    el.revokeAiConsent.addEventListener("click", revokeAiConsent);
+    document.querySelectorAll("[data-legal]").forEach(function (link) {
+      link.addEventListener("click", function (event) { event.preventDefault(); openLegalDialog(link.dataset.legal); });
+    });
+    el.closeLegal.addEventListener("click", function () { el.legalDialog.close(); });
+    el.legalDialog.addEventListener("cancel", function (event) { event.preventDefault(); el.legalDialog.close(); });
   }
 
   function setAuthTab(name) {
@@ -623,16 +841,20 @@
 
   function renderRegistrationReview() {
     var answers = ui.registrationAnswers;
-    var identity = [
-      ["Nome completo", answers.playerName], ["Nome na camisa", answers.shirtName],
-      ["Data de nascimento", answers.birthDate ? formatDate(answers.birthDate) : ""], ["Idade", answers.birthDate ? calculateAge(answers.birthDate) + " anos" : ""],
-      ["Nacionalidade(s)", [answers.primaryNationality, answers.secondNationality, answers.thirdNationality].filter(Boolean).join(", ")]
-    ];
-    var origin = [["Nascimento", [answers.birthCity, answers.birthCountry].filter(Boolean).join(" · ")], ["Onde vive", [answers.currentCity, answers.currentCountry].filter(Boolean).join(" · ")]];
-    var career = [["Situação", answers.footballStatus], ["Clube", answers.currentClub], ["Liga", answers.league], ["Temporada", answers.season], ["Categoria", answers.squadCategory], ["Camisa", answers.shirtNumber]];
-    var profile = [["Posição", answers.position], ["Outras posições", registrationValue(answers.secondaryPositions)], ["Pé dominante", answers.dominantFoot], ["Altura", answers.height ? answers.height + " cm" : ""], ["Peso", answers.weight ? answers.weight + " kg" : ""], ["Estilo", registrationValue(answers.playStyle)], ["Forças", registrationValue([].concat(answers.technicalStrengths || [], answers.mentalStrengths || [], answers.physicalStrengths || []))], ["Fraquezas", registrationValue(answers.weaknesses)]];
-    var narrative = [["Personalidade", answers.personality], ["Ambição", answers.careerAmbition], ["História", answers.backstory]];
-    return '<div class="registration-review">' + reviewSection("IDENTIDADE", identity) + reviewSection("ORIGEM", origin) + reviewSection("CARREIRA", career) + reviewSection("PERFIL", profile) + reviewSection("NARRATIVA", narrative) + '<label class="review-confirm"><input type="checkbox" data-registration-confirm ' + (answers.confirmed ? "checked" : "") + ' /><span>Confirmo que as informações do personagem estão corretas.</span></label></div>';
+    var groups = {};
+    visibleRegistrationQuestions().forEach(function (question) {
+      if (["username", "password", "confirmPassword", "avatarData", "confirmed"].indexOf(question.key) >= 0) return;
+      var value = answers[question.key];
+      if (question.key === "birthDate" && value) value = formatDate(value) + " · " + calculateAge(value) + " anos";
+      else if (question.suffix && clean(value)) value = value + " " + question.suffix;
+      else value = registrationValue(value);
+      if (!clean(value)) value = "Não definido";
+      if (!groups[question.section]) groups[question.section] = [];
+      groups[question.section].push([question.prompt, value]);
+    });
+    return '<div class="registration-review">' + Object.keys(groups).map(function (section) {
+      return reviewSection(section, groups[section]);
+    }).join("") + '<label class="review-confirm"><input type="checkbox" data-registration-confirm ' + (answers.confirmed ? "checked" : "") + ' /><span>Confirmo que todas as informações do personagem estão corretas.</span></label></div>';
   }
 
   function reviewSection(title, rows) {
@@ -811,7 +1033,8 @@
       var profile = Object.assign({}, answers, {
         nationality: [answers.primaryNationality, answers.secondNationality, answers.thirdNationality].filter(Boolean).join(", "),
         secondaryPosition: registrationValue(answers.secondaryPositions),
-        playStyle: registrationValue(answers.playStyle),
+        secondaryPositions: Array.isArray(answers.secondaryPositions) ? answers.secondaryPositions.slice() : splitList(answers.secondaryPositions),
+        playStyle: Array.isArray(answers.playStyle) ? answers.playStyle.slice() : splitList(answers.playStyle),
         careerGoals: [answers.careerAmbition, answers.nextSeasonGoal].filter(Boolean).join(" · "),
         modules: ["football", "media", "relationships", "offpitch"]
       });
@@ -825,15 +1048,15 @@
         user: { username: username, avatarData: answers.avatarData || "" },
         auth: { username: username, email: "", passHash: await hashText(answers.password) },
         profile: profile,
-        messages: [], chats: [], activeChatId: "", canonEvents: [], news: [], characters: [], seasons: [],
+        messages: [], chats: [], activeChatId: "", canonEvents: createInitialCareerCanon(profile), news: [], characters: createInitialCharacters(profile), seasons: [{ id: uid("season"), label: answers.season, matches: [] }],
         finance: { initialized: false, currency: "BRL", balance: 0, transactions: [], pockets: [] },
-        hall: { trophies: [], records: [], awards: [] }, calendar: [],
+        hall: { trophies: initialHallEntries(answers.titles, "trophy"), records: [], awards: initialHallEntries(answers.awards, "award") }, calendar: [],
         offPitch: { currentCity: answers.currentCity || "", currentResidence: "", houses: [] },
         tools: { wheelEntries: [{ label: "", weight: 1 }, { label: "", weight: 1 }], diceHistory: [] }, sceneNumber: 1,
         createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
       });
       state.careers.push(career);
-      if (!saveState()) throw new Error("storage");
+      if (!saveState() || !await flushStatePersistence()) throw new Error("Não foi possível confirmar a carreira no armazenamento durável.");
       sessionStorage.setItem(SESSION_KEY, career.id);
       localStorage.removeItem(PERSISTENT_SESSION_KEY);
       ui.registrationAnswers = {};
@@ -872,6 +1095,26 @@
     add(profile.coachName, "Treinador(a)");
     splitCommaList(profile.importantPeople).forEach(function (name) { add(name, "Pessoa importante"); });
     return characters;
+  }
+
+  function initialHallEntries(value, prefix) {
+    return splitList(value).filter(function (item) { return !/^(ainda )?n[aã]o(?: possui)?\.?$/i.test(item); }).map(function (item) {
+      return { id: uid(prefix), title: item, description: "Informado no cadastro inicial.", createdAt: new Date().toISOString() };
+    });
+  }
+
+  function createInitialCareerCanon(profile) {
+    var createdAt = new Date().toISOString();
+    var events = [];
+    function add(title, description, occurredAt) {
+      if (!clean(description)) return;
+      events.push({ id: uid("canon"), type: "initial_profile", title: title, description: clean(description), occurredAt: validDateOnly(occurredAt), recordedAt: createdAt, certainty: "fact" });
+    }
+    add("Origem no futebol", [profile.footballStart, profile.formativeClub].filter(Boolean).join(" · "));
+    add("Estreia profissional", profile.professionalDebutYear);
+    if (normalizeKey(profile.injuryHistory) === "sim") add("Histórico de lesão", profile.injuryDetails);
+    add("História anterior da carreira", profile.backstory);
+    return events;
   }
 
   async function loginToCareer(event) {
@@ -963,6 +1206,130 @@
     return true;
   }
 
+  function exportPayload(careers, type) {
+    return {
+      version: 2,
+      settings: Object.assign({}, state.settings),
+      careers: careers,
+      exportMetadata: {
+        type: type || "manual-export",
+        exportedAt: new Date().toISOString(),
+        source: "inyffx-interface-v2"
+      }
+    };
+  }
+
+  function safeFilename(value) {
+    return normalizeKey(value || "carreira").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48) || "carreira";
+  }
+
+  function exportCurrentCareerSave() {
+    var career = activeCareer();
+    if (!career) return;
+    var payload = exportPayload([career], "manual-current-career-export");
+    downloadJSONFile("inyffx-save-" + safeFilename(career.profile && career.profile.playerName || career.name) + "-" + new Date().toISOString().slice(0, 10) + ".json", payload);
+    if (el.settingsDataStatus) el.settingsDataStatus.textContent = "Save exportado. Guarde o arquivo fora do navegador.";
+    toast("Save .json exportado com sucesso.");
+  }
+
+  async function latestAutomaticBackupRaw() {
+    var candidates = [];
+    try {
+      var importBackup = localStorage.getItem(SAVE_BACKUP_KEY);
+      if (importBackup) {
+        var parsed = JSON.parse(importBackup);
+        candidates.push({ raw: importBackup, date: clean(parsed.exportMetadata && parsed.exportMetadata.exportedAt) || "0000" });
+      }
+    } catch (error) { /* backup inválido é ignorado */ }
+    var database = await openPersistenceDatabase();
+    if (database) {
+      var records = await new Promise(function (resolve) {
+        var transaction = database.transaction("backups", "readonly");
+        var request = transaction.objectStore("backups").getAll();
+        request.onsuccess = function () { resolve(request.result || []); };
+        request.onerror = function () { resolve([]); };
+      });
+      records.forEach(function (record) { if (record.raw) candidates.push({ raw: record.raw, date: record.createdAt || "0000" }); });
+    }
+    candidates.sort(function (left, right) { return right.date.localeCompare(left.date); });
+    return candidates.length ? candidates[0].raw : "";
+  }
+
+  async function restoreAutomaticBackup() {
+    var raw = await latestAutomaticBackupRaw();
+    if (!raw) {
+      el.settingsDataStatus.textContent = "Nenhum backup automático disponível neste navegador.";
+      return;
+    }
+    var restored;
+    try { restored = normalizeStatePayload(JSON.parse(raw)); }
+    catch (error) {
+      el.settingsDataStatus.textContent = "O backup mais recente está corrompido e não foi aplicado.";
+      return;
+    }
+    if (!window.confirm("Restaurar o backup mais recente? O estado atual será baixado antes da troca e poderá ser recuperado.")) return;
+    backupStateBeforeImport();
+    var previousState = state;
+    state = restored;
+    if (!saveState() || !await flushStatePersistence()) {
+      state = previousState;
+      saveState({ quiet: true });
+      el.settingsDataStatus.textContent = "A restauração falhou; o estado anterior foi mantido.";
+      return;
+    }
+    var active = restored.careers[0] || null;
+    if (active) {
+      sessionStorage.setItem(SESSION_KEY, active.id);
+      localStorage.setItem(PERSISTENT_SESSION_KEY, active.id);
+      el.settingsModal.close();
+      startApp();
+    } else showAuth();
+    toast("Backup restaurado e verificado.");
+  }
+
+  async function deleteCurrentCareerFromBrowser() {
+    var career = activeCareer();
+    if (!career) return;
+    var label = clean(career.profile && career.profile.playerName || career.name);
+    if (!window.confirm("Apagar definitivamente a carreira de " + label + " deste navegador? Um backup .json será baixado antes da exclusão.")) return;
+    downloadJSONFile("inyffx-backup-antes-de-apagar-" + safeFilename(label) + ".json", exportPayload([career], "automatic-backup-before-delete"));
+    var previousRaw = localStorage.getItem(STORAGE_KEY);
+    state.careers = state.careers.filter(function (item) { return item.id !== career.id; });
+    if (!saveState() || !await flushStatePersistence()) {
+      restoreSerializedState(previousRaw, true);
+      el.settingsDataStatus.textContent = "A exclusão não pôde ser confirmada; a carreira foi mantida e o backup baixado continua válido.";
+      return void toast("A carreira não foi apagada porque a gravação durável falhou.", "error");
+    }
+    sessionStorage.removeItem(SESSION_KEY);
+    localStorage.removeItem(PERSISTENT_SESSION_KEY);
+    el.settingsModal.close();
+    showAuth();
+    toast("Carreira removida deste navegador. O arquivo baixado permite restaurá-la.");
+  }
+
+  function revokeAiConsent() {
+    state.settings.aiDataConsentAt = "";
+    if (!saveState()) return;
+    updateAiConsentStatus();
+    toast("Consentimento para novos envios à IA revogado.");
+  }
+
+  function updateAiConsentStatus() {
+    if (!el.aiConsentStatus) return;
+    var granted = clean(state.settings.aiDataConsentAt);
+    el.aiConsentStatus.textContent = granted ? "CONSENTIMENTO ATIVO DESDE " + formatDate(granted) : "CONSENTIMENTO NÃO CONCEDIDO";
+    el.revokeAiConsent.disabled = !granted;
+  }
+
+  function openLegalDialog(type) {
+    var privacy = type === "privacy";
+    el.legalTitle.textContent = privacy ? "POLÍTICA DE PRIVACIDADE" : "TERMOS DE USO";
+    el.legalContent.innerHTML = privacy
+      ? '<p><strong>Armazenamento local.</strong> Carreiras, senha protegida por hash, imagens e histórico ficam neste navegador. Limpar os dados do site pode removê-los; use a exportação .json.</p><p><strong>Uso da IA.</strong> Somente após consentimento, o InyffX envia o texto do turno e um recorte relevante da ficha, personagens, calendário, partidas, finanças e notícias. Senhas, imagens e o save completo não são enviados.</p><p><strong>Controle.</strong> O consentimento pode ser revogado e a carreira pode ser exportada ou apagada nas Configurações.</p>'
+      : '<p><strong>Experiência ficcional.</strong> O InyffX organiza uma carreira narrativa de futebol. Conteúdo gerado pode conter erros e deve ser revisado antes de virar registro canônico.</p><p><strong>Conta local.</strong> O login protege apenas o acesso neste navegador; não é uma conta de servidor e não recupera dados apagados.</p><p><strong>Responsabilidade pelo backup.</strong> Exporte periodicamente o save .json. A interface confirma separadamente quais propostas da IA foram realmente gravadas.</p>';
+    el.legalDialog.showModal();
+  }
+
   async function importLocalSave(event) {
     var file = event.target.files && event.target.files[0];
     if (!file) return;
@@ -991,8 +1358,9 @@
         settings: Object.assign({}, blankState().settings, previousState.settings || {}),
         careers: importedCareers
       };
-      if (!saveState()) {
+      if (!saveState() || !await flushStatePersistence()) {
         state = previousState;
+        saveState({ quiet: true });
         throw new Error("Não há espaço suficiente no navegador para salvar essa carreira.");
       }
       var active = importedCareers[0];
@@ -1200,14 +1568,41 @@
     el.chatMessages.innerHTML = messages.map(function (message) {
       var role = message.role === "assistant" ? "assistant" : "user";
       var isLongUserMessage = role === "user" && (clean(message.content).length > 420 || clean(message.content).split("\n").length > 7);
+      var status = role === "user" ? chatDeliveryMarkup(message) : "";
+      var receipt = role === "assistant" ? chatMemoryReceiptMarkup(message.memoryReceipt) : "";
       return [
-        '<article class="chat-message chat-message--', role, isLongUserMessage ? " is-collapsed" : "", '" data-message-id="', escapeHTML(message.id || ""), '">',
+        '<article class="chat-message chat-message--', role, isLongUserMessage ? " is-collapsed" : "", message.deliveryStatus === "failed" ? " has-failed" : "", '" data-message-id="', escapeHTML(message.id || ""), '">',
         '<div class="chat-message__body">', escapeHTML(message.content), '</div>',
         isLongUserMessage ? '<button class="chat-message__more" type="button" data-expand-message>Mostrar Mais <span>⌄</span></button>' : "",
+        status,
+        receipt,
         "</article>"
       ].join("");
     }).join("");
     requestAnimationFrame(function () { el.chatMessages.scrollTop = el.chatMessages.scrollHeight; });
+  }
+
+  function chatDeliveryMarkup(message) {
+    if (message.deliveryStatus === "sending") return '<div class="chat-delivery is-sending"><span>ENVIANDO PARA A IA</span></div>';
+    if (message.deliveryStatus === "cancelled") return '<div class="chat-delivery is-cancelled"><span>ENVIO CANCELADO</span></div>';
+    if (message.deliveryStatus !== "failed") return "";
+    var error = clean(message.deliveryError) || "A resposta não foi concluída.";
+    return '<div class="chat-delivery is-failed"><span>' + escapeHTML(error) + '</span><div><button type="button" data-retry-message="' + escapeHTML(message.id) + '">TENTAR NOVAMENTE</button><button type="button" data-cancel-message="' + escapeHTML(message.id) + '">CANCELAR</button></div></div>';
+  }
+
+  function chatMemoryReceiptMarkup(receipt) {
+    if (!receipt || typeof receipt !== "object") return "";
+    var total = Number(receipt.totalApplied || 0);
+    var rejected = Number(receipt.totalRejected || 0);
+    var text = receipt.verified
+      ? total
+        ? plural(total, "alteração canônica salva", "alterações canônicas salvas")
+        : "Nenhuma alteração estruturada foi necessária"
+      : total
+        ? plural(total, "alteração preparada; verificação pendente", "alterações preparadas; verificação pendente")
+        : "Nenhuma alteração estruturada proposta";
+    if (rejected) text += " · " + plural(rejected, "proposta recusada", "propostas recusadas");
+    return '<div class="chat-memory-receipt' + (receipt.verified ? " is-verified" : "") + '"><span aria-hidden="true">' + (receipt.verified ? "✓" : "·") + '</span><strong>' + escapeHTML(text) + '</strong></div>';
   }
 
   function renderChatHistory(career) {
@@ -1225,7 +1620,7 @@
       return all.concat((season.matches || []).map(function (match) { return Object.assign({ season: match.season || season.label }, match); }));
     }, []);
     return matches.sort(function (left, right) {
-      return String(right.date || right.createdAt || "").localeCompare(String(left.date || left.createdAt || ""));
+      return String(validDateOnly(right.date)).localeCompare(String(validDateOnly(left.date)));
     })[0] || null;
   }
 
@@ -1265,7 +1660,8 @@
   }
 
   function upcomingFinal(career) {
-    var currentDate = validDateOnly(career.currentDate) || localDateKey(new Date());
+    var currentDate = validDateOnly(career.currentDate);
+    if (!currentDate) return null;
     return calendarEventsForCareer(career, Number(currentDate.slice(0, 4)) || new Date().getFullYear()).find(function (event) {
       return event.type === "match" && event.date >= currentDate && /final/i.test(clean(event.phase));
     }) || null;
@@ -1355,12 +1751,33 @@
   }
 
   function handleChatMessageClick(event) {
-    var button = event.target.closest("[data-expand-message]");
-    if (!button) return;
-    var message = button.closest(".chat-message");
+    var expand = event.target.closest("[data-expand-message]");
+    if (expand) {
+      var article = expand.closest(".chat-message");
+      if (!article) return;
+      article.classList.remove("is-collapsed");
+      expand.remove();
+      return;
+    }
+    var retry = event.target.closest("[data-retry-message]");
+    var cancel = event.target.closest("[data-cancel-message]");
+    if (!retry && !cancel) return;
+    var career = activeCareer();
+    if (!career) return;
+    var chat = getActiveChat(career, false);
+    var messageId = (retry || cancel).dataset[retry ? "retryMessage" : "cancelMessage"];
+    var message = chat && chat.messages.find(function (item) { return item.id === messageId && item.role === "user"; });
     if (!message) return;
-    message.classList.remove("is-collapsed");
-    button.remove();
+    if (retry) {
+      var apiBaseUrl = clean(state.settings.apiBaseUrl || PUBLIC_CONFIG.apiBaseUrl);
+      if (apiBaseUrl && !ensureAiDataConsent()) return;
+      submitChatTurn(career, chat, message);
+      return;
+    }
+    message.deliveryStatus = "cancelled";
+    message.deliveryError = "";
+    saveState();
+    renderChat();
   }
 
   async function sendChatMessage(event) {
@@ -1369,6 +1786,8 @@
     var career = activeCareer();
     var content = clean(el.chatInput.value);
     if (!career || !content) return;
+    var apiBaseUrl = clean(state.settings.apiBaseUrl || PUBLIC_CONFIG.apiBaseUrl);
+    if (apiBaseUrl && !ensureAiDataConsent()) return;
     var requestedAction = clean(ui.preparedShortcutAction || el.chatInput.dataset.shortcutAction).toUpperCase();
     var chat = getActiveChat(career, true);
     var userMessage = {
@@ -1378,7 +1797,9 @@
       action: requestedAction,
       scene: chat.scene,
       sourceChatId: chat.id,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      deliveryStatus: apiBaseUrl ? "sending" : "failed",
+      deliveryError: apiBaseUrl ? "" : "A IA ainda não está conectada. Configure o backend e tente novamente."
     };
     chat.messages.push(userMessage);
     if (chat.messages.filter(function (message) { return message.role === "user"; }).length === 1) chat.title = chatTitleFromContent(content, "Novo dia");
@@ -1386,7 +1807,10 @@
     career.messages = chat.messages;
     career.updatedAt = userMessage.createdAt;
     var matchAdded = registerMatchFromMessage(career, userMessage);
-    saveState();
+    if (!saveState()) {
+      renderAll();
+      return;
+    }
     el.chatInput.value = "";
     ui.preparedShortcutAction = "";
     delete el.chatInput.dataset.shortcutAction;
@@ -1396,16 +1820,43 @@
       var importedSuffix = Number(userMessage.teamImportedCount) > 0 ? " " + plural(userMessage.teamImportedCount, "integrante do elenco foi atualizado", "integrantes do elenco foram atualizados") + " em TIME." : "";
       toast("Partida registrada em SEASONS e repercussão factual criada em FYX NEWS." + importedSuffix);
     }
-    var apiBaseUrl = clean(state.settings.apiBaseUrl);
     if (!apiBaseUrl) {
       toast("Mensagem salva localmente. Conecte o backend para receber a resposta da IA.");
       return;
     }
+    await submitChatTurn(career, chat, userMessage);
+  }
+
+  function ensureAiDataConsent() {
+    if (clean(state.settings.aiDataConsentAt)) return true;
+    var accepted = window.confirm("Para responder, o InyffX enviará à IA o texto desta conversa e um recorte relevante da ficha, personagens, calendário, partidas, finanças e notícias. Senha, imagens e o save completo não são enviados. Deseja continuar?");
+    if (!accepted) return false;
+    state.settings.aiDataConsentAt = new Date().toISOString();
+    if (!saveState()) return false;
+    return true;
+  }
+
+  async function submitChatTurn(career, chat, userMessage) {
+    if (ui.sending || !career || !chat || !userMessage) return;
+    var apiBaseUrl = clean(state.settings.apiBaseUrl || PUBLIC_CONFIG.apiBaseUrl);
+    if (!apiBaseUrl) return;
+    userMessage.deliveryStatus = "sending";
+    userMessage.deliveryError = "";
+    userMessage.retryCount = Number(userMessage.retryCount || 0) + 1;
+    if (!saveState()) return;
+    if (!await flushStatePersistence()) {
+      markChatTurnFailed(career.id, chat.id, userMessage.id, "O turno não pôde ser confirmado no armazenamento durável. Exporte o save antes de tentar novamente.");
+      renderChat();
+      return;
+    }
+    renderChat();
     ui.sending = true;
+    ui.sendingMessageId = userMessage.id;
     el.sendMessage.disabled = true;
     setAiStatus("IA PENSANDO", true);
     appendPendingMessage();
     var requestTimer = null;
+    var responseRollbackRaw = localStorage.getItem(STORAGE_KEY);
     try {
       var controller = new AbortController();
       requestTimer = window.setTimeout(function () { controller.abort(); }, 150000);
@@ -1418,7 +1869,7 @@
           turnId: userMessage.id,
           careerId: career.id,
           message: { id: userMessage.id, content: userMessage.content, action: userMessage.action, scene: userMessage.scene, createdAt: userMessage.createdAt },
-          context: buildBackendContext(career)
+          context: buildBackendContext(career, userMessage)
         })
       });
       var payload = await response.json().catch(function () { return {}; });
@@ -1430,27 +1881,49 @@
       removePendingMessage();
       var reply = clean(payload.reply || (payload.message && payload.message.content));
       if (!reply) throw new Error("A IA respondeu sem um texto utilizável. Tente enviar novamente.");
+      var receipt = applyMemoryUpdates(career, payload.proposedUpdates || payload.memoryUpdates || payload.updates || payload.memory || {}, { chatId: chat.id, messageId: userMessage.id });
       if (reply) {
         chat.messages.push({
           id: (payload.message && payload.message.id) || uid("message"),
           role: "assistant",
           content: reply,
-          action: requestedAction,
+          action: userMessage.action,
           scene: chat.scene,
           sourceChatId: chat.id,
-          createdAt: (payload.message && payload.message.createdAt) || new Date().toISOString()
+          createdAt: (payload.message && payload.message.createdAt) || new Date().toISOString(),
+          deliveryStatus: "completed",
+          memoryReceipt: receipt,
+          uncertainties: Array.isArray(payload.uncertainties) ? payload.uncertainties.slice(0, 12).map(clean).filter(Boolean) : []
         });
       }
+      userMessage.deliveryStatus = "completed";
+      userMessage.deliveryError = "";
       chat.updatedAt = new Date().toISOString();
-      if (requestedAction) career.lastShortcutAction = requestedAction;
+      if (userMessage.action) career.lastShortcutAction = userMessage.action;
       career.messages = chat.messages;
-      applyMemoryUpdates(career, payload.memoryUpdates || payload.updates || payload.memory || {}, { chatId: chat.id, messageId: userMessage.id });
       career.updatedAt = new Date().toISOString();
-      saveState();
+      var responseSaved = saveState();
+      var responseVerified = responseSaved && await flushStatePersistence();
+      if (!responseVerified) {
+        restoreSerializedState(responseRollbackRaw, true);
+        throw Object.assign(new Error("A resposta chegou, mas a gravação durável não pôde ser confirmada. Tente novamente."), { code: "PERSISTENCE_UNVERIFIED" });
+      }
+      receipt.verified = verifyMemoryReceiptFromStorage(career.id, receipt);
+      if (!receipt.verified) {
+        restoreSerializedState(responseRollbackRaw, true);
+        throw Object.assign(new Error("Os registros propostos não puderam ser reencontrados no save. Tente novamente."), { code: "PERSISTENCE_UNVERIFIED" });
+      }
+      var receiptSaved = saveState({ quiet: true });
+      var receiptVerified = receiptSaved && await flushStatePersistence();
+      if (!receiptVerified) {
+        restoreSerializedState(responseRollbackRaw, true);
+        throw Object.assign(new Error("O recibo da resposta não pôde ser confirmado no armazenamento durável. Tente novamente."), { code: "PERSISTENCE_UNVERIFIED" });
+      }
       renderAll();
       setAiStatus("IA CONECTADA", true);
     } catch (error) {
       removePendingMessage();
+      markChatTurnFailed(career.id, chat.id, userMessage.id, chatDeliveryError(error));
       if (error && error.code === "RATE_LIMITED") {
         setAiStatus("LIMITE TEMPORÁRIO", false);
         toast("Muitas mensagens em pouco tempo. Sua mensagem foi salva; aguarde um minuto e tente novamente.", "error");
@@ -1467,8 +1940,66 @@
     } finally {
       if (requestTimer) window.clearTimeout(requestTimer);
       ui.sending = false;
+      ui.sendingMessageId = "";
       el.sendMessage.disabled = false;
+      renderChat();
     }
+  }
+
+  function chatDeliveryError(error) {
+    if (error && error.code === "RATE_LIMITED") return "Limite temporário atingido. Aguarde um minuto e tente novamente.";
+    if (error && error.code === "FREE_TIER_UNAVAILABLE") return "A cota gratuita está indisponível agora. Tente novamente mais tarde.";
+    if (error && error.code === "MESSAGE_TOO_LARGE") return clean(error.message);
+    if (error && error.code === "PERSISTENCE_UNVERIFIED") return "A gravação não pôde ser confirmada; nenhuma atualização da IA foi considerada concluída.";
+    if (error && error.name === "AbortError") return "A resposta excedeu o tempo limite. Tente novamente sem duplicar a mensagem.";
+    return clean(error && error.message) || "A IA não concluiu esta mensagem.";
+  }
+
+  function markChatTurnFailed(careerId, chatId, messageId, reason) {
+    var currentCareer = state.careers.find(function (item) { return item.id === careerId; });
+    var currentChat = currentCareer && currentCareer.chats.find(function (item) { return item.id === chatId; });
+    var currentMessage = currentChat && currentChat.messages.find(function (item) { return item.id === messageId; });
+    if (!currentMessage) return;
+    currentMessage.deliveryStatus = "failed";
+    currentMessage.deliveryError = reason;
+    currentChat.updatedAt = new Date().toISOString();
+    currentCareer.messages = currentChat.messages;
+    currentCareer.updatedAt = currentChat.updatedAt;
+    saveState({ quiet: true });
+  }
+
+  function verifyMemoryReceiptFromStorage(careerId, receipt) {
+    try {
+      var saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+      var career = saved && Array.isArray(saved.careers) && saved.careers.find(function (item) { return item.id === careerId; });
+      if (!career) return false;
+      return (receipt.records || []).every(function (record) { return memoryReceiptRecordExists(career, record); });
+    } catch (error) {
+      return false;
+    }
+  }
+
+  function memoryReceiptRecordExists(career, record) {
+    if (record.module === "currentDate") return career.currentDate === record.id;
+    if (record.module === "financeBalance") return String(career.finance && career.finance.balance) === record.id;
+    if (record.module === "financeCurrency") return clean(career.finance && career.finance.currency) === record.id;
+    if (record.module === "currentCity") return clean(career.offPitch && career.offPitch.currentCity) === record.id;
+    if (record.module === "currentResidence") return clean(career.offPitch && career.offPitch.currentResidence) === record.id;
+    if (record.module === "matches") return (career.seasons || []).some(function (season) { return (season.matches || []).some(function (item) { return item.id === record.id; }); });
+    var paths = {
+      news: career.news,
+      characters: career.characters,
+      canonEvents: career.canonEvents,
+      calendar: career.calendar,
+      seasons: career.seasons,
+      transactions: career.finance && career.finance.transactions,
+      pockets: career.finance && career.finance.pockets,
+      trophies: career.hall && career.hall.trophies,
+      records: career.hall && career.hall.records,
+      awards: career.hall && career.hall.awards,
+      houses: career.offPitch && career.offPitch.houses
+    };
+    return Array.isArray(paths[record.module]) && paths[record.module].some(function (item) { return item && item.id === record.id; });
   }
 
   function appendPendingMessage() {
@@ -1485,33 +2016,89 @@
     if (pending) pending.remove();
   }
 
-  function buildBackendContext(career) {
-    var currentSeason = career.seasons.find(function (season) { return season.label === career.profile.season; }) || career.seasons[career.seasons.length - 1] || null;
+  function buildBackendContext(career, currentMessage) {
+    var query = contextRetrievalQuery(career, currentMessage);
+    var seasons = (career.seasons || []).filter(Boolean).slice().sort(function (left, right) {
+      return String(right.label || right.createdAt || "").localeCompare(String(left.label || left.createdAt || ""), "pt-BR", { numeric: true });
+    });
+    var currentSeason = seasons.find(function (season) { return season.label === career.profile.season; }) || seasons[0] || null;
+    var relevantCanon = selectRelevantContextRecords(career.canonEvents, query, 12);
+    var relevantCharacters = selectRelevantContextRecords(career.characters, query, 10, true);
+    var recentMessages = activeMessages(career).filter(function (message) {
+      return message && message.deliveryStatus !== "cancelled";
+    }).slice(-14);
     return {
       profile: career.profile,
       profileRevision: career.profileRevision || null,
       scene: career.sceneNumber,
       currentDate: career.currentDate,
-      recentMessages: activeMessages(career).slice(-12).map(function (message) {
+      sceneCheckpoint: relevantCanon[0] ? compactContextText(relevantCanon[0].description || relevantCanon[0].title, 700) : "",
+      recentMessages: recentMessages.map(function (message) {
         return { role: message.role, content: message.content, action: shortcutActionFromMessage(message), createdAt: message.createdAt };
       }),
       memory: {
-        canonEvents: career.canonEvents.slice(-18),
-        characters: career.characters.slice(-24).map(characterContextRecord),
-        recentNews: career.news.slice(-8),
-        currentSeason: currentSeason ? Object.assign({}, currentSeason, { matches: (currentSeason.matches || []).slice(-10) }) : null,
-        finance: Object.assign({}, career.finance, { transactions: career.finance.transactions.slice(-12), pockets: career.finance.pockets.slice(-12) }),
+        canonEvents: relevantCanon,
+        characters: relevantCharacters.map(characterContextRecord),
+        recentNews: selectRelevantContextRecords(career.news, query, 8),
+        currentSeason: currentSeason ? Object.assign({}, currentSeason, { matches: newestContextRecords(currentSeason.matches).slice(0, 10) }) : null,
+        finance: Object.assign({}, career.finance, { transactions: newestContextRecords(career.finance.transactions).slice(0, 10), pockets: newestContextRecords(career.finance.pockets).slice(0, 10) }),
         hall: career.hall,
-        calendar: career.calendar.slice(-16),
+        calendar: newestContextRecords(career.calendar).slice(0, 14),
         offPitch: career.offPitch
       },
       retrievalRequest: {
-        includeRelevantCharacters: true,
-        includeRecentCanon: true,
-        includeCurrentSeason: true,
-        includeSecretsByKnowledgeScope: true
+        strategy: "relevance-recency-v1",
+        queryTerms: query.terms.slice(0, 20),
+        selectedCharacterIds: relevantCharacters.map(function (character) { return character.id; }),
+        includeSecretsByKnowledgeScope: true,
+        excludedVisibility: "never-send"
       }
     };
+  }
+
+  function contextRetrievalQuery(career, currentMessage) {
+    var source = [currentMessage && currentMessage.content, currentMessage && currentMessage.action]
+      .concat(activeMessages(career).filter(function (message) { return message.role === "user"; }).slice(-4).map(function (message) { return message.content; }))
+      .join(" ");
+    var stopWords = { para: true, como: true, com: true, uma: true, que: true, quero: true, mais: true, agora: true, isso: true, esse: true, essa: true, meu: true, minha: true, voce: true, você: true };
+    var terms = normalizeKey(source).split(/[^a-z0-9]+/).filter(function (term) { return term.length >= 3 && !stopWords[term]; });
+    return { source: normalizeKey(source), terms: Array.from(new Set(terms)) };
+  }
+
+  function contextRecordTimestamp(record) {
+    if (!record || typeof record !== "object") return "";
+    return validDateOnly(record.occurredAt || record.date)
+      || clean(record.recordedAt || record.updatedAt || record.lastUpdated || record.createdAt);
+  }
+
+  function newestContextRecords(records) {
+    return (Array.isArray(records) ? records : []).filter(function (record) { return record && typeof record === "object"; }).slice().sort(function (left, right) {
+      return contextRecordTimestamp(right).localeCompare(contextRecordTimestamp(left));
+    });
+  }
+
+  function contextVisibilityAllowed(record, query, isCharacter) {
+    var visibility = normalizeKey(record && (record.visibility || record.details && record.details.visibility));
+    if (visibility === "never-send") return false;
+    if (visibility.indexOf("npc:") !== 0) return true;
+    var scope = visibility.slice(4);
+    if (!scope) return false;
+    return query.source.indexOf(normalizeKey(scope)) >= 0 || isCharacter && (query.source.indexOf(normalizeKey(record.id)) >= 0 || query.source.indexOf(normalizeKey(record.name)) >= 0);
+  }
+
+  function selectRelevantContextRecords(records, query, limit, isCharacter) {
+    return newestContextRecords(records).filter(function (record) {
+      return contextVisibilityAllowed(record, query, isCharacter);
+    }).map(function (record, index) {
+      var searchable = normalizeKey([record.name, record.title, record.summary, record.description, record.role, record.relationship, record.subject, record.trend].filter(Boolean).join(" "));
+      var score = query.terms.reduce(function (total, term) {
+        if (!searchable.includes(term)) return total;
+        return total + (searchable.split(/[^a-z0-9]+/).indexOf(term) >= 0 ? 8 : 3);
+      }, 0) + Math.max(0, 6 - index * 0.2);
+      return { record: record, score: score, index: index };
+    }).sort(function (left, right) {
+      return right.score - left.score || left.index - right.index;
+    }).slice(0, limit).map(function (entry) { return entry.record; });
   }
 
   function compactContextText(value, maximum) {
@@ -1554,17 +2141,55 @@
     };
   }
 
+  function normalizeDatedUpdates(incoming, module, receipt, dateKeys) {
+    if (incoming == null || !Array.isArray(incoming)) return incoming;
+    var keys = Array.isArray(dateKeys) && dateKeys.length ? dateKeys : ["date"];
+    return incoming.map(function (item) {
+      if (!item || typeof item !== "object" || Array.isArray(item)) return item;
+      var normalized = Object.assign({}, item);
+      var suppliedDate = "";
+      for (var index = 0; index < keys.length; index += 1) {
+        var candidate = clean(normalized[keys[index]]);
+        if (!candidate) continue;
+        suppliedDate = candidate;
+        break;
+      }
+      if (suppliedDate) {
+        var parsedDate = dateFromAny(suppliedDate);
+        if (!parsedDate) {
+          rejectMemoryReceipt(receipt, module, "Registro com data narrativa inválida.");
+          return null;
+        }
+        normalized[keys[0]] = parsedDate;
+      }
+      normalized.recordedAt = normalized.recordedAt || normalized.createdAt || new Date().toISOString();
+      return normalized;
+    }).filter(function (item) { return item !== null; });
+  }
+
   function applyMemoryUpdates(career, updates, origin) {
-    if (!updates || typeof updates !== "object") return;
+    var receipt = { records: [], rejected: [], totalApplied: 0, totalRejected: 0, verified: false };
+    if (!updates || typeof updates !== "object" || Array.isArray(updates)) return receipt;
     var updatedCurrentDate = validDateOnly(updates.currentDate);
-    if (updatedCurrentDate) career.currentDate = updatedCurrentDate;
-    upsertMany(career.news, updates.news, origin);
-    upsertCharacters(career.characters, updates.characters, origin);
-    upsertMany(career.canonEvents, updates.canonEvents, origin);
-    upsertMany(career.calendar, Array.isArray(updates.calendar) ? updates.calendar.map(normalizeCalendarEvent) : [], origin);
+    if (updatedCurrentDate) {
+      career.currentDate = updatedCurrentDate;
+      acceptMemoryReceipt(receipt, "currentDate", updatedCurrentDate);
+    } else if (clean(updates.currentDate)) rejectMemoryReceipt(receipt, "currentDate", "Data narrativa inválida.");
+    upsertMany(career.news, normalizeDatedUpdates(updates.news, "news", receipt, ["occurredAt", "date"]), origin, receipt, "news");
+    upsertCharacters(career.characters, updates.characters, origin, receipt);
+    upsertMany(career.canonEvents, normalizeDatedUpdates(updates.canonEvents, "canonEvents", receipt, ["occurredAt", "date"]), origin, receipt, "canonEvents");
+    var calendarUpdates = [];
+    if (Array.isArray(updates.calendar)) {
+      updates.calendar.forEach(function (item) {
+        var normalized = normalizeCalendarEvent(item);
+        if (!normalized.date) rejectMemoryReceipt(receipt, "calendar", "Evento sem data narrativa válida.");
+        else calendarUpdates.push(normalized);
+      });
+    }
+    upsertMany(career.calendar, calendarUpdates, origin, receipt, "calendar");
     if (Array.isArray(updates.seasons)) {
       updates.seasons.forEach(function (incoming) {
-        if (!incoming || !incoming.label) return;
+        if (!incoming || typeof incoming !== "object" || !clean(incoming.label)) return rejectMemoryReceipt(receipt, "seasons", "Temporada sem identificação.");
         var season = career.seasons.find(function (item) { return item.label === incoming.label; });
         if (!season) {
           season = Object.assign({ id: uid("season"), matches: [], createdInChatId: origin && origin.chatId || "" }, incoming);
@@ -1573,13 +2198,27 @@
         } else {
           Object.keys(incoming).forEach(function (key) { if (key !== "matches") season[key] = incoming[key]; });
         }
+        acceptMemoryReceipt(receipt, "seasons", season.id);
         var incomingMatches = Array.isArray(incoming.matches) ? incoming.matches.map(function (match) {
+          if (!match || typeof match !== "object" || Array.isArray(match)) {
+            rejectMemoryReceipt(receipt, "matches", "Partida proposta inválida.");
+            return null;
+          }
           var normalizedMatch = Object.assign({}, match);
+          var rawMatchDate = clean(normalizedMatch.date || normalizedMatch.occurredAt);
+          var normalizedMatchDate = dateFromAny(rawMatchDate);
+          if (rawMatchDate && !normalizedMatchDate) {
+            rejectMemoryReceipt(receipt, "matches", "Partida com data narrativa inválida.");
+            return null;
+          }
+          normalizedMatch.date = normalizedMatchDate;
+          normalizedMatch.recordedAt = normalizedMatch.recordedAt || normalizedMatch.createdAt || new Date().toISOString();
+          if (!normalizedMatch.id) normalizedMatch.id = uid("match");
           var sameTurn = normalizedMatch.sourceMessageId && season.matches.find(function (existingMatch) { return existingMatch.sourceMessageId === normalizedMatch.sourceMessageId; });
           if (sameTurn) normalizedMatch.id = sameTurn.id;
           return normalizedMatch;
-        }) : [];
-        upsertMany(season.matches, incomingMatches, origin);
+        }).filter(Boolean) : [];
+        upsertMany(season.matches, incomingMatches, origin, receipt, "matches");
         (season.matches || []).forEach(function (match) { syncMatchToCalendar(career, match); });
       });
     }
@@ -1587,27 +2226,53 @@
       if (Number.isFinite(Number(updates.finance.balance))) {
         career.finance.balance = Number(updates.finance.balance);
         career.finance.initialized = true;
+        acceptMemoryReceipt(receipt, "financeBalance", String(career.finance.balance));
       }
-      if (updates.finance.currency) career.finance.currency = clean(updates.finance.currency);
-      upsertMany(career.finance.transactions, updates.finance.transactions, origin);
-      upsertMany(career.finance.pockets, updates.finance.pockets, origin);
+      if (updates.finance.currency) {
+        career.finance.currency = clean(updates.finance.currency);
+        acceptMemoryReceipt(receipt, "financeCurrency", career.finance.currency);
+      }
+      upsertMany(career.finance.transactions, normalizeDatedUpdates(updates.finance.transactions, "transactions", receipt, ["date", "occurredAt"]), origin, receipt, "transactions");
+      upsertMany(career.finance.pockets, updates.finance.pockets, origin, receipt, "pockets");
     }
     if (updates.hall && typeof updates.hall === "object") {
-      upsertMany(career.hall.trophies, updates.hall.trophies, origin);
-      upsertMany(career.hall.records, updates.hall.records, origin);
-      upsertMany(career.hall.awards, updates.hall.awards, origin);
+      upsertMany(career.hall.trophies, updates.hall.trophies, origin, receipt, "trophies");
+      upsertMany(career.hall.records, updates.hall.records, origin, receipt, "records");
+      upsertMany(career.hall.awards, updates.hall.awards, origin, receipt, "awards");
     }
     if (updates.offPitch && typeof updates.offPitch === "object") {
-      if (typeof updates.offPitch.currentCity === "string") career.offPitch.currentCity = clean(updates.offPitch.currentCity);
-      if (typeof updates.offPitch.currentResidence === "string") career.offPitch.currentResidence = clean(updates.offPitch.currentResidence);
-      upsertMany(career.offPitch.houses, updates.offPitch.houses, origin);
+      if (typeof updates.offPitch.currentCity === "string") {
+        career.offPitch.currentCity = clean(updates.offPitch.currentCity);
+        acceptMemoryReceipt(receipt, "currentCity", career.offPitch.currentCity);
+      }
+      if (typeof updates.offPitch.currentResidence === "string") {
+        career.offPitch.currentResidence = clean(updates.offPitch.currentResidence);
+        acceptMemoryReceipt(receipt, "currentResidence", career.offPitch.currentResidence);
+      }
+      upsertMany(career.offPitch.houses, updates.offPitch.houses, origin, receipt, "houses");
     }
+    return receipt;
   }
 
-  function upsertMany(target, incoming, origin) {
-    if (!Array.isArray(target) || !Array.isArray(incoming)) return;
+  function acceptMemoryReceipt(receipt, module, id) {
+    if (!receipt || !clean(id)) return;
+    if (receipt.records.some(function (record) { return record.module === module && record.id === id; })) return;
+    receipt.records.push({ module: module, id: id });
+    receipt.totalApplied = receipt.records.length;
+  }
+
+  function rejectMemoryReceipt(receipt, module, reason) {
+    if (!receipt) return;
+    receipt.rejected.push({ module: module, reason: reason });
+    receipt.totalRejected = receipt.rejected.length;
+  }
+
+  function upsertMany(target, incoming, origin, receipt, module) {
+    if (!Array.isArray(target)) return rejectMemoryReceipt(receipt, module, "Destino local inválido.");
+    if (incoming == null) return;
+    if (!Array.isArray(incoming)) return rejectMemoryReceipt(receipt, module, "A coleção proposta não era uma lista.");
     incoming.forEach(function (item) {
-      if (!item || typeof item !== "object") return;
+      if (!item || typeof item !== "object" || Array.isArray(item)) return rejectMemoryReceipt(receipt, module, "Registro proposto inválido.");
       var normalized = Object.assign({}, item);
       normalized.id = normalized.id || uid("memory");
       var index = target.findIndex(function (existing) { return existing.id === normalized.id; });
@@ -1622,13 +2287,16 @@
         if (origin && origin.messageId) normalized.sourceMessageId = normalized.sourceMessageId || origin.messageId;
         target.push(normalized);
       }
+      acceptMemoryReceipt(receipt, module, normalized.id);
     });
   }
 
-  function upsertCharacters(target, incoming, origin) {
-    if (!Array.isArray(target) || !Array.isArray(incoming)) return;
+  function upsertCharacters(target, incoming, origin, receipt) {
+    if (!Array.isArray(target)) return rejectMemoryReceipt(receipt, "characters", "Destino local inválido.");
+    if (incoming == null) return;
+    if (!Array.isArray(incoming)) return rejectMemoryReceipt(receipt, "characters", "A coleção proposta não era uma lista.");
     incoming.forEach(function (item) {
-      if (!item || typeof item !== "object" || !clean(item.name)) return;
+      if (!item || typeof item !== "object" || !clean(item.name)) return rejectMemoryReceipt(receipt, "characters", "Personagem sem nome.");
       var itemName = normalizeKey(item.name);
       var index = target.findIndex(function (existing) {
         return existing.id === item.id || normalizeKey(existing.name) === itemName;
@@ -1639,7 +2307,9 @@
           sourceChatId: item.sourceChatId || origin && origin.chatId || "",
           createdInChatId: item.createdInChatId || origin && origin.chatId || ""
         });
-        target.push(normalizeCharacter(created));
+        var normalizedCreated = normalizeCharacter(created);
+        target.push(normalizedCreated);
+        acceptMemoryReceipt(receipt, "characters", normalizedCreated.id);
         return;
       }
       var existing = normalizeCharacter(target[index]);
@@ -1650,10 +2320,12 @@
       });
       if (origin && origin.chatId) merged.lastSourceChatId = origin.chatId;
       target[index] = normalizeCharacter(merged);
+      acceptMemoryReceipt(receipt, "characters", target[index].id);
     });
   }
 
   function startNewScene() {
+    if (ui.sending) return void toast("Aguarde a resposta atual ou cancele o envio antes de iniciar outro dia.", "error");
     var career = activeCareer();
     if (!career) return;
     var current = getActiveChat(career, false);
@@ -1666,6 +2338,7 @@
     ui.preparedShortcutAction = "";
     delete el.chatInput.dataset.shortcutAction;
     renderChat();
+    updateBackendStatus();
     toast("Novo dia iniciado. As conversas e o cânone anteriores foram preservados.");
     el.chatInput.focus();
   }
@@ -1914,7 +2587,7 @@
       sourceMessageId: message.id,
       sourceChatId: message.sourceChatId || career.activeChatId,
       createdInChatId: message.sourceChatId || career.activeChatId,
-      date: validField(fieldValue(fields, "data")),
+      date: dateFromAny(validField(fieldValue(fields, "data"))),
       season: seasonLabel,
       competition: validField(fieldValue(fields, "competicao")),
       phase: validField(fieldValue(fields, "fase")),
@@ -1941,7 +2614,8 @@
       id: uid("canon"),
       type: "match",
       title: homeTeam + " " + homeScore + " x " + awayScore + " " + awayTeam,
-      occurredAt: match.date || message.createdAt,
+      occurredAt: match.date,
+      recordedAt: message.createdAt,
       sourceMessageId: message.id,
       sourceChatId: match.sourceChatId,
       createdInChatId: match.sourceChatId,
@@ -2045,7 +2719,8 @@
       title: match.homeTeam + " " + match.homeScore + " x " + match.awayScore + " " + match.awayTeam,
       summary: summary,
       source: "KICK OFF · RELATO DO JOGADOR",
-      occurredAt: match.date || match.createdAt,
+      occurredAt: match.date,
+      recordedAt: new Date().toISOString(),
       createdAt: new Date().toISOString(),
       sourceMatchId: match.id,
       sourceMessageId: match.sourceMessageId,
@@ -2159,7 +2834,7 @@
     var secondaryTitle = clean(lead.secondaryTitle || supporting.secondaryTitle || supporting.title) || "A partida em detalhes";
     var story = clean(supporting.summary || lead.summary) || "A cobertura será ampliada conforme os acontecimentos públicos forem registrados no KICK OFF.";
     var caption = clean(lead.imageCaption || supporting.imageCaption) || firstSentence(story) || lead.title;
-    var kicker = clean(lead.kicker) || [formatDate(lead.occurredAt || lead.createdAt), lead.title, protagonist].filter(Boolean).join(" · ");
+    var kicker = clean(lead.kicker) || [lead.occurredAt ? formatDate(lead.occurredAt) : (clean(lead.chronologyLabel) || "DATA NÃO INFORMADA"), lead.title, protagonist].filter(Boolean).join(" · ");
 
     el.newsContent.innerHTML = [
       '<section class="fyx-paper">',
@@ -2258,20 +2933,26 @@
       button.setAttribute("aria-selected", String(active));
     });
     var characters = career.characters.map(normalizeCharacter).filter(function (character) {
-      if (character.category !== category) return false;
+      if (!query && character.category !== category) return false;
       var haystack = normalizeKey([character.name, character.role, character.relationship, character.summary, JSON.stringify(character.details || {})].join(" "));
       return !query || haystack.indexOf(query) >= 0;
-    }).sort(function (a, b) { return a.name.localeCompare(b.name, "pt-BR"); });
+    }).map(function (character) {
+      var name = normalizeKey(character.name);
+      var tokens = name.split(/[^a-z0-9]+/);
+      character.searchScore = !query ? 0 : name === query ? 100 : tokens.some(function (token) { return token === query; }) ? 90 : tokens.some(function (token) { return token.indexOf(query) === 0; }) ? 70 : name.indexOf(query) >= 0 ? 45 : 10;
+      return character;
+    }).sort(function (a, b) { return b.searchScore - a.searchScore || a.name.localeCompare(b.name, "pt-BR"); });
+    var importReport = characterImportReportMarkup();
     if (!characters.length) {
       var categoryMeta = characterCategoryMeta(category);
-      el.relationshipsContent.innerHTML = [
+      el.relationshipsContent.innerHTML = importReport + [
         '<div class="relationships-empty"><div><span>', escapeHTML(categoryMeta.label), '</span><h2>', query ? "Nenhum personagem encontrado." : "Nenhum personagem nesta categoria.", '</h2><p>',
-        query ? "Tente outro nome ou limpe a busca." : (category === "team" ? "Preencha os nomes do elenco no modelo de partida do KICK OFF ou cadastre alguém manualmente." : "Crie uma ficha agora ou deixe a IA registrar esta pessoa gradualmente durante o roleplay."),
+        query ? "A busca consultou todas as quatro categorias. Tente o nome completo ou limpe o campo." : (category === "team" ? "Preencha os nomes do elenco no modelo de partida do KICK OFF ou cadastre alguém manualmente." : "Crie uma ficha agora ou deixe a IA registrar esta pessoa gradualmente durante o roleplay."),
         '</p><button class="relationship-add" type="button" data-empty-add-character><span aria-hidden="true">+</span> NOVO PERSONAGEM</button></div></div>'
       ].join("");
       return;
     }
-    el.relationshipsContent.innerHTML = '<div class="relationship-grid">' + characters.map(function (character) {
+    el.relationshipsContent.innerHTML = importReport + '<div class="relationship-grid">' + characters.map(function (character) {
       var initials = characterInitials(character.name);
       var details = character.details || {};
       var relationshipLabel = character.relationship || relationshipScaleLabel(details.relationshipCurrent);
@@ -2282,10 +2963,18 @@
         '<div class="relationship-card__banner">', character.bannerData ? '<img src="' + escapeHTML(character.bannerData) + '" alt="" />' : "", '</div>',
         '<div class="relationship-card__body"><span class="relationship-avatar">', character.avatarData ? '<img src="' + escapeHTML(character.avatarData) + '" alt="" />' : escapeHTML(initials || "?"), '</span>',
         '<div class="relationship-card__meta"><h2>', escapeHTML(character.name || "Sem nome"), '</h2><span>', escapeHTML(level), '</span></div>',
-        '<span class="relationship-card__role">', escapeHTML(character.role || characterCategoryMeta(character.category).singular), ' · ', escapeHTML(relationshipLabel), '</span>',
+        '<span class="relationship-card__role">', query ? escapeHTML(characterCategoryMeta(character.category).label) + " · " : "", escapeHTML(character.role || characterCategoryMeta(character.category).singular), ' · ', escapeHTML(relationshipLabel), '</span>',
         '<p>', escapeHTML(summary), '</p><span class="relationship-card__edit">EDITAR FICHA →</span></div></button>'
       ].join("");
     }).join("") + "</div>";
+  }
+
+  function characterImportReportMarkup() {
+    if (!Array.isArray(ui.characterImportReport) || !ui.characterImportReport.length) return "";
+    var accepted = ui.characterImportReport.filter(function (item) { return item.status !== "rejected"; }).length;
+    return '<details class="character-import-report"><summary>' + accepted + ' de ' + ui.characterImportReport.length + ' arquivos aceitos · ver relatório</summary><ul>' + ui.characterImportReport.map(function (item) {
+      return '<li class="is-' + escapeHTML(item.status) + '"><strong>' + escapeHTML(item.file) + '</strong><span>' + escapeHTML(item.message) + '</span></li>';
+    }).join("") + '</ul></details>';
   }
 
   function changeRelationshipCategory(event) {
@@ -2307,6 +2996,7 @@
     var imported = 0;
     var updated = 0;
     var failed = [];
+    ui.characterImportReport = [];
     var firstCategory = "";
     for (var index = 0; index < files.length; index += 1) {
       var file = files[index];
@@ -2341,13 +3031,16 @@
         if (existingIndex >= 0) {
           career.characters[existingIndex] = character;
           updated += 1;
+          ui.characterImportReport.push({ file: file.name, status: "updated", message: "Ficha existente atualizada" });
         } else {
           career.characters.push(character);
           imported += 1;
+          ui.characterImportReport.push({ file: file.name, status: "accepted", message: "Novo personagem cadastrado" });
         }
         if (!firstCategory) firstCategory = character.category;
       } catch (error) {
         failed.push(file.name);
+        ui.characterImportReport.push({ file: file.name, status: "rejected", message: clean(error && error.message) || "Arquivo recusado" });
       }
     }
     if (imported || updated) {
@@ -2878,7 +3571,7 @@
     saveState();
     closeCharacterEditor();
     renderRelationships();
-    toast(index >= 0 ? "Ficha atualizada e enviada para a memória da IA." : "Personagem criado. Você pode abrir a ficha e adicionar mais detalhes quando quiser.");
+    toast(index >= 0 ? "Ficha atualizada na carreira local e disponível para os próximos contextos da IA." : "Personagem criado. Você pode abrir a ficha e adicionar mais detalhes quando quiser.");
   }
 
   function deleteCurrentCharacter() {
@@ -2947,18 +3640,25 @@
       return;
     }
     var previous = el.seasonSelect.value;
+    var orderedSeasons = career.seasons.slice().sort(function (left, right) {
+      return String(right.label || "").localeCompare(String(left.label || ""), "pt-BR", { numeric: true });
+    });
     el.seasonSelect.disabled = false;
-    el.seasonSelect.innerHTML = career.seasons.map(function (season) {
+    el.seasonSelect.innerHTML = orderedSeasons.map(function (season) {
       return '<option value="' + escapeHTML(season.id) + '">' + escapeHTML(season.label) + "</option>";
     }).join("");
     if (career.seasons.some(function (season) { return season.id === previous; })) el.seasonSelect.value = previous;
+    else {
+      var profileSeason = orderedSeasons.find(function (season) { return season.label === career.profile.season; });
+      if (profileSeason) el.seasonSelect.value = profileSeason.id;
+    }
   }
 
   function renderSeasons() {
     var career = activeCareer();
     if (!career) return;
     populateSeasonSelect();
-    var season = career.seasons.find(function (item) { return item.id === el.seasonSelect.value; }) || career.seasons[0];
+    var season = career.seasons.find(function (item) { return item.id === el.seasonSelect.value; }) || career.seasons.slice().sort(function (left, right) { return String(right.label || "").localeCompare(String(left.label || ""), "pt-BR", { numeric: true }); })[0];
     if (!season || !Array.isArray(season.matches) || !season.matches.length) {
       el.seasonsContent.innerHTML = emptyMarkup(
         "04",
@@ -2973,13 +3673,13 @@
       statCell(stats.matches, "PARTIDAS"), statCell(stats.minutes, "MINUTOS"), statCell(stats.goals, "GOLS"),
       statCell(stats.assists, "ASSISTÊNCIAS"), statCell(stats.averageRating ? formatDecimal(stats.averageRating) : "—", "NOTA MÉDIA"),
       statCell(stats.goalContributions, "PARTICIPAÇÕES"), '</div></section><section class="match-list"><div class="match-list__heading">ÚLTIMAS PARTIDAS NARRADAS</div>',
-      season.matches.map(function (match) {
+      newestContextRecords(season.matches).map(function (match) {
         var details = [];
         if (match.goals) details.push(match.goals + "G");
         if (match.assists) details.push(match.assists + "A");
         if (match.rating) details.push(formatDecimal(match.rating));
         return [
-          '<article class="match-row"><span class="match-row__date">', escapeHTML(formatDate(match.date || match.createdAt)), '</span>',
+          '<article class="match-row"><span class="match-row__date">', escapeHTML(formatDate(match.date)), '</span>',
           '<div class="match-row__fixture"><span>', escapeHTML(match.homeTeam), '</span><strong class="match-row__score">', match.homeScore, " — ", match.awayScore, '</strong><span>', escapeHTML(match.awayTeam), '</span></div>',
           '<span class="match-row__meta">', escapeHTML(details.join(" · ") || match.competition || "PARTIDA"), "</span></article>"
         ].join("");
@@ -3032,7 +3732,7 @@
       }).join("") : '<div class="pocket-item"><span>Nenhuma caixinha registrada</span><strong>—</strong></div>',
       '</div></section><section class="transaction-list">',
       finance.transactions.length ? finance.transactions.map(function (transaction) {
-        return '<article class="transaction-item"><span>' + escapeHTML(formatDate(transaction.date || transaction.createdAt)) + '</span><div><strong>' + escapeHTML(transaction.description || "Movimentação") + '</strong><span>' + escapeHTML(transaction.category || "") + '</span></div><strong>' + escapeHTML(formatSignedMoney(transaction.amount || 0, finance.currency)) + "</strong></article>";
+        return '<article class="transaction-item"><span>' + escapeHTML(formatDate(transaction.date)) + '</span><div><strong>' + escapeHTML(transaction.description || "Movimentação") + '</strong><span>' + escapeHTML(transaction.category || "") + '</span></div><strong>' + escapeHTML(formatSignedMoney(transaction.amount || 0, finance.currency)) + "</strong></article>";
       }).join("") : emptyMarkup("—", "Nenhuma movimentação.", "Gastos, ganhos e transferências confirmados pelo RP aparecerão nesta lista."),
       "</section></div>"
     ].join("");
@@ -3062,24 +3762,24 @@
     if (direct) return direct;
     var source = clean(value);
     var brazilian = source.match(/\b(\d{1,2})[./-](\d{1,2})[./-](\d{4})\b/);
-    if (brazilian) return brazilian[3] + "-" + String(brazilian[2]).padStart(2, "0") + "-" + String(brazilian[1]).padStart(2, "0");
+    if (brazilian) return validDateOnly(brazilian[3] + "-" + String(brazilian[2]).padStart(2, "0") + "-" + String(brazilian[1]).padStart(2, "0"));
     var normalized = normalizeKey(source);
     var monthNames = { jan: 1, janeiro: 1, fev: 2, fevereiro: 2, mar: 3, marco: 3, abr: 4, abril: 4, mai: 5, maio: 5, jun: 6, junho: 6, jul: 7, julho: 7, ago: 8, agosto: 8, set: 9, setembro: 9, out: 10, outubro: 10, nov: 11, novembro: 11, dez: 12, dezembro: 12 };
     var written = normalized.match(/\b(\d{1,2})\s+(?:de\s+)?([a-z]+)\s+(?:de\s+)?(\d{4})\b/);
-    if (written && monthNames[written[2]]) return written[3] + "-" + String(monthNames[written[2]]).padStart(2, "0") + "-" + String(written[1]).padStart(2, "0");
+    if (written && monthNames[written[2]]) return validDateOnly(written[3] + "-" + String(monthNames[written[2]]).padStart(2, "0") + "-" + String(written[1]).padStart(2, "0"));
     return "";
   }
 
   function latestCareerDate(career) {
     var dates = [];
     (career.calendar || []).forEach(function (event) { var date = dateFromAny(event.date || event.start); if (date) dates.push(date); });
-    (career.seasons || []).forEach(function (season) { (season.matches || []).forEach(function (match) { var date = dateFromAny(match.date || match.createdAt); if (date) dates.push(date); }); });
+    (career.seasons || []).forEach(function (season) { (season.matches || []).forEach(function (match) { var date = dateFromAny(match.date); if (date) dates.push(date); }); });
     (career.canonEvents || []).forEach(function (event) { var date = dateFromAny(event.occurredAt || event.date); if (date) dates.push(date); });
     return dates.sort().pop() || "";
   }
 
   function calendarEventFromMatch(match) {
-    var date = dateFromAny(match.date || match.createdAt);
+    var date = dateFromAny(match.date);
     if (!date) return null;
     var hasScore = match.homeScore !== "" && match.homeScore != null && match.awayScore !== "" && match.awayScore != null;
     return normalizeCalendarEvent({
@@ -3288,7 +3988,8 @@
   }
 
   function renderCalendar(career) {
-    var baseDate = dateFromAny(career.currentDate) || localDateKey(new Date());
+    var storyDate = dateFromAny(career.currentDate);
+    var baseDate = storyDate || localDateKey(new Date());
     if (!/^\d{4}-\d{2}$/.test(ui.calendarMonth)) ui.calendarMonth = baseDate.slice(0, 7);
     if (!ui.calendarSelectedDate) ui.calendarSelectedDate = baseDate;
     var monthParts = ui.calendarMonth.split("-");
@@ -3312,11 +4013,11 @@
       if (dayEvents.length > 1) eventButtons += '<span class="calendar-day-more">+' + (dayEvents.length - 1) + "</span>";
       var eventClass = primaryEvent ? " has-event calendar-day--" + primaryEvent.type : "";
       if (primaryEvent && primaryEvent.type === "match") eventClass += calendarMatchCompleted(primaryEvent) ? " has-completed-match" : " has-scheduled-match";
-      cells.push('<div class="calendar-day' + eventClass + (outside ? " is-outside" : "") + (current ? " is-current" : "") + (selected ? " is-selected" : "") + '" data-calendar-date="' + dateKey + '" role="button" tabindex="0"><span class="calendar-day__number">' + dayDate.getDate() + '</span><div class="calendar-day__events">' + eventButtons + "</div></div>");
+      cells.push('<div class="calendar-day' + eventClass + (outside ? " is-outside" : "") + (current ? " is-current" : "") + (selected ? " is-selected" : "") + '" data-calendar-date="' + dateKey + '"><button class="calendar-day__select" type="button" data-calendar-select="' + dateKey + '" aria-label="Selecionar ' + escapeHTML(formatDate(dateKey)) + '"><span class="calendar-day__number">' + dayDate.getDate() + '</span></button><div class="calendar-day__events">' + eventButtons + "</div></div>");
     }
     var selectedEvents = events.filter(function (event) { return event.date === ui.calendarSelectedDate; });
     el.careerContent.innerHTML = [
-      '<div class="career-calendar"><header class="calendar-toolbar"><div class="calendar-toolbar__actions"><button type="button" data-calendar-today>IR PARA A DATA ATUAL</button><button class="calendar-add-event" type="button" data-calendar-new><span>+</span> NOVO EVENTO</button></div></header>',
+      '<div class="career-calendar"><header class="calendar-toolbar">', storyDate ? "" : '<p class="calendar-story-date-warning">DATA DA HISTÓRIA NÃO DEFINIDA · exibindo o mês atual sem alterar a carreira</p>', '<div class="calendar-toolbar__actions"><button type="button" data-calendar-today>', storyDate ? "IR PARA A DATA DA HISTÓRIA" : "VER MÊS ATUAL", '</button><button class="calendar-add-event" type="button" data-calendar-new><span>+</span> NOVO EVENTO</button></div></header>',
       '<div class="calendar-workspace"><section class="calendar-board"><header class="calendar-month-nav"><button type="button" data-calendar-nav="-1" aria-label="Mês anterior">←</button><div><strong>', escapeHTML(calendarMonthTitle(monthDate)), '</strong><span>', year, '</span></div><button type="button" data-calendar-nav="1" aria-label="Próximo mês">→</button></header><div class="calendar-weekdays"><span>DOM</span><span>SEG</span><span>TER</span><span>QUA</span><span>QUI</span><span>SEX</span><span>SÁB</span></div><div class="calendar-grid" style="--calendar-weeks:', cellCount / 7, '">', cells.join(""), '</div></section>',
       '<aside class="calendar-rail"><div class="calendar-rail__date"><strong>', year, '</strong><span>', escapeHTML(calendarMonthTitle(monthDate)), '</span></div><div class="calendar-selected">',
       selectedEvents.length ? selectedEvents.map(function (event) { return '<button class="calendar-selected-event calendar-selected-event--' + escapeHTML(event.type) + '" type="button"' + (event.synthetic ? "" : ' data-calendar-event="' + escapeHTML(event.id) + '"') + '><span><strong>' + escapeHTML(event.title) + '</strong><small>' + escapeHTML(calendarSelectedEventMeta(career, event)) + '</small></span><i>' + calendarEventIcon(career, event) + "</i></button>"; }).join("") : '<p>Nenhum compromisso neste dia.<br />Clique no calendário ou em “Novo evento” para adicionar.</p>',
@@ -3349,7 +4050,7 @@
       var eventDay = eventButton.closest("[data-calendar-date]");
       if (eventDay) {
         ui.calendarSelectedDate = eventDay.dataset.calendarDate;
-        return renderCareerPage();
+        return openCalendarEventDialog(eventDay.dataset.calendarDate, eventButton.dataset.calendarEvent);
       }
       return openCalendarEventDialog("", eventButton.dataset.calendarEvent);
     }
@@ -3408,7 +4109,7 @@
         '<label><span>TEMPORADA</span><input name="season" type="text" value="' + escapeHTML(draft.season || activeCareer().profile.season || "") + '" /></label>',
         '<label><span>GOLS DO MANDANTE</span><input name="homeScore" type="number" min="0" value="' + escapeHTML(draft.homeScore == null ? "" : draft.homeScore) + '" /></label><label><span>GOLS DO VISITANTE</span><input name="awayScore" type="number" min="0" value="' + escapeHTML(draft.awayScore == null ? "" : draft.awayScore) + '" /></label>',
         '<label><span>MINUTOS JOGADOS</span><input name="minutes" type="number" min="0" max="130" value="' + escapeHTML(draft.minutes == null ? "" : draft.minutes) + '" /></label><label><span>GOLS DO JOGADOR</span><input name="goals" type="number" min="0" value="' + escapeHTML(draft.goals == null ? "" : draft.goals) + '" /></label>',
-        '<label><span>ASSISTÊNCIAS</span><input name="assists" type="number" min="0" value="' + escapeHTML(draft.assists == null ? "" : draft.assists) + '" /></label><label><span>NOTA</span><input name="rating" type="number" min="0" max="10" step="0.1" value="' + escapeHTML(draft.rating == null ? "" : draft.rating) + '" /></label>',
+        '<label><span>ASSISTÊNCIAS</span><input name="assists" type="number" min="0" value="' + escapeHTML(draft.assists == null ? "" : draft.assists) + '" /></label><label><span>NOTA</span><input name="rating" type="number" min="0" max="10.5" step="0.1" value="' + escapeHTML(draft.rating == null ? "" : draft.rating) + '" /></label>',
         '<label class="is-wide"><span>FORMAÇÃO / ESCALAÇÃO</span><textarea name="formation">' + escapeHTML(draft.formation || "") + '</textarea></label><label class="is-wide"><span>COMO OS GOLS ACONTECERAM</span><textarea name="goalDetails">' + escapeHTML(draft.goalDetails || "") + '</textarea></label><label class="is-wide"><span>REGISTRO COMPLETO DA PARTIDA</span><textarea name="highlights">' + escapeHTML(draft.highlights || draft.description || "") + "</textarea></label>");
     } else {
       common.push('<label class="is-wide"><span>TÍTULO</span><input name="title" type="text" required value="' + escapeHTML(draft.title || "") + '" placeholder="' + escapeHTML(CALENDAR_EVENT_META[draft.type].title) + '" /></label><label class="is-wide"><span>LOCAL</span><input name="location" type="text" value="' + escapeHTML(draft.location || "") + '" /></label><label class="is-wide"><span>DETALHES</span><textarea name="description">' + escapeHTML(draft.description || "") + "</textarea></label>");
@@ -3478,7 +4179,7 @@
     career.updatedAt = new Date().toISOString();
     ui.calendarMonth = draft.date.slice(0, 7);
     ui.calendarSelectedDate = draft.date;
-    saveState();
+    if (!saveState()) return;
     closeCalendarEventDialog();
     renderCareerPage();
     populateSeasonSelect();
@@ -3587,31 +4288,18 @@
 
   function renderPlayerProfileForm(career) {
     var profile = career.profile;
+    var controls = REGISTRATION_QUESTIONS.filter(function (question) {
+      return ["username", "password", "confirmPassword", "avatarData", "confirmed"].indexOf(question.key) < 0;
+    }).map(function (question) {
+      var value = profile[question.key];
+      var label = question.prompt.replace(/[?¿]\s*$/, "");
+      if (question.type === "textarea" || question.type === "multi") return profileEditTextarea(label, question.key, registrationValue(value));
+      var type = question.type === "date" || question.type === "number" ? question.type : "text";
+      return profileEditField(label, question.key, registrationValue(value), type, question.type === "multi" ? "Separe por vírgulas" : "Não definido");
+    }).join("");
     return [
-      '<form class="profile-edit-form profile-edit-form--player" id="playerProfileForm"><header><div><span>EDIÇÃO</span><h2>FICHA DO JOGADOR</h2><p>Alterações salvas passam a integrar o contexto objetivo consultado pela IA.</p></div></header><div class="profile-edit-grid">',
-      profileEditField("Nome completo", "playerName", profile.playerName, "text"),
-      profileEditField("Nome na camisa", "shirtName", profile.shirtName, "text"),
-      profileEditField("Data de nascimento", "birthDate", profile.birthDate, "date"),
-      profileEditField("Nacionalidade principal", "primaryNationality", profile.primaryNationality || profile.nationality, "text"),
-      profileEditField("Cidade de nascimento", "birthCity", profile.birthCity, "text"),
-      profileEditField("Cidade atual", "currentCity", profile.currentCity, "text"),
-      profileEditField("Clube atual", "currentClub", profile.currentClub, "text"),
-      profileEditField("Liga", "league", profile.league, "text"),
-      profileEditField("Temporada", "season", profile.season, "text"),
-      profileEditField("Número atual", "shirtNumber", profile.shirtNumber, "text"),
-      profileEditField("Posição principal", "position", profile.position, "text"),
-      profileEditField("Posições secundárias", "secondaryPosition", profile.secondaryPosition, "text"),
-      profileEditField("Pé dominante", "dominantFoot", profile.dominantFoot, "text"),
-      profileEditField("Altura (cm)", "height", profile.height, "number"),
-      profileEditField("Peso (kg)", "weight", profile.weight, "number"),
-      profileEditField("Estilo de jogo", "playStyle", registrationValue(profile.playStyle), "text", "Separe por vírgulas"),
-      profileEditTextarea("Pontos fortes técnicos", "technicalStrengths", registrationValue(profile.technicalStrengths)),
-      profileEditTextarea("Pontos fortes mentais", "mentalStrengths", registrationValue(profile.mentalStrengths)),
-      profileEditTextarea("Pontos fortes físicos", "physicalStrengths", registrationValue(profile.physicalStrengths)),
-      profileEditTextarea("Fraquezas", "weaknesses", registrationValue(profile.weaknesses)),
-      profileEditTextarea("Personalidade", "personality", profile.personality),
-      profileEditTextarea("História", "backstory", profile.backstory),
-      profileEditTextarea("Objetivos", "careerGoals", profile.careerGoals),
+      '<form class="profile-edit-form profile-edit-form--player" id="playerProfileForm"><header><div><span>EDIÇÃO</span><h2>FICHA DO JOGADOR</h2><p>Alterações salvas integram o contexto local selecionado para os próximos envios à IA, conforme seu consentimento.</p></div></header><div class="profile-edit-grid">',
+      controls,
       '</div><div class="profile-form-actions"><button type="button" data-profile-cancel>CANCELAR</button><button type="submit">SALVAR FICHA <span>→</span></button></div></form>'
     ].join("");
   }
@@ -3673,14 +4361,14 @@
         career.profile.avatarData = ui.pendingAvatar;
       }
       career.updatedAt = new Date().toISOString();
-      saveState();
+      if (!saveState()) return;
       ui.profileEdit = "";
       ui.pendingAvatar = "";
       renderProfile();
       toast("Perfil do usuário atualizado.");
       return;
     }
-    var arrayFields = ["technicalStrengths", "mentalStrengths", "physicalStrengths", "weaknesses"];
+    var arrayFields = REGISTRATION_QUESTIONS.filter(function (question) { return question.type === "multi"; }).map(function (question) { return question.key; });
     var changed = [];
     Array.from(data.entries()).forEach(function (entry) {
       var key = entry[0];
@@ -3698,18 +4386,19 @@
       toast("Nenhuma informação foi alterada.");
       return;
     }
-    if (career.profile.primaryNationality) career.profile.nationality = [career.profile.primaryNationality, career.profile.secondNationality, career.profile.thirdNationality].filter(Boolean).join(", ");
-    career.offPitch.currentCity = career.profile.currentCity || career.offPitch.currentCity;
+    career.profile.nationality = [career.profile.primaryNationality, career.profile.secondNationality, career.profile.thirdNationality].filter(Boolean).join(", ");
+    career.profile.secondaryPosition = registrationValue(career.profile.secondaryPositions);
+    career.offPitch.currentCity = clean(career.profile.currentCity);
     var updatedAt = new Date().toISOString();
     career.profileRevision = { updatedAt: updatedAt, changedFields: changed.slice() };
     career.profileChangeHistory.push({ id: uid("profile-change"), updatedAt: updatedAt, changedFields: changed.slice() });
-    career.canonEvents.push({ id: uid("canon"), type: "profile_update", title: "Ficha objetiva do jogador atualizada", summary: "Campos alterados pelo usuário: " + changed.join(", ") + ".", occurredAt: updatedAt, certainty: "fact" });
+    career.canonEvents.push({ id: uid("canon"), type: "profile_update", title: "Ficha objetiva do jogador atualizada", description: "Campos alterados pelo usuário: " + changed.join(", ") + ".", occurredAt: validDateOnly(career.currentDate), recordedAt: updatedAt, certainty: "fact" });
     career.updatedAt = updatedAt;
-    saveState();
+    if (!saveState()) return;
     ui.profileEdit = "";
     renderAll();
     renderProfile();
-    toast("Ficha salva e atualizada no contexto da IA.");
+    toast("Ficha salva na carreira local e disponível para os próximos contextos da IA.");
   }
 
   function renderWheelEntries() {
@@ -3873,6 +4562,8 @@
     ui.settingsSaved = false;
     el.spotifyClientId.value = ui.settingsDraft.spotifyClientId || "";
     el.spotifyRedirectUri.value = getSpotifyRedirectUri();
+    el.settingsDataStatus.textContent = "";
+    updateAiConsentStatus();
     updateBackendStatus();
     document.body.classList.add("is-modal-open");
     el.settingsModal.showModal();
@@ -3889,12 +4580,37 @@
     toast("Configurações salvas.");
   }
 
-  function updateBackendStatus() {
-    var configured = Boolean(clean(state.settings.apiBaseUrl || PUBLIC_CONFIG.apiBaseUrl));
+  async function updateBackendStatus() {
+    var baseUrl = clean(state.settings.apiBaseUrl || PUBLIC_CONFIG.apiBaseUrl);
+    var configured = Boolean(baseUrl);
     var provider = clean(PUBLIC_CONFIG.aiProvider || "Cloudflare Workers AI");
-    el.backendStatusText.textContent = configured ? provider + " · integrado pelo InyffX" : "Aguardando publicação do backend InyffX";
-    el.backendStatusText.parentElement.classList.toggle("is-connected", configured);
-    setAiStatus(configured ? "IA GRATUITA CONECTADA" : "IA AINDA NÃO PUBLICADA", configured);
+    if (!configured) {
+      el.backendStatusText.textContent = "Aguardando publicação do backend InyffX";
+      el.backendStatusText.parentElement.classList.remove("is-connected");
+      setAiStatus("IA AINDA NÃO PUBLICADA", false);
+      return false;
+    }
+    el.backendStatusText.textContent = "Verificando conexão real…";
+    el.backendStatusText.parentElement.classList.remove("is-connected");
+    var timer = null;
+    try {
+      var controller = new AbortController();
+      timer = window.setTimeout(function () { controller.abort(); }, 7000);
+      var response = await fetch(joinUrl(baseUrl, "/health"), { method: "GET", cache: "no-store", signal: controller.signal });
+      var payload = await response.json().catch(function () { return {}; });
+      if (!response.ok || payload.status !== "ok") throw new Error("HEALTH_CHECK_FAILED");
+      el.backendStatusText.textContent = provider + " · conexão verificada";
+      el.backendStatusText.parentElement.classList.add("is-connected");
+      setAiStatus("IA GRATUITA CONECTADA", true);
+      return true;
+    } catch (error) {
+      el.backendStatusText.textContent = "Backend configurado, mas indisponível agora";
+      el.backendStatusText.parentElement.classList.remove("is-connected");
+      setAiStatus("IA TEMPORARIAMENTE OFFLINE", false);
+      return false;
+    } finally {
+      if (timer) window.clearTimeout(timer);
+    }
   }
 
   function setAiStatus(label, connected) {
@@ -4349,11 +5065,14 @@
   async function init() {
     cacheElements();
     bindEvents();
+    await hydrateStateFromIndexedDB();
     populateLoginCareers();
     el.spotifyRedirectUri.value = getSpotifyRedirectUri();
     await handleSpotifyCallback();
     if (activeCareer()) startApp();
     else showAuth();
+    stateRecoveryWarnings.forEach(function (warning) { toast(warning, "error"); });
+    if ("serviceWorker" in navigator && window.isSecureContext) navigator.serviceWorker.register("sw.js").catch(function () {});
   }
 
   init();

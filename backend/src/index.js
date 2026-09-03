@@ -1,5 +1,5 @@
-import { generateNarrative, generateMemoryUpdates, DEFAULT_MODEL } from "./provider.js";
-import { buildModelMessages, buildMemoryMessages, buildRepairMessages, inferTurnContract } from "./prompt.js";
+import { generateNarrative, generateStructuredTurn, DEFAULT_MODEL } from "./provider.js";
+import { buildModelMessages, buildRepairMessages, inferTurnContract } from "./prompt.js";
 
 const ROLEPLAY_PATH = "/v1/roleplay/message";
 const MAX_BODY_CHARACTERS = 300000;
@@ -39,6 +39,14 @@ function cleanNarrative(value) {
     .replace(/^\s*[-*_]{3,}\s*$/gm, "")
     .replace(/[ \t]+$/gm, "")
     .replace(/\n{4,}/g, "\n\n\n");
+}
+
+function validDateOnly(value) {
+  const match = cleanText(value, 50).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return "";
+  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  if (date.getUTCFullYear() !== Number(match[1]) || date.getUTCMonth() !== Number(match[2]) - 1 || date.getUTCDate() !== Number(match[3])) return "";
+  return `${match[1]}-${match[2]}-${match[3]}`;
 }
 
 function cleanId(value) {
@@ -183,13 +191,17 @@ function cleanCanon(item, index, careerId, now) {
   const description = cleanText(item.description || item.summary, 1600);
   if (!title && !description) return null;
   const identity = `${careerId}|canon|${item.sourceMessageId || ""}|${title}|${item.occurredAt || ""}`;
+  const requestedStoryDate = cleanText(item.occurredAt || item.date, 120);
+  const occurredAt = validDateOnly(requestedStoryDate);
   return {
     id: itemId(item, "canon", identity),
     title: title || "Acontecimento da carreira",
     description,
     type: cleanText(item.type || item.category || "rp_fact", 60),
     certainty: cleanText(item.certainty || "FATO_DO_RP", 40),
-    occurredAt: cleanText(item.occurredAt || item.createdAt || now, 40),
+    occurredAt,
+    chronologyLabel: cleanText(item.chronologyLabel || (!occurredAt ? requestedStoryDate : ""), 120),
+    recordedAt: cleanText(item.recordedAt || item.createdAt || now, 40),
     participants: stringArray(item.participants, 20, 120),
     sourceMessageId: cleanId(item.sourceMessageId)
   };
@@ -203,6 +215,8 @@ function cleanNews(item, index, careerId, now) {
   const requestedType = cleanText(item.type, 30).toLowerCase();
   const type = NEWS_TYPES.has(requestedType) ? requestedType : "headline";
   const identity = `${careerId}|news|${item.sourceMessageId || ""}|${type}|${title}`;
+  const requestedStoryDate = cleanText(item.occurredAt || item.date, 120);
+  const occurredAt = validDateOnly(requestedStoryDate);
   return {
     id: itemId(item, "news", identity),
     type,
@@ -218,8 +232,10 @@ function cleanNews(item, index, careerId, now) {
     kicker: cleanText(item.kicker, 320),
     image: cleanText(item.image, 220),
     sentiment: cleanText(item.sentiment, 40),
-    occurredAt: cleanText(item.occurredAt || item.createdAt || now, 40),
-    createdAt: cleanText(item.createdAt || now, 40),
+    occurredAt,
+    chronologyLabel: cleanText(item.chronologyLabel || (!occurredAt ? requestedStoryDate : ""), 120),
+    recordedAt: cleanText(item.recordedAt || item.createdAt || now, 40),
+    createdAt: cleanText(item.createdAt || item.recordedAt || now, 40),
     sourceMessageId: cleanId(item.sourceMessageId)
   };
 }
@@ -283,7 +299,8 @@ function cleanMatch(item, index, careerId, now) {
   const numeric = (value) => Number.isFinite(Number(value)) ? Number(value) : 0;
   return {
     id: itemId(item, "match", identity),
-    date: cleanText(item.date || item.createdAt || now, 40),
+    date: validDateOnly(item.date),
+    recordedAt: cleanText(item.recordedAt || item.createdAt || now, 40),
     time: cleanText(item.time, 20),
     status: cleanText(item.status, 30),
     competition: cleanText(item.competition, 160),
@@ -328,10 +345,11 @@ function cleanFinance(value, careerId, now) {
     if (!description || !Number.isFinite(Number(item.amount))) return null;
     return {
       id: itemId(item, "transaction", `${careerId}|${item.date || now}|${description}|${index}`),
-      date: cleanText(item.date || item.createdAt || now, 40),
+      date: validDateOnly(item.date),
       description,
       category: cleanText(item.category, 100),
       amount: Number(item.amount),
+      recordedAt: cleanText(item.recordedAt || item.createdAt || now, 40),
       createdAt: cleanText(item.createdAt || now, 40)
     };
   });
@@ -374,13 +392,15 @@ function cleanCalendar(value, careerId, now) {
     if (!item || typeof item !== "object") return null;
     const title = cleanText(item.title, 240);
     if (!title) return null;
-    const start = cleanText(item.start || item.date || item.time, 50);
+    const date = validDateOnly(item.date || item.start);
+    const time = cleanText(item.time || ((cleanText(item.start, 50).match(/T(\d{2}:\d{2})/) || [])[1]), 20);
+    const start = date ? `${date}${time ? `T${time}` : ""}` : "";
     return {
       id: itemId(item, "calendar", `${careerId}|${start}|${title}|${index}`),
       title,
-      start: start || now,
-      date: cleanText(item.date, 40),
-      time: cleanText(item.time, 20),
+      start,
+      date,
+      time,
       location: cleanText(item.location, 220),
       type: cleanText(item.type, 100),
       description: cleanText(item.description, 1000),
@@ -393,7 +413,8 @@ function cleanCalendar(value, careerId, now) {
       phase: cleanText(item.phase, 160),
       stadium: cleanText(item.stadium, 220),
       sourceMatchId: cleanId(item.sourceMatchId),
-      sourceMessageId: cleanId(item.sourceMessageId)
+      sourceMessageId: cleanId(item.sourceMessageId),
+      recordedAt: cleanText(item.recordedAt || item.createdAt || now, 40)
     };
   });
 }
@@ -426,7 +447,7 @@ export function sanitizeMemoryUpdates(value, careerId, now = new Date().toISOStr
   const source = value && typeof value === "object" ? value : {};
   const characters = cleanList(source.characters, 24, (item, index) => cleanCharacter(item, index, careerId, now))
     .filter((character) => !isProtagonistCharacter(character, protagonistName));
-  const currentDate = /^\d{4}-\d{2}-\d{2}$/.test(cleanText(source.currentDate, 40)) ? cleanText(source.currentDate, 40) : "";
+  const currentDate = validDateOnly(source.currentDate);
   return {
     currentDate,
     canonEvents: cleanList(source.canonEvents, 20, (item, index) => cleanCanon(item, index, careerId, now)),
@@ -440,12 +461,27 @@ export function sanitizeMemoryUpdates(value, careerId, now = new Date().toISOStr
   };
 }
 
+function hasMeaningfulMemoryUpdates(value) {
+  const source = value && typeof value === "object" ? value : {};
+  if (source.currentDate) return true;
+  if (["canonEvents", "news", "characters", "seasons", "calendar"].some((key) => Array.isArray(source[key]) && source[key].length)) return true;
+  const finance = source.finance && typeof source.finance === "object" ? source.finance : {};
+  if (Object.prototype.hasOwnProperty.call(finance, "balance")) return true;
+  if (["transactions", "pockets"].some((key) => Array.isArray(finance[key]) && finance[key].length)) return true;
+  const hall = source.hall && typeof source.hall === "object" ? source.hall : {};
+  if (["trophies", "awards", "records"].some((key) => Array.isArray(hall[key]) && hall[key].length)) return true;
+  const offPitch = source.offPitch && typeof source.offPitch === "object" ? source.offPitch : {};
+  return Object.values(offPitch).some((item) => Array.isArray(item) ? item.length : Boolean(cleanText(item, 400)));
+}
+
 function normalizeRequest(body, env) {
   if (!body || typeof body !== "object") throw new ApiError(400, "INVALID_JSON", "Envie um objeto JSON válido.");
   const careerId = cleanId(body.careerId);
   if (!careerId) throw new ApiError(400, "INVALID_CAREER", "A carreira informada é inválida.");
   const maximumInput = numberFromEnv(env.MAX_INPUT_CHARS, 12000, 20000);
-  const content = cleanText(body.message && body.message.content, maximumInput);
+  const rawContent = String(body.message && body.message.content == null ? "" : body.message.content).trim();
+  if (rawContent.length > maximumInput) throw new ApiError(413, "MESSAGE_TOO_LARGE", `A mensagem ultrapassa o limite de ${maximumInput} caracteres. Reduza o texto sem perder os fatos essenciais.`);
+  const content = rawContent;
   if (!content) throw new ApiError(400, "EMPTY_MESSAGE", "Escreva uma mensagem antes de enviar.");
   return {
     schemaVersion: cleanText(body.schemaVersion || "1.0", 20),
@@ -503,10 +539,7 @@ function openingDirectionReply(payload) {
 function storyDate(payload) {
   const explicit = cleanText(payload.context && payload.context.currentDate, 40);
   const explicitMatch = explicit.match(/^(\d{4}-\d{2}-\d{2})/);
-  if (explicitMatch) return explicitMatch[1];
-  const createdAt = cleanText(payload.message && payload.message.createdAt, 40);
-  const createdMatch = createdAt.match(/^(\d{4}-\d{2}-\d{2})/);
-  return createdMatch ? createdMatch[1] : "";
+  return explicitMatch ? validDateOnly(explicitMatch[1]) : "";
 }
 
 function calendarItems(payload) {
@@ -585,14 +618,15 @@ function deterministicFinanceReply(payload, monthOnly) {
   const currentDate = storyDate(payload);
   const currentMonth = currentDate.slice(0, 7);
   const selected = monthOnly && currentMonth
-    ? transactions.filter((item) => cleanText(item.date || item.createdAt, 40).slice(0, 7) === currentMonth)
+    ? transactions.filter((item) => validDateOnly(item.date).slice(0, 7) === currentMonth)
     : transactions.slice(-8);
   const heading = monthOnly ? `Extrato de ${currentMonth ? `${currentMonth.slice(5, 7)}/${currentMonth.slice(0, 4)}` : "mês não identificado"}` : "Resumo financeiro cadastrado";
   const balanceLine = Number.isFinite(Number(finance.balance)) ? `Saldo: ${formatMoneyPt(finance.balance, currency)}` : "Saldo: não cadastrado";
   if (!selected.length) return `${heading}\n\n${balanceLine}\nNenhuma transação cadastrada${monthOnly ? " neste mês" : ""}.`;
   const entries = selected.map((item, index) => {
     const amount = Number(item.amount);
-    return `${index + 1}. ${formatDatePt(item.date || item.createdAt)} — ${cleanText(item.description, 240) || "Transação"} — ${formatMoneyPt(amount, currency)}${cleanText(item.category, 100) ? ` · ${cleanText(item.category, 100)}` : ""}`;
+    const transactionDate = validDateOnly(item.date);
+    return `${index + 1}. ${transactionDate ? formatDatePt(transactionDate) : "data não cadastrada"} — ${cleanText(item.description, 240) || "Transação"} — ${formatMoneyPt(amount, currency)}${cleanText(item.category, 100) ? ` · ${cleanText(item.category, 100)}` : ""}`;
   });
   if (!monthOnly) return `${heading}\n\n${balanceLine}\n\nTransações recentes\n${entries.join("\n")}`;
   const income = selected.reduce((total, item) => total + Math.max(0, Number(item.amount) || 0), 0);
@@ -647,6 +681,7 @@ function parsePurchase(payload) {
   const brDate = content.match(/\b(\d{2})\/(\d{2})\/(\d{4})\b/);
   let date = isoDate ? `${isoDate[1]}-${isoDate[2]}-${isoDate[3]}` : brDate ? `${brDate[3]}-${brDate[2]}-${brDate[1]}` : "";
   if (!date && /\bhoje\b/i.test(content)) date = storyDate(payload);
+  date = validDateOnly(date);
   return { description, category, amount, date };
 }
 
@@ -657,7 +692,7 @@ function deterministicShortcutOutcome(payload, contract, now) {
   if (action === "FINANCE_OVERVIEW") return { reply: deterministicFinanceReply(payload, false), skipMemory: true, updates: {} };
   if (action === "MONTH_STATEMENT") return { reply: deterministicFinanceReply(payload, true), skipMemory: true, updates: {} };
   if (action === "ACHIEVEMENTS") return { reply: deterministicAchievementsReply(payload), skipMemory: true, updates: {} };
-  if (isEditorialShortcut(action)) return { reply: "Atualizando a cobertura com os fatos registrados.", skipMemory: true, updates: {}, changed: true };
+  if (isEditorialShortcut(action)) return { reply: "Preparando a cobertura a partir dos fatos disponíveis.", skipMemory: true, updates: {}, changed: true };
   if (action !== "REGISTER_PURCHASE") return null;
 
   const purchase = parsePurchase(payload);
@@ -667,7 +702,7 @@ function deterministicShortcutOutcome(payload, contract, now) {
   if (!purchase.date) missing.push("data");
   if (missing.length) {
     return {
-      reply: `Ainda não registrei a compra. Informe ${missing.join(", ")} para que a transação seja salva sem suposições.`,
+      reply: `A proposta da compra ainda está incompleta. Informe ${missing.join(", ")} para prepará-la sem suposições.`,
       skipMemory: true,
       updates: {}
     };
@@ -683,16 +718,18 @@ function deterministicShortcutOutcome(payload, contract, now) {
     description: purchase.description,
     category: purchase.category,
     amount,
+    recordedAt: now,
     createdAt: now
   };
   const financeUpdate = { currency, transactions: [transaction], pockets: [] };
   if (hasBalance) financeUpdate.balance = existingBalance + amount;
   const confirmation = [
-    `Compra registrada: ${purchase.description}.`,
+    `Proposta de compra preparada: ${purchase.description}.`,
     `Valor: ${formatMoneyPt(amount, currency)}.`,
     purchase.category ? `Categoria: ${purchase.category}.` : "",
     `Data: ${formatDatePt(purchase.date)}.`,
-    hasBalance ? `Saldo atualizado: ${formatMoneyPt(financeUpdate.balance, currency)}.` : "O saldo anterior não estava cadastrado, então somente a transação foi adicionada."
+    hasBalance ? `Saldo resultante: ${formatMoneyPt(financeUpdate.balance, currency)}.` : "O saldo anterior não estava cadastrado, então a proposta contém somente a transação.",
+    "Confira o recibo da interface para saber exatamente o que foi gravado."
   ].filter(Boolean).join(" ");
   const updates = { finance: financeUpdate };
   const unchangedCurrentDate = cleanText(payload.context && payload.context.currentDate, 40).match(/^\d{4}-\d{2}-\d{2}/);
@@ -722,7 +759,8 @@ function fallbackMatchNews(payload, now) {
     title: scoreTitle,
     summary: `O resultado informado pelo protagonista foi confirmado como fato da carreira.${performance}`,
     source: "FYX NEWS",
-    occurredAt: cleanText(payload.message && payload.message.createdAt, 40) || now,
+    occurredAt: storyDate(payload),
+    recordedAt: now,
     createdAt: now,
     sourceMessageId: cleanId(payload.message && payload.message.id)
   }];
@@ -941,7 +979,7 @@ export function buildVerifiedMatchPackage(payload) {
 
 function verifiedMatchNews(payload, match, now) {
   if (!match) return [];
-  const occurredAt = cleanText(match.date || payload.message && payload.message.createdAt, 40) || now;
+  const occurredAt = validDateOnly(match.date) || storyDate(payload);
   const sourceMessageId = cleanId(payload.message && payload.message.id);
   const baseIdentity = payload.careerId + "|" + payload.turnId + "|" + match.scoreTitle;
   const performance = match.goals > 0
@@ -1024,6 +1062,7 @@ function verifiedMatchNews(payload, match, now) {
     id: "news-" + stableHash(baseIdentity + "|" + item.type + "|" + index),
     ...item,
     occurredAt,
+    recordedAt: now,
     createdAt: now,
     sourceMessageId
   }));
@@ -1031,7 +1070,7 @@ function verifiedMatchNews(payload, match, now) {
 
 function applyVerifiedMatchMemory(memoryUpdates, payload, match, now) {
   if (!match) return memoryUpdates;
-  const occurredAt = cleanText(match.date || payload.message && payload.message.createdAt, 40) || now;
+  const occurredAt = validDateOnly(match.date) || storyDate(payload);
   const sourceMessageId = cleanId(payload.message && payload.message.id);
   const seasonLabel = cleanText(
     payload.context && payload.context.profile && payload.context.profile.season
@@ -1047,6 +1086,7 @@ function applyVerifiedMatchMemory(memoryUpdates, payload, match, now) {
     type: "partida",
     certainty: "FATO_DO_JOGO",
     occurredAt,
+    recordedAt: now,
     participants: [match.homeTeam, match.awayTeam, match.protagonistName].filter(Boolean),
     sourceMessageId
   }];
@@ -1055,7 +1095,8 @@ function applyVerifiedMatchMemory(memoryUpdates, payload, match, now) {
     label: seasonLabel,
     matches: [{
       id: "match-" + stableHash(payload.careerId + "|" + occurredAt + "|" + match.scoreTitle),
-      date: cleanText(match.date || occurredAt, 40),
+      date: occurredAt,
+      recordedAt: now,
       status: "completed",
       competition: match.competition,
       phase: match.phase,
@@ -1082,9 +1123,18 @@ function shortcutFactContext(payload, now) {
   const season = memory.currentSeason && typeof memory.currentSeason === "object" ? memory.currentSeason : {};
   const matches = Array.isArray(season.matches) ? season.matches : [];
   const completedMatches = matches.filter((item) => item && item.status !== "scheduled" && Number.isFinite(Number(item.homeScore)) && Number.isFinite(Number(item.awayScore)));
-  const match = completedMatches[completedMatches.length - 1] || matches[matches.length - 1] || null;
+  const mostRecent = (items, fields) => {
+    const ranked = items.map((item, index) => ({
+      item,
+      index,
+      date: fields.map((field) => validDateOnly(item && item[field])).find(Boolean) || ""
+    }));
+    ranked.sort((left, right) => right.date.localeCompare(left.date) || left.index - right.index);
+    return ranked.length ? ranked[0].item : null;
+  };
+  const match = mostRecent(completedMatches, ["date"]) || mostRecent(matches, ["date"]) || null;
   const canon = Array.isArray(memory.canonEvents) ? memory.canonEvents : [];
-  const event = canon[canon.length - 1] || null;
+  const event = mostRecent(canon, ["occurredAt", "date"]) || null;
   const playerName = cleanText(payload.context && payload.context.profile && payload.context.profile.playerName || "O jogador", 160);
   const hasScore = match && Number.isFinite(Number(match.homeScore)) && Number.isFinite(Number(match.awayScore));
   const matchTitle = match && match.homeTeam && match.awayTeam
@@ -1100,7 +1150,7 @@ function shortcutFactContext(payload, now) {
     title: matchTitle || cleanText(event && (event.title || event.description), 260) || `momento atual de ${playerName}`,
     eventSummary: cleanText(event && (event.description || event.summary || event.title), 1200),
     declaration: cleanText(declaration && declaration.content, 900),
-    occurredAt: cleanText(match && match.date || event && event.occurredAt || payload.context && payload.context.currentDate || now, 40)
+    occurredAt: validDateOnly(match && match.date) || validDateOnly(event && event.occurredAt) || storyDate(payload)
   };
 }
 
@@ -1115,7 +1165,8 @@ function shortcutNewsItem(payload, now, index, item) {
     trend: cleanText(item.trend, 180),
     sentiment: cleanText(item.sentiment, 40),
     postCount: cleanText(item.postCount, 40),
-    occurredAt: cleanText(item.occurredAt || now, 40),
+    occurredAt: validDateOnly(item.occurredAt),
+    recordedAt: now,
     createdAt: now,
     sourceMessageId: cleanId(payload.message && payload.message.id)
   };
@@ -1133,15 +1184,15 @@ function safeEditorialReply(payload, contract, now, memoryUpdates) {
   const trends = [...new Set(news.map((item) => cleanText(item && item.trend, 180)).filter(Boolean))].slice(0, 4);
   if (HEADLINE_SHORTCUT_ACTIONS.has(action)) {
     if (action === "SPORT_CONTROVERSY") {
-      return `FYX NEWS\n\nNão há base registrada suficiente para afirmar uma nova polêmica esportiva sobre ${fact.title}. A página FYX NEWS foi atualizada apenas com a leitura factual do acontecimento, sem criar incidente, declaração ou controvérsia.`;
+      return `FYX NEWS\n\nNão há base registrada suficiente para afirmar uma nova polêmica esportiva sobre ${fact.title}. Uma leitura factual foi preparada, sem criar incidente, declaração ou controvérsia. Confira o recibo abaixo para saber o que foi gravado na página FYX NEWS.`;
     }
-    return `FYX NEWS\n\nManchete principal: ${fact.title}.\n\nA edição completa foi atualizada na página FYX NEWS com leituras jornalísticas separadas dos fatos confirmados. Nenhum lance, número ou declaração ausente foi acrescentado.`;
+    return `FYX NEWS\n\nManchete principal: ${fact.title}.\n\nUma edição completa foi preparada com leituras jornalísticas separadas dos fatos confirmados. Nenhum lance, número ou declaração ausente foi acrescentado. O recibo abaixo confirma o que entrou na página FYX NEWS.`;
   }
   if (SOCIAL_SHORTCUT_ACTIONS.has(action)) {
     const trendLine = trends.length ? `\n\nEm alta: ${trends.join(" · ")}.` : "";
-    return `REDES SOCIAIS\n\nAs redes estão repercutindo ${fact.title} com apoio, críticas e análises de perfis diferentes.${trendLine}\n\nO feed completo foi atualizado na página REDES SOCIAIS usando somente o que já é público na carreira.`;
+    return `REDES SOCIAIS\n\nAs redes estão repercutindo ${fact.title} com apoio, críticas e análises de perfis diferentes.${trendLine}\n\nUm feed completo foi preparado usando somente o que já é público na carreira. O recibo abaixo confirma o que entrou na página REDES SOCIAIS.`;
   }
-  return `FOFOCAS\n\nA página FOFOCAS foi atualizada com a conversa pública relacionada a ${fact.title}. Cada item está marcado como rumor, especulação ou reação de fãs; nenhum segredo privado foi apresentado como fato.${trends.length ? `\n\nEm alta: ${trends.join(" · ")}.` : ""}`;
+  return `FOFOCAS\n\nUma seleção da conversa pública relacionada a ${fact.title} foi preparada. Cada item está marcado como rumor, especulação ou reação de fãs; nenhum segredo privado foi apresentado como fato.${trends.length ? `\n\nEm alta: ${trends.join(" · ")}.` : ""}\n\nO recibo abaixo confirma o que entrou na página FOFOCAS.`;
 }
 
 function ensureShortcutMemory(memoryUpdates, payload, contract, now) {
@@ -1231,8 +1282,6 @@ export function narrativeNeedsRepair(reply, payload, mode) {
   if (mode !== "LIVE_DIALOGUE") return false;
   const narrative = normalizedLanguage(reply);
   const current = normalizedLanguage(payload.message && payload.message.content, 12000);
-  const dialogueLines = String(reply || "").split(/\r?\n/).filter((line) => /^\s*[—-]\s*\S/.test(line));
-  if (dialogueLines.length > 1) return true;
   if (/\bvoce\s+(?:tem|tera)\s+\d+\s+minutos?\b/.test(narrative)) return true;
   if (/\b(?:e hora de sair|a ligacao termina|a chamada termina)\b/.test(narrative)) return true;
   return CONTROLLED_PLAYER_ACTIONS.some((action) => {
@@ -1244,13 +1293,13 @@ export function narrativeNeedsRepair(reply, payload, mode) {
 export function trimLiveDialogue(reply) {
   const lines = String(reply || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   const kept = [];
-  let dialogueSeen = false;
+  let dialogueCount = 0;
   for (const line of lines) {
     const isDialogue = /^[—-]\s*\S/.test(line);
-    if (isDialogue && dialogueSeen) break;
-    if (!isDialogue && dialogueSeen) break;
+    if (isDialogue && dialogueCount >= 6) continue;
     kept.push(line);
-    if (isDialogue) dialogueSeen = true;
+    if (isDialogue) dialogueCount += 1;
+    if (kept.length >= 12) break;
   }
   return cleanNarrative(kept.join("\n"));
 }
@@ -1276,12 +1325,15 @@ async function handleRoleplay(request, env, origin) {
   if (openingNeedsDirection(payload)) {
     const now = new Date().toISOString();
     const reply = openingDirectionReply(payload);
+    const emptyUpdates = sanitizeMemoryUpdates({}, payload.careerId, now);
     return jsonResponse({
       schemaVersion: "1.1",
       turnId: payload.turnId,
       reply,
       message: { id: `message-${crypto.randomUUID()}`, content: reply, createdAt: now },
-      memoryUpdates: sanitizeMemoryUpdates({}, payload.careerId, now),
+      proposedUpdates: emptyUpdates,
+      memoryUpdates: emptyUpdates,
+      uncertainties: [],
       meta: {
         provider: String(env.AI_PROVIDER || "cloudflare-workers-ai"),
         model: String(env.AI_MODEL || DEFAULT_MODEL),
@@ -1298,6 +1350,7 @@ async function handleRoleplay(request, env, origin) {
   const now = new Date().toISOString();
   const shortcutOutcome = deterministicShortcutOutcome(payload, turnContract, now);
   let rawModelResponse = null;
+  let modelSource = {};
   let reply = verifiedMatch
     ? cleanNarrative(buildVerifiedMatchPackage(payload))
     : cleanNarrative(shortcutOutcome && shortcutOutcome.reply);
@@ -1307,7 +1360,7 @@ async function handleRoleplay(request, env, origin) {
   if (!reply) {
     const messages = buildModelMessages(payload, maximumContext);
     try {
-      rawModelResponse = await generateNarrative(env, messages, { mode: turnContract.mode });
+      rawModelResponse = await generateStructuredTurn(env, messages, { mode: turnContract.mode });
     } catch (error) {
       console.error("Workers AI request failed", error && error.message ? error.message : error);
       throw providerFailure(error);
@@ -1316,6 +1369,7 @@ async function handleRoleplay(request, env, origin) {
     const modelPayload = parseModelPayload(rawModelResponse);
     reply = cleanNarrative(modelPayload && (modelPayload.reply || (modelPayload.message && modelPayload.message.content)));
     if (!reply) throw new ApiError(502, "INVALID_AI_RESPONSE", "A IA respondeu sem uma cena utilizável. Tente novamente.");
+    modelSource = modelPayload && (modelPayload.proposedUpdates || modelPayload.memoryUpdates || modelPayload.updates) || {};
 
     if (narrativeNeedsRepair(reply, payload, turnContract.mode)) {
       narrativeRepaired = true;
@@ -1329,22 +1383,15 @@ async function handleRoleplay(request, env, origin) {
       }
       reply = trimLiveDialogue(reply);
       if (narrativeNeedsRepair(reply, payload, turnContract.mode)) reply = strictLiveFallback(reply);
+      modelSource = {};
     }
   }
 
-  let rawMemoryResponse = null;
   let memorySource = {};
   if (shortcutOutcome && shortcutOutcome.skipMemory) {
     memorySource = shortcutOutcome.updates || {};
   } else {
-    try {
-      const memoryMessages = buildMemoryMessages(payload, reply, maximumContext);
-      rawMemoryResponse = await generateMemoryUpdates(env, memoryMessages);
-      const parsedMemory = parseModelPayload(rawMemoryResponse);
-      memorySource = parsedMemory && (parsedMemory.memoryUpdates || parsedMemory.updates || parsedMemory) || {};
-    } catch (error) {
-      console.error("Workers AI memory extraction failed", error && error.message ? error.message : error);
-    }
+    memorySource = modelSource;
   }
   let memoryUpdates = sanitizeMemoryUpdates(
     memorySource,
@@ -1362,6 +1409,7 @@ async function handleRoleplay(request, env, origin) {
   const editorialReply = safeEditorialReply(payload, turnContract, now, memoryUpdates);
   if (editorialReply) reply = cleanNarrative(editorialReply);
 
+  const uncertainties = stringArray((parseModelPayload(rawModelResponse) || {}).uncertainties, 12, 280);
   return jsonResponse({
     schemaVersion: "1.1",
     turnId: payload.turnId,
@@ -1371,15 +1419,17 @@ async function handleRoleplay(request, env, origin) {
       content: reply,
       createdAt: now
     },
+    proposedUpdates: memoryUpdates,
     memoryUpdates,
+    uncertainties,
     meta: {
       provider: String(env.AI_PROVIDER || "cloudflare-workers-ai"),
       model: String(env.AI_MODEL || DEFAULT_MODEL),
-      memoryModel: String(env.AI_MEMORY_MODEL || env.AI_MODEL || DEFAULT_MODEL),
       mode: turnContract.mode,
       narrativeRepaired,
       matchFactChecked,
-      memoryUpdated: Boolean(rawMemoryResponse || shortcutOutcome && shortcutOutcome.changed || isEditorialShortcut(turnContract.action)),
+      updatesProposed: hasMeaningfulMemoryUpdates(memoryUpdates),
+      normalModelCalls: rawModelResponse ? 1 : 0,
       deterministicShortcut: Boolean(shortcutOutcome || isEditorialShortcut(turnContract.action)),
       freeTier: true
     }
@@ -1398,7 +1448,7 @@ export default {
         provider: String(env.AI_PROVIDER || "cloudflare-workers-ai"),
         model: String(env.AI_MODEL || DEFAULT_MODEL),
         freeTier: true
-      }, 200, "");
+      }, 200, "*");
     }
 
     const origin = requestOrigin(request, env);

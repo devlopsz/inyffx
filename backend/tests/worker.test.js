@@ -6,6 +6,7 @@ import {
   MEMORY_EXTRACTION_SYSTEM_PROMPT,
   buildModelMessages,
   buildMemoryMessages,
+  fitContext,
   inferTurnContract,
   sanitizeContext
 } from "../src/prompt.js";
@@ -52,10 +53,13 @@ test("separa a narrativa da extração de memória e normaliza as duas", async (
     AI: {
       run: async (model, options) => {
         calls.push({ model, options });
-        if (!options.response_format) return { response: "O **treinador** fecha o tablet e levanta os olhos. — Chegou cedo. Precisamos conversar sobre o próximo jogo." };
         return { response: JSON.stringify({
-          characters: [{ name: "Rui Costa", role: "Treinador", relationship: "Profissional", relationshipLevel: 55 }],
-          news: [{ type: "social", title: "Torcida comenta o treino", summary: "A expectativa aumentou.", source: "FYX Social" }]
+          reply: "O **treinador** fecha o tablet e levanta os olhos. — Chegou cedo. Precisamos conversar sobre o próximo jogo.",
+          proposedUpdates: {
+            characters: [{ name: "Rui Costa", role: "Treinador", relationship: "Profissional", relationshipLevel: 55 }],
+            news: [{ type: "social", title: "Torcida comenta o treino", summary: "A expectativa aumentou.", source: "FYX Social" }]
+          },
+          uncertainties: []
         }) };
       }
     }
@@ -72,18 +76,17 @@ test("separa a narrativa da extração de memória e normaliza as duas", async (
   assert.equal(payload.memoryUpdates.characters[0].name, "Rui Costa");
   assert.match(payload.memoryUpdates.characters[0].id, /^character-/);
   assert.equal(payload.memoryUpdates.news[0].type, "social");
-  assert.equal(payload.meta.memoryUpdated, true);
-  assert.equal(calls.length, 2);
+  assert.equal(payload.meta.updatesProposed, true);
+  assert.equal(payload.meta.normalModelCalls, 1);
+  assert.equal(calls.length, 1);
   assert.equal(calls[0].model, "@cf/zai-org/glm-4.7-flash");
   assert.equal("reasoning_effort" in calls[0].options, false);
   assert.equal(calls[0].options.chat_template_kwargs.enable_thinking, false);
-  assert.equal(calls[0].options.max_completion_tokens, 1800);
+  assert.equal(calls[0].options.max_completion_tokens, 2000);
   assert.equal("max_tokens" in calls[0].options, false);
-  assert.equal("response_format" in calls[0].options, false);
+  assert.equal(calls[0].options.response_format.type, "json_object");
   assert.equal(calls[0].options.messages.at(-1).role, "user");
-  assert.equal(calls[1].options.max_completion_tokens, 900);
-  assert.equal(calls[1].options.response_format.type, "json_object");
-  assert.match(calls[1].options.messages[0].content, /registrador objetivo de memória/i);
+  assert.equal(calls[0].options.messages.some((message) => /JSON válido/i.test(message.content)), true);
 });
 
 test("gera pacote pós-jogo e memória somente com os fatos enviados", async () => {
@@ -96,10 +99,9 @@ test("gera pacote pós-jogo e memória somente com os fatos enviados", async () 
     ALLOWED_ORIGINS: origin,
     RATE_LIMITER: { limit: async () => ({ success: true }) },
     AI: {
-      run: async (_model, options) => {
+      run: async () => {
         calls += 1;
-        assert.equal(options.response_format.type, "json_object");
-        return { response: '{"canonEvents":[],"news":[],"characters":[]}' };
+        throw new Error("Uma partida verificada não deve depender do modelo.");
       }
     }
   });
@@ -108,7 +110,7 @@ test("gera pacote pós-jogo e memória somente com os fatos enviados", async () 
   const generated = buildVerifiedMatchPackage(body);
 
   assert.equal(response.status, 200);
-  assert.equal(calls, 1);
+  assert.equal(calls, 0);
   assert.equal(payload.meta.mode, "MATCH_REPORT");
   assert.equal(payload.meta.matchFactChecked, true);
   assert.equal(parsed.scoreTitle, "Chelsea 2 x 1 Napoli");
@@ -260,13 +262,33 @@ test("executa atalho de atualização e devolve a camada estruturada para o fron
   assert.equal(payload.meta.mode, "DATA_UPDATE");
   assert.equal(payload.meta.deterministicShortcut, true);
   assert.equal(aiCalled, false);
-  assert.match(payload.reply, /registrada/i);
+  assert.match(payload.reply, /proposta de compra preparada/i);
+  assert.match(payload.reply, /recibo da interface/i);
   assert.equal(payload.memoryUpdates.finance.transactions[0].amount, -900);
   assert.equal(payload.memoryUpdates.finance.transactions[0].description.toLocaleLowerCase("pt-BR"), "chuteiras");
   assert.equal(payload.memoryUpdates.finance.transactions[0].category.toLocaleLowerCase("pt-BR"), "equipamento");
   assert.equal(payload.memoryUpdates.finance.transactions[0].date, "2026-09-01");
   assert.equal(payload.memoryUpdates.finance.balance, 4100);
   assert.equal(payload.memoryUpdates.currentDate, "2026-09-01");
+});
+
+test("não prepara compra determinística com uma data impossível", async () => {
+  const body = validBody();
+  body.message.action = "REGISTER_PURCHASE";
+  body.message.content = "Comprei chuteiras por R$ 900. Registre como equipamento em 31/02/2026.";
+  body.context.currentDate = "";
+  body.context.memory.finance = { currency: "BRL", balance: 5000, transactions: [] };
+  let aiCalled = false;
+  const response = await worker.fetch(request(body), {
+    ALLOWED_ORIGINS: origin,
+    RATE_LIMITER: { limit: async () => ({ success: true }) },
+    AI: { run: async () => { aiCalled = true; throw new Error("A validação determinística não deve chamar o modelo."); } }
+  });
+  const payload = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(aiCalled, false);
+  assert.match(payload.reply, /informe data/i);
+  assert.equal((((payload.memoryUpdates || {}).finance || {}).transactions || []).length, 0);
 });
 
 test("consulta a agenda de modo determinístico sem inventar estádio ou compromissos", async () => {
@@ -308,14 +330,70 @@ test("aceita contexto local grande de fichas importadas antes de compactá-lo pa
     ALLOWED_ORIGINS: origin,
     RATE_LIMITER: { limit: async () => ({ success: true }) },
     AI: {
-      run: async (_model, options) => options.response_format
-        ? { response: '{"canonEvents":[],"news":[],"characters":[]}' }
-        : { response: "O personagem responde normalmente, sem perder a continuidade." }
+      run: async () => ({ response: JSON.stringify({
+        reply: "O personagem responde normalmente, sem perder a continuidade.",
+        proposedUpdates: {},
+        uncertainties: []
+      }) })
     }
   });
   const payload = await response.json();
   assert.equal(response.status, 200);
   assert.match(payload.reply, /responde normalmente/i);
+});
+
+test("impõe teto rígido ao contexto depois da seleção por relevância", () => {
+  const sanitized = sanitizeContext({
+    profile: { playerName: "Jogador QA", backstory: "origem ".repeat(4000) },
+    recentMessages: Array.from({ length: 30 }, (_, index) => ({ role: index % 2 ? "assistant" : "user", content: `turno ${index} ${"x".repeat(1800)}` })),
+    memory: {
+      canonEvents: Array.from({ length: 30 }, (_, index) => ({ title: `Fato ${index}`, description: "y".repeat(1800) })),
+      characters: Array.from({ length: 30 }, (_, index) => ({ name: `NPC ${index}`, summary: "z".repeat(1800), knownFacts: ["f".repeat(900)] })),
+      recentNews: Array.from({ length: 30 }, (_, index) => ({ title: `Notícia ${index}`, summary: "n".repeat(1800) })),
+      calendar: Array.from({ length: 30 }, (_, index) => ({ title: `Evento ${index}`, description: "c".repeat(1200) }))
+    }
+  });
+  const fitted = fitContext(sanitized, 8000);
+  assert.ok(JSON.stringify(fitted).length <= 8000);
+  assert.ok(fitted.recentMessages.length <= 5);
+});
+
+test("mantém data narrativa vazia quando a data é desconhecida ou inválida", () => {
+  const recordedAt = "2026-09-03T12:00:00.000Z";
+  const updates = sanitizeMemoryUpdates({
+    currentDate: "2026-02-31",
+    canonEvents: [{ title: "Fato sem data", occurredAt: "2026-02-31" }],
+    news: [{ title: "Notícia sem data", createdAt: recordedAt }],
+    seasons: [{ label: "2026/27", matches: [{ homeTeam: "A", awayTeam: "B", date: "amanhã" }] }],
+    finance: { transactions: [{ description: "Compra", amount: -10, date: "03/09/2026" }] },
+    calendar: [{ title: "Evento", date: "2026-13-01" }]
+  }, "career-dates", recordedAt, "Jogador QA");
+
+  assert.equal(updates.currentDate, "");
+  assert.equal(updates.canonEvents[0].occurredAt, "");
+  assert.equal(updates.canonEvents[0].recordedAt, recordedAt);
+  assert.equal(updates.news[0].occurredAt, "");
+  assert.equal(updates.news[0].recordedAt, recordedAt);
+  assert.equal(updates.seasons[0].matches[0].date, "");
+  assert.equal(updates.seasons[0].matches[0].recordedAt, recordedAt);
+  assert.equal(updates.finance.transactions[0].date, "");
+  assert.equal(updates.calendar[0].date, "");
+  assert.equal(updates.calendar[0].recordedAt, recordedAt);
+});
+
+test("recusa mensagem acima do limite antes de consumir IA", async () => {
+  const body = validBody();
+  body.message.content = "x".repeat(12001);
+  let called = false;
+  const response = await worker.fetch(request(body), {
+    ALLOWED_ORIGINS: origin,
+    RATE_LIMITER: { limit: async () => ({ success: true }) },
+    AI: { run: async () => { called = true; } }
+  });
+  const payload = await response.json();
+  assert.equal(response.status, 413);
+  assert.equal(payload.error.code, "MESSAGE_TOO_LARGE");
+  assert.equal(called, false);
 });
 
 test("detecta controle do protagonista e repara um diálogo antes de salvar a memória", async () => {
@@ -328,23 +406,26 @@ test("detecta controle do protagonista e repara um diálogo antes de salvar a me
     AI: {
       run: async (_model, options) => {
         calls.push(options);
-        if (calls.length === 1) return { response: "Você liga e Iris atende.\n— Oi, amor.\n— Estou bem.\nVocê desliga e sai de casa." };
-        if (calls.length === 2) return { response: "Iris atende após dois toques.\n— Oi, amor. Como você está antes do jogo?" };
-        return { response: '{"characters":[{"name":"Iris Eva","role":"Namorada"}],"news":[]}' };
+        if (calls.length === 1) return { response: JSON.stringify({
+          reply: "Você liga e Iris atende.\n— Oi, amor.\n— Estou bem.\nVocê desliga e sai de casa.",
+          proposedUpdates: { characters: [{ name: "Iris Eva", role: "Namorada" }] },
+          uncertainties: []
+        }) };
+        return { response: "Iris atende após dois toques.\n— Oi, amor. Como você está antes do jogo?" };
       }
     }
   });
   const payload = await response.json();
   assert.equal(response.status, 200);
-  assert.equal(calls.length, 3);
+  assert.equal(calls.length, 2);
   assert.equal(payload.meta.narrativeRepaired, true);
   assert.equal(payload.reply, "Iris atende após dois toques.\n— Oi, amor. Como você está antes do jogo?");
   assert.doesNotMatch(payload.reply, /você desliga|você sai/i);
-  assert.equal(payload.memoryUpdates.characters[0].name, "Iris Eva");
+  assert.equal(payload.memoryUpdates.characters.length, 0);
 
   assert.equal(narrativeNeedsRepair("Você liga.\n— Oi.", body, "LIVE_DIALOGUE"), false);
-  assert.equal(narrativeNeedsRepair("— Oi.\n— Estou bem.", body, "LIVE_DIALOGUE"), true);
-  assert.equal(trimLiveDialogue("A chamada conecta.\n— Oi.\n— Estou bem."), "A chamada conecta.\n— Oi.");
+  assert.equal(narrativeNeedsRepair("— Oi.\n— Estou bem.", body, "LIVE_DIALOGUE"), false);
+  assert.equal(trimLiveDialogue("A chamada conecta.\n— Oi.\n— Estou bem."), "A chamada conecta.\n— Oi.\n— Estou bem.");
 });
 
 test("recusa origens não autorizadas antes de consumir IA", async () => {
@@ -526,6 +607,8 @@ test("saudação inicial pede o ponto de partida sem inventar cena ou ação", a
   assert.equal(response.status, 200);
   assert.equal(called, false);
   assert.equal(payload.meta.guardedOpening, true);
+  assert.deepEqual(payload.proposedUpdates, payload.memoryUpdates);
+  assert.deepEqual(payload.uncertainties, []);
   assert.match(payload.reply, /^Por onde começamos, Caio QA\?/);
   assert.match(payload.reply, /Nada acontece até você escolher o ponto de partida\.$/);
   assert.doesNotMatch(payload.reply, /Stamford Bridge|treino|vestiário|menu|videogame/i);
@@ -540,21 +623,20 @@ test("configura Qwen sem raciocínio exposto e com o limite de saída compatíve
     AI: {
       run: async (model, options) => {
         calls.push({ model, options });
-        return options.response_format
-          ? { choices: [{ message: { content: '{"canonEvents":[],"news":[],"characters":[]}' } }] }
-          : { choices: [{ message: { content: "O treinador fecha a pasta. — Pode falar." } }] };
+        return { choices: [{ message: { content: JSON.stringify({
+          reply: "O treinador fecha a pasta. — Pode falar.",
+          proposedUpdates: {},
+          uncertainties: []
+        }) } }] };
       }
     }
   });
   assert.equal(response.status, 200);
-  assert.equal(calls.length, 2);
+  assert.equal(calls.length, 1);
   assert.equal(calls[0].model, "@cf/qwen/qwen3-30b-a3b-fp8");
-  assert.equal(calls[0].options.max_tokens, 1800);
+  assert.equal(calls[0].options.max_tokens, 2000);
   assert.equal("max_completion_tokens" in calls[0].options, false);
   assert.equal("chat_template_kwargs" in calls[0].options, false);
   assert.match(calls[0].options.messages.at(-2).content, /\/no_think$/);
-  assert.equal("response_format" in calls[0].options, false);
-  assert.equal(calls[1].options.max_tokens, 900);
-  assert.equal(calls[1].options.response_format.type, "json_object");
-  assert.match(calls[1].options.messages.at(-2).content, /\/no_think$/);
+  assert.equal(calls[0].options.response_format.type, "json_object");
 });

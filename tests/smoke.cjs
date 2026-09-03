@@ -27,6 +27,8 @@ const requiredFiles = [
   "index.html",
   "styles.css",
   "app.js",
+  "sw.js",
+  "tests/audit-save.cjs",
   "registration-data.js",
   "character-data.js",
   "calendar-shields.js",
@@ -34,6 +36,7 @@ const requiredFiles = [
   "assets/config.js",
   "mod/pics/logo-inyffx.png",
   "mod/pics/login/inyffx-background-initial.png",
+  "mod/pics/login/inyffx-background-initial.webp",
   "mod/pics/login/soccer-ball-button.svg",
   "mod/pics/favicon.ico",
   "mod/pics/icons/engrenagem.svg",
@@ -66,6 +69,7 @@ const html = read("index.html");
 const manifest = JSON.parse(read("manifest.webmanifest"));
 const css = read("styles.css");
 const app = read("app.js");
+const serviceWorker = read("sw.js");
 const registrationSource = read("registration-data.js");
 const characterSource = read("character-data.js");
 const calendarManifestSource = read("calendar-shields.js");
@@ -82,7 +86,8 @@ function appFunctionSource(name) {
 
 check(!/Cruyff Sans Mono|font-family\s*:\s*[^;]*\bmono\b/i.test(combinedSource), "nenhuma fonte mono é usada na interface");
 check(/font-family:\s*"Cruyff Sans"/i.test(css), "Cruyff Sans é a família visual da interface");
-check(html.includes("mod/pics/login/inyffx-background-initial.png") || css.includes("mod/pics/login/inyffx-background-initial.png"), "login usa o fundo fornecido");
+check(html.includes("mod/pics/login/inyffx-background-initial.webp") || css.includes("mod/pics/login/inyffx-background-initial.webp"), "login usa a versão WebP otimizada do fundo fornecido");
+check(fs.statSync(path.join(root, "mod/pics/login/inyffx-background-initial.webp")).size < 1024 * 1024, "fundo inicial otimizado fica abaixo de 1 MB");
 check(html.includes("mod/pics/login/soccer-ball-button.svg"), "login usa a bola fornecida no botão");
 check(html.includes('href="mod/pics/favicon.ico"'), "favicon oficial do InyffX está configurado");
 check((html.match(/mod\/pics\/logo-inyffx\.png/g) || []).length >= 3, "logo do InyffX aparece no login, cadastro e hub");
@@ -113,6 +118,16 @@ check(app.includes('SAVE_BACKUP_KEY = "inyffx-backup-before-import-v1"') && app.
 check(app.includes("parseImportedSave") && app.includes("Number(payload.version) !== 2") && app.includes("Array.isArray(payload.careers)"), "save é validado antes de alterar os dados locais");
 check(app.includes("async function importLocalSave") && app.includes("careers: importedCareers"), "importação substitui as carreiras somente após confirmação");
 check(app.includes("sessionStorage.setItem(SESSION_KEY, active.id)") && app.includes("localStorage.setItem(PERSISTENT_SESSION_KEY, active.id)"), "carreira importada é aberta e mantida conectada no navegador");
+check(app.includes('PERSISTENCE_DB_NAME = "inyffx-local-v1"') && app.includes("openPersistenceDatabase") && app.includes("writeIndexedSnapshot"), "save possui espelho durável no IndexedDB");
+check(app.includes("localStorage.getItem(STORAGE_KEY) !== serialized") && app.includes("flushStatePersistence") && app.includes("previousRaw"), "gravação é verificada e preserva rollback do estado anterior");
+check(app.includes('objectStore("backups")') && app.includes("slice(5)") && app.includes("restoreAutomaticBackup"), "backups automáticos são limitados e restauráveis");
+check(html.includes('id="exportCurrentSave"') && html.includes('id="restoreAutomaticBackup"') && html.includes('id="deleteCurrentCareer"'), "configurações oferecem exportação, restauração e exclusão local");
+check(html.includes('id="aiConsentStatus"') && app.includes("ensureAiDataConsent") && app.includes("revokeAiConsent"), "primeiro envio à IA exige consentimento revogável");
+check(html.includes('id="legalDialog"') && app.includes("openLegalDialog") && html.includes("© 2026 InyffX") && !html.includes("© 2027"), "termos, privacidade e copyright atual estão disponíveis");
+check(app.includes('navigator.serviceWorker.register("sw.js")') && serviceWorker.includes('addEventListener("install"') && serviceWorker.includes('addEventListener("fetch"'), "manifesto possui service worker real e versionado");
+check(html.includes('http-equiv="Content-Security-Policy"') && html.includes('name="referrer"'), "políticas básicas de conteúdo e referência protegem a versão estática");
+check(html.includes("A senha é uma trava deste navegador") && app.includes('fetch(joinUrl(baseUrl, "/health")'), "login local e estado real do backend são explicados e verificados");
+check(!/screenshot|captura de tela/i.test(html + app), "OFF THE PITCH não promete envio de captura de tela inexistente");
 
 const backgrounds = {
   "kick-off": "kick-off.jpg",
@@ -156,6 +171,11 @@ check(referenceData.countries.length >= 40 && referenceData.cities.length >= 35 
 check(app.includes("Essa opção não foi encontrada ou não existe."), "aviso obrigatório para opção não encontrada foi implementado");
 check(app.includes("Seguir mesmo assim"), "fallback Seguir mesmo assim foi implementado");
 check(app.includes("calculateAge"), "idade é calculada automaticamente pela data de nascimento");
+check(/q\("backstory"[\s\S]*?maxLength:\s*4000/.test(registrationSource), "história inicial aceita até 4.000 caracteres em todas as camadas");
+check(app.includes("visibleRegistrationQuestions().forEach") && app.includes("Não definido"), "revisão final mostra todos os campos visíveis do cadastro");
+check(app.includes("createInitialCharacters") && app.includes("createInitialCareerCanon") && app.includes("initialHallEntries"), "cadastro distribui personagens, cânone e conquistas pelos módulos corretos");
+check(/function renderPlayerProfileForm[\s\S]*?REGISTRATION_QUESTIONS\.filter/.test(app), "edição do jogador disponibiliza todos os campos da ficha inicial");
+check(app.includes("if (!Array.isArray(safe.profile.playStyle))") && app.includes('question.type === "multi"') && app.includes("splitCommaList(entry[1])"), "estilo de jogo permanece uma lista editável após importar e salvar");
 check(app.includes("is-ultra-dense") && css.includes("overflow: hidden"), "cadastro adapta alternativas densas sem rolagem da página");
 
 vm.runInNewContext(characterSource, sandbox, { filename: "character-data.js" });
@@ -193,6 +213,8 @@ check(/\.relationship-card\s*\{[\s\S]*?display:\s*grid[\s\S]*?grid-template-rows
 check(app.includes("importTeamFromLineup") && app.includes('category: "team"') && characterSource.includes("positionLabels"), "elenco do modelo de partida alimenta automaticamente a categoria TIME");
 check(typeof characterSchema.parseCharacterFormText === "function" && app.includes("importCharacterFiles"), "Relationships importa fichas completas em TXT pela interface");
 check(html.includes('id="characterImportInput"') && html.includes('accept=".txt,text/plain"'), "seletor aceita múltiplas fichas TXT sem publicar os arquivos pessoais");
+check(app.includes("if (!query && character.category !== category)") && app.includes("character.searchScore") && app.includes("A busca consultou todas as quatro categorias"), "busca de Relationships consulta todas as categorias e prioriza nome exato ou prefixo");
+check(app.includes("characterImportReportMarkup") && app.includes("accepted") && app.includes("rejected"), "importação de fichas exibe recibo individual de aceitos e recusados");
 const parsedLineup = characterSchema.parseLineup("Formação: GO - Robert Sánchez\nLD - Reece James, ZC - Colwill, ZC - Fofana, LE - Cucurella\nVOL - Moisés Caicedo\nMAT - Palmer\nPD - Pedro Neto, CA - Caio QA, PE - Estêvão");
 check(parsedLineup.length === 10 && parsedLineup[0].position === "Goleiro" && parsedLineup.at(-1).name === "Estêvão", "parser do elenco reconhece nomes, posições e linhas agrupadas do modelo de partida");
 check(app.includes("characterContextRecord") && !/characterContextRecord[\s\S]{0,900}avatarData/.test(app), "memória envia a ficha para a IA sem incluir imagens em base64");
@@ -202,6 +224,13 @@ check(html.includes('id="chatHistoryList"') && app.includes("createCareerChat") 
 check(html.includes('id="deleteDayDialog"') && app.includes("openDeleteDayDialog") && app.includes("confirmDeleteDay"), "cada dia do KICK OFF pode ser apagado com confirmação própria");
 check(app.includes("chatDerivedRecordCount") && app.includes("createdInChatId") && app.includes("sourceChatId"), "exclusão do dia rastreia e remove somente dados derivados daquela conversa");
 check(!app.includes('plural(chat.messages.length, "1 mensagem') && css.includes(".chat-history-list { gap: 3px; overflow-x: hidden; }"), "confirmação conta mensagens uma vez e o histórico não cria rolagem horizontal");
+check(app.includes('deliveryStatus = "sending"') && app.includes('deliveryStatus = "failed"') && app.includes('deliveryStatus = "completed"'), "turnos da IA persistem estados sending, failed e completed");
+check(app.includes("data-retry-message") && app.includes("data-cancel-message") && app.includes("retryCount"), "falhas de IA podem ser repetidas ou canceladas sem duplicar a mensagem");
+check(app.includes("turnId: userMessage.id") && app.includes("submitChatTurn(career, chat, message)"), "retry reutiliza o mesmo identificador idempotente do turno");
+check(app.includes("applyMemoryUpdates") && app.includes("verifyMemoryReceiptFromStorage") && app.includes("memoryReceipt"), "respostas da IA exibem recibo verificado dos registros realmente persistidos");
+check(app.includes("responseRollbackRaw") && app.includes("restoreSerializedState(responseRollbackRaw, true)"), "falha do espelho durável desfaz resposta e atualizações antes de marcar o retry");
+check(app.includes("proposedUpdates || payload.memoryUpdates") && app.includes("uncertainties"), "frontend consome o envelope estruturado de uma única chamada");
+check(app.includes("selectRelevantContextRecords") && app.includes("relevance-recency-v1") && app.includes('excludedVisibility: "never-send"'), "contexto da IA usa relevância, recência e respeita registros nunca enviados");
 vm.runInNewContext(shortcutSource, sandbox, { filename: "shortcut-data.js" });
 const shortcutLibrary = sandbox.window.INYFFX_SHORTCUT_LIBRARY;
 check(Array.isArray(shortcutLibrary) && shortcutLibrary.length >= 70, "biblioteca do KICK OFF contém todos os atalhos narrativos e funcionais");
@@ -240,6 +269,10 @@ check(calendarShields.some((pathValue) => /chelsea/i.test(pathValue)) && calenda
 check(html.includes('id="calendarEventDialog"') && html.includes('id="calendarEventForm"') && app.includes("syncMatchToCalendar"), "calendário permite cadastrar eventos e sincroniza partidas com temporadas");
 check(app.includes("calendarEventsForCareer") && app.includes('id: "birthday-" + year') && app.includes("calendarShieldForTeam") && app.includes("shield-time-not-found.svg"), "calendário cria aniversários e resolve escudo adversário com fallback");
 check(app.includes("calendarEventIdentity") && app.includes("uniqueEvents"), "calendário consolida registros duplicados da mesma partida na visualização");
+check(app.includes("calendar-day__select") && app.includes('eventButton.closest("[data-calendar-date]")'), "dias e compromissos do calendário usam botões separados sem interação aninhada");
+check(app.includes("DATA DA HISTÓRIA NÃO DEFINIDA") && app.includes("exibindo o mês atual sem alterar a carreira"), "calendário pode mostrar o mês técnico sem inventar a data da história");
+check(app.includes("chronologyLabel") && app.includes("normalized.occurredAt = dateFromAny"), "datas legadas e rótulos cronológicos são normalizados sem virar datas técnicas");
+check(app.includes('max="10.5"') && app.includes('step="0.1"'), "nota de partida aceita a faixa real de 0 a 10,5");
 check(css.includes(".career-calendar") && css.includes(".calendar-grid") && css.includes(".calendar-day-event"), "PLAYER CAREER usa calendário escuro responsivo com ícones de evento");
 check(!app.includes("DATA ATUAL DA HISTÓRIA") && !app.includes("storyDateObject") && !app.includes("selectedDateObject"), "calendário remove cabeçalho e divisor de data riscados pelo usuário");
 check(app.includes("calendarTeamsMatch") && app.includes("matchOpponent") && css.includes(".calendar-day-event--match") && css.includes(".calendar-selected-event--match"), "calendário identifica o adversário e exibe escudo grande sem moldura no bloco e na lateral");
@@ -265,6 +298,24 @@ const calendarLogicSandbox = {
 };
 vm.runInNewContext(`${appFunctionSource("normalizeCalendarEvent")}\nresult = normalizeCalendarEvent({ type: "romantic", date: "2026-08-03", title: "Encontro" });`, calendarLogicSandbox);
 check(calendarLogicSandbox.result && calendarLogicSandbox.result.type === "romantic", "selecionar Encontro preserva funcionalmente o tipo romantic ao salvar");
+
+const dateLogicSandbox = {
+  result: null,
+  clean: (value) => String(value == null ? "" : value).trim(),
+  normalizeKey: (value) => String(value == null ? "" : value).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim()
+};
+vm.runInNewContext(`${appFunctionSource("validDateOnly")}\n${appFunctionSource("dateFromAny")}\nresult = [dateFromAny("31/02/2026"), dateFromAny("29/02/2024"), dateFromAny("31 de abril de 2026")];`, dateLogicSandbox);
+check(Array.from(dateLogicSandbox.result).join("|") === "|2024-02-29|", "parser local aceita ano bissexto e rejeita datas brasileiras impossíveis");
+
+const datedUpdateSandbox = {
+  result: null,
+  rejected: [],
+  clean: dateLogicSandbox.clean,
+  normalizeKey: dateLogicSandbox.normalizeKey,
+  rejectMemoryReceipt: (_receipt, module, reason) => datedUpdateSandbox.rejected.push({ module, reason })
+};
+vm.runInNewContext(`${appFunctionSource("validDateOnly")}\n${appFunctionSource("dateFromAny")}\n${appFunctionSource("normalizeDatedUpdates")}\nresult = normalizeDatedUpdates([{ id: "bad", date: "2026-02-31" }, { id: "good", date: "2026-02-28" }], "matches", {}, ["date", "occurredAt"]);`, datedUpdateSandbox);
+check(datedUpdateSandbox.result.length === 1 && datedUpdateSandbox.result[0].id === "good" && datedUpdateSandbox.rejected.length === 1, "persistência local rejeita propostas da IA com data narrativa inválida");
 
 const matchBlockSandbox = {
   outcome: "",
@@ -298,7 +349,8 @@ new Function(registrationSource);
 new Function(characterSource);
 new Function(calendarManifestSource);
 new Function(shortcutSource);
-check(true, "JavaScript principal, cadastro, fichas, atalhos e manifesto do calendário compilam sem erro de sintaxe");
+new Function(serviceWorker);
+check(true, "JavaScript principal, cadastro, fichas, atalhos, calendário e service worker compilam sem erro de sintaxe");
 
 const report = {
   passed: checks.length - failures.length,

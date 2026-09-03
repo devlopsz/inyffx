@@ -5,10 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#000000" />
     <meta name="description" content="InyffX — sua carreira de futebol como um universo vivo." />
+    <meta name="referrer" content="no-referrer" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://inyffx-api.inyffx-api.workers.dev https://api.spotify.com https://accounts.spotify.com http://127.0.0.1:* http://localhost:*; media-src 'self' blob: https:; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'" />
     <title>InyffX</title>
     <link rel="icon" href="mod/pics/favicon.ico" type="image/x-icon" />
     <link rel="manifest" href="manifest.webmanifest" />
-    <link rel="stylesheet" href="styles.css?v=20260902-save-import-v1" />
+    <link rel="stylesheet" href="styles.css?v=20260903-audit-v2" />
   </head>
   <body>
     <div class="toast-region" id="toastRegion" aria-live="polite" aria-atomic="true"></div>
@@ -32,7 +34,7 @@
             <small id="loginImportStatus" aria-live="polite"></small>
           </div>
         </form>
-        <footer class="login-footer"><strong>© 2027 InyffX</strong><span>Ao continuar, você concorda com os <a href="#terms">Termos de Uso</a> e a <a href="#privacy">Política de Privacidade</a> da Lopsz™</span></footer>
+        <footer class="login-footer"><strong>© 2026 InyffX</strong><span>Ao continuar, você concorda com os <a href="#terms" data-legal="terms">Termos de Uso</a> e a <a href="#privacy" data-legal="privacy">Política de Privacidade</a> da Lopsz™</span></footer>
       </section>
 
       <section class="register-screen auth-panel" id="registerScreen" data-auth-panel="create" aria-label="Criação de carreira">
@@ -159,7 +161,7 @@ Mande a Narração, manchetes, comentários, análises, repercussão em redes so
         </section>
         <section class="page" id="page-seasons" data-page="seasons" aria-labelledby="seasonsTitle"><div class="page-topline"><div><span class="section-number">FUTEBOL</span><h1 id="seasonsTitle">SEASONS</h1></div><label class="season-selector"><span>TEMPORADA</span><select id="seasonSelect"></select></label></div><div class="content-surface" id="seasonsContent"></div></section>
         <section class="page page--player-career" id="page-player-career" data-page="player-career" aria-labelledby="careerTitle"><h1 class="sr-only" id="careerTitle">Player Career</h1><nav class="career-tabs" role="tablist" aria-label="Áreas da carreira"><button class="is-active" type="button" role="tab" aria-selected="true" data-career-tab="pay">FYX PAY</button><button type="button" role="tab" aria-selected="false" data-career-tab="hall">HALL</button><button type="button" role="tab" aria-selected="false" data-career-tab="calendar">CALENDÁRIO</button></nav><div class="career-surface" id="careerContent"></div></section>
-        <section class="page" id="page-off-the-pitch" data-page="off-the-pitch" aria-labelledby="offPitchTitle"><div class="page-topline"><div><span class="section-number">VIDA</span><h1 id="offPitchTitle">OFF THE PITCH</h1></div><span class="optional-tag">MODO OPCIONAL</span></div><div class="offpitch-layout"><article class="offpitch-intro"><span class="giant-index">SIMS / 04</span><h2>Use o The Sims 4 como simulador da vida fora de campo.</h2><p>O site não controla o The Sims. Você joga, registra o que realmente aconteceu e envia o relatório ao KICK OFF. A IA classifica o conteúdo e incorpora ao cânone apenas o que for válido.</p><ol><li><span>01</span>Receba ou escolha objetivos para o dia.</li><li><span>02</span>Jogue a rotina no The Sims 4.</li><li><span>03</span>Envie fatos e screenshots no KICK OFF.</li><li><span>04</span>Confirme o que passa a ser cânone.</li></ol></article><div class="offpitch-side"><section class="template-box"><div class="template-box__heading"><div><span class="section-number">MODELO COPIÁVEL</span><h3>RELATÓRIO OFF THE PITCH</h3></div><button class="secondary-action" id="copyOffPitchTemplate" type="button">COPIAR</button></div><pre id="offPitchTemplate">Objetivos iniciais:
+        <section class="page" id="page-off-the-pitch" data-page="off-the-pitch" aria-labelledby="offPitchTitle"><div class="page-topline"><div><span class="section-number">VIDA</span><h1 id="offPitchTitle">OFF THE PITCH</h1></div><span class="optional-tag">MODO OPCIONAL</span></div><div class="offpitch-layout"><article class="offpitch-intro"><span class="giant-index">SIMS / 04</span><h2>Use o The Sims 4 como simulador da vida fora de campo.</h2><p>O site não controla o The Sims. Você joga, registra o que realmente aconteceu e envia o relatório ao KICK OFF. A IA classifica o conteúdo e incorpora ao cânone apenas o que for válido.</p><ol><li><span>01</span>Receba ou escolha objetivos para o dia.</li><li><span>02</span>Jogue a rotina no The Sims 4.</li><li><span>03</span>Descreva os fatos no relatório do KICK OFF.</li><li><span>04</span>Confira no recibo o que passou a ser cânone.</li></ol></article><div class="offpitch-side"><section class="template-box"><div class="template-box__heading"><div><span class="section-number">MODELO COPIÁVEL</span><h3>RELATÓRIO OFF THE PITCH</h3></div><button class="secondary-action" id="copyOffPitchTemplate" type="button">COPIAR</button></div><pre id="offPitchTemplate">Objetivos iniciais:
 Coisas inesperadas:
 Eventos importantes:</pre><div class="template-actions"><button class="text-action" id="insertOffPitchTemplate" type="button">Inserir no KICK OFF →</button><a class="download-example" href="mod/prompt%20the%20sims%20EXEMPLO.txt" download="InyffX - Exemplo OFF THE PITCH.txt">BAIXAR EXEMPLO</a></div></section><section class="residence-box" id="residenceContent"></section></div></div></section>
       </main>
@@ -233,12 +235,26 @@ Eventos importantes:</pre><div class="template-actions"><button class="text-acti
       </dialog>
     </div>
 
-    <dialog class="modal settings-modal" id="settingsModal"><form method="dialog" class="modal__shell" id="settingsForm"><header class="modal__header"><div><span class="section-number">SISTEMA</span><h2>CONFIGURAÇÕES</h2></div><button class="icon-button" type="submit" value="cancel" aria-label="Fechar">×</button></header><div class="modal__content"><section class="settings-section"><div class="settings-section__heading"><span>01</span><div><h3>IA INYFFX</h3><p>A inteligência do site é conectada pelo próprio InyffX. Nenhum jogador precisa informar chave ou endpoint.</p></div></div><div class="integration-card"><div><span>PROVEDOR DO MVP</span><strong>Cloudflare Workers AI</strong></div><div><span>MODELO</span><strong>Qwen3 30B A3B</strong></div></div><div class="connection-row"><i id="backendStatusDot"></i><span id="backendStatusText">Verificando integração</span></div></section><section class="settings-section"><div class="settings-section__heading"><span>02</span><div><h3>SPOTIFY</h3><p>Mostra no disco a faixa reproduzida na sua conta.</p></div></div><label class="field"><span>SPOTIFY CLIENT ID</span><input id="spotifyClientId" type="text" autocomplete="off" placeholder="Client ID público do Spotify" /></label><label class="field"><span>REDIRECT URI</span><div class="copy-field"><input id="spotifyRedirectUri" type="text" readonly /><button id="copyRedirectUri" type="button">COPIAR</button></div></label><div class="button-row"><button class="secondary-action" id="disconnectSpotify" type="button">DESCONECTAR</button><button class="primary-action" id="connectSpotify" type="button">CONECTAR SPOTIFY <span>→</span></button></div></section></div><footer class="modal__footer"><button class="secondary-action" type="submit" value="cancel">CANCELAR</button><button class="primary-action" id="saveSettings" type="button">SALVAR CONFIGURAÇÕES <span>→</span></button></footer></form></dialog>
+    <dialog class="modal settings-modal" id="settingsModal">
+      <form method="dialog" class="modal__shell" id="settingsForm">
+        <header class="modal__header"><div><span class="section-number">SISTEMA</span><h2>CONFIGURAÇÕES</h2></div><button class="icon-button" type="submit" value="cancel" aria-label="Fechar">×</button></header>
+        <div class="modal__content">
+          <section class="settings-section"><div class="settings-section__heading"><span>01</span><div><h3>IA INYFFX</h3><p>A inteligência é conectada pelo InyffX. Antes do primeiro envio, você escolhe se autoriza o recorte de dados necessário.</p></div></div><div class="integration-card"><div><span>PROVEDOR DO MVP</span><strong>Cloudflare Workers AI</strong></div><div><span>MODELO</span><strong>Qwen3 30B A3B</strong></div></div><div class="connection-row"><i id="backendStatusDot"></i><span id="backendStatusText">Verificando integração</span></div><div class="settings-consent"><span id="aiConsentStatus">CONSENTIMENTO NÃO CONCEDIDO</span><button id="revokeAiConsent" type="button">REVOGAR CONSENTIMENTO</button></div></section>
+          <section class="settings-section"><div class="settings-section__heading"><span>02</span><div><h3>DADOS LOCAIS</h3><p>A senha é uma trava deste navegador, não uma conta online. O save fica neste dispositivo e possui um espelho no IndexedDB.</p></div></div><div class="settings-data-actions"><button class="secondary-action" id="exportCurrentSave" type="button">EXPORTAR SAVE .JSON</button><button class="secondary-action" id="restoreAutomaticBackup" type="button">RESTAURAR BACKUP</button><button class="text-action--danger" id="deleteCurrentCareer" type="button">APAGAR CARREIRA DESTE NAVEGADOR</button></div><p class="settings-data-status" id="settingsDataStatus" aria-live="polite"></p></section>
+          <section class="settings-section"><div class="settings-section__heading"><span>03</span><div><h3>SPOTIFY</h3><p>Mostra no disco a faixa reproduzida na sua conta.</p></div></div><label class="field"><span>SPOTIFY CLIENT ID</span><input id="spotifyClientId" type="text" autocomplete="off" placeholder="Client ID público do Spotify" /></label><label class="field"><span>REDIRECT URI</span><div class="copy-field"><input id="spotifyRedirectUri" type="text" readonly /><button id="copyRedirectUri" type="button">COPIAR</button></div></label><div class="button-row"><button class="secondary-action" id="disconnectSpotify" type="button">DESCONECTAR</button><button class="primary-action" id="connectSpotify" type="button">CONECTAR SPOTIFY <span>→</span></button></div></section>
+        </div>
+        <footer class="modal__footer"><button class="secondary-action" type="submit" value="cancel">CANCELAR</button><button class="primary-action" id="saveSettings" type="button">SALVAR CONFIGURAÇÕES <span>→</span></button></footer>
+      </form>
+    </dialog>
+
+    <dialog class="legal-dialog" id="legalDialog" aria-labelledby="legalTitle">
+      <article><header><h2 id="legalTitle">TERMOS DO INYFFX</h2><button id="closeLegal" type="button" aria-label="Fechar">×</button></header><div id="legalContent"></div></article>
+    </dialog>
     <script src="assets/config.js"></script>
-    <script src="registration-data.js"></script>
+    <script src="registration-data.js?v=20260903-audit-v2"></script>
     <script src="character-data.js?v=20260901-character-import"></script>
     <script src="calendar-shields.js?v=20260901-calendar"></script>
     <script src="shortcut-data.js?v=20260901-shortcut-library"></script>
-    <script src="app.js?v=20260902-save-import-v1"></script>
+    <script src="app.js?v=20260903-audit-v2"></script>
   </body>
 </html>
